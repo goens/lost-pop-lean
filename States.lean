@@ -5,6 +5,8 @@ def Value := Nat deriving ToString, BEq
 def Address := Nat deriving ToString, BEq
 def ThreadId := Nat deriving BEq, Ord, LT, LE, ToString
 
+def RequestId.toNat : RequestId → Nat := λ x => x
+
 structure ReadRequest where
  id : RequestId
  addr : Address
@@ -40,10 +42,6 @@ def Request.id (req : Request) : RequestId :=
   | BasicRequest.write w => w.id
   | BasicRequest.barrier id => id
 
-private def reqIds : List Request → List RequestId := List.map Request.id
-theorem reqIds_preserves_cons (r : Request) (reqs : List Request) :
-  r.id :: reqIds reqs = reqIds (r::reqs) := by simp [reqIds,List.map]
-
 def SatisfiedRead := RequestId × RequestId deriving ToString
 
 structure ValidScopes where
@@ -61,6 +59,8 @@ def ValidScopes.systemScope {V : ValidScopes } : @Scope V :=
 def ValidScopes.threadScope {V : ValidScopes } (t :  ThreadId) (h : [t] ∈ V.scopes) : (@Scope V) :=
   {threads := [t], valid := h}
 
+def ValidScopes.jointScope : (V : ValidScopes) → ThreadId → ThreadId → (@Scope V) := sorry
+
 def Request.propagatedTo (r : Request) (t : ThreadId) : Bool := r.propagated_to.elem t
 
 def Request.fullyPropagated {V : ValidScopes}  (r : Request) (s : optParam (@Scope V) V.systemScope) : Bool :=
@@ -73,13 +73,55 @@ structure System where
 def System.threads : System → List ThreadId
  | s => List.join s.scopes.scopes
 
-def OrderConstraints := RequestId → RequestId → Bool
-def OrderConstraints.predecessors (req : RequestId) (reqs : List RequestId)
-  (constraints : OrderConstraints)  : List RequestId :=
-  reqs.filter (λ x => constraints x req)
+def OrderConstraints {V : ValidScopes} :=  (@Scope V) → RequestId → RequestId → Bool
+
+def OrderConstraints.predecessors {V : ValidScopes} (S : @Scope V) (req : RequestId)
+    (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
+    reqs.filter (λ x => constraints S x req)
+
+private def opReqId? : Option Request → Option RequestId := Option.map λ r => r.id
+
+private def valConsistent (vals :  Array (Option Request)) : Bool :=
+  let valOpIds := vals.map opReqId?
+  let valConsistent := λ idx opVal => match opVal with
+    | none => true
+    | some val => val == idx.val
+  let consistentVals := valOpIds.mapIdx valConsistent
+  consistentVals.foldl (. && .) true
+
+structure RequestArray where
+  val : Array (Option Request)
+  coherent : valConsistent val = true
+
+def filterNones {α : Type} : List (Option α) → List α
+  | none::rest => filterNones rest
+  | (some val):: rest => val::(filterNones rest)
+  | [] => []
+
+private def reqIds : RequestArray → List RequestId
+ | arr =>
+   let opIds :=  Array.toList $ arr.val.map (Option.map Request.id)
+   filterNones opIds
+
+def growArray {α : Type} (a : Array (Option α)) (n : Nat) : Array (Option α) :=
+  a.append (Array.mkArray (a.size - n) none)
+
+private def RequestArray._insert : RequestArray → Request → Array (Option Request)
+  | arr, req =>
+    let vals' := growArray arr.val (arr.val.size - req.id.toNat)
+    arr.val.insertAt req.id (some req)
+
+-- can't be proving these things right now
+theorem RequestArrayInsertConsistent (arr : RequestArray) (req : Request) :
+  valConsistent (arr._insert req) = true := by sorry
+  -- unfold RequestArray._insert
+  -- simp
+
+def RequestArray.insert : RequestArray → Request → RequestArray
+  | arr, req => { val := arr._insert req, coherent := RequestArrayInsertConsistent arr req}
 
 structure SystemState where
-  requests : List Request
+  requests : RequestArray
   seen : List RequestId
   removed : List RequestId
   system : System
@@ -98,45 +140,56 @@ inductive Transition
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool
  | _, _, _ => true
 
-theorem acceptingPreservesCoherence {req : Request} {reqs₁ : List RequestId} (reqs₂ : List Request)
-    (h : ∀ id : RequestId, id ∈ reqs₁ → id ∈ reqIds reqs₂) :
-    ∀ id : RequestId, id ∈ reqs₁ → id ∈ reqIds (req :: reqs₂) := by
-    intro r h'
-    have r_in_reqs₂ := h r h'
-    rewrite [← reqIds_preserves_cons req reqs₂]
-    exact List.Mem.tail (Request.id req) r_in_reqs₂
-
 def SystemState.acceptRequest : SystemState → BasicRequest → ThreadId → SystemState
   | state, reqType, tId =>
   let req : Request := { propagated_to := [tId], thread := tId, basic_type := reqType}
-  let requests' := req :: state.requests
+  let requests' := state.requests.insert req
   { requests := requests', system := state.system, seen := state.seen,
     orderConstraints := state.orderConstraints,
     removed := state.removed, satisfied := state.satisfied,
-    seenCoherent := acceptingPreservesCoherence state.requests state.seenCoherent,
-    removedCoherent := @acceptingPreservesCoherence req state.removed state.requests state.removedCoherent,
+    seenCoherent := sorry
+    removedCoherent := sorry
     satisfiedCoherent := state.satisfiedCoherent
   }
 
-def SystemState.propagated? : SystemState → RequestId → ThreadId → Bool
- | state, reqId, thId =>
-   let queryRequest := λ req =>
-     if req.id == reqId
-     then req.propagated_to.elem thId
-     else false
-   let maps := state.requests.map queryRequest
-   maps.foldl (. || .) false
+def Request.isPropagated? : Request → ThreadId → Bool
+  | req, thId => req.propagated_to.elem thId
 
 def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
- | state, reqId, thId =>
-   let unpropagated := state.propagated? reqId thId
-   let order_constraints := state.orderConstraints state.system.scopes.systemScope
-   let pred := OrderConstraints.predecessors reqId (reqIds state.requests) order_constraints
-   let reqs := state.requests.filter (λ req => pred.elem req.id)
-   let predPropagated := reqs.map (λ r => r.fullyPropagated state.system.scopes.systemScope)
-   unpropagated || predPropagated.foldl (. && .) true
+  | state, reqId, thId =>
+  match state.requests.val[reqId] with
+  | none => false
+  | some req =>
+    let unpropagated := req.isPropagated? thId
+    let scope := state.system.scopes.jointScope thId req.thread
+    let order_constraints : OrderConstraints := state.orderConstraints
+    let pred := order_constraints.predecessors scope reqId (reqIds state.requests)
+    let reqOps := state.requests.val.filter (λ req => match req with | none => false | some r => pred.elem r.id)
+    let reqs := filterNones reqOps.toList
+    let predPropagated := reqs.map (λ r => r.fullyPropagated state.system.scopes.systemScope)
+    unpropagated || predPropagated.foldl (. && .) true
 
-def SystemState.propagate : SystemState → RequestId → ThreadId → SystemState := sorry
+def Request.propagate : Request → ThreadId → Request
+  | req, thId => { req with propagated_to := thId :: req.propagated_to}
+
+def OrderConstraints.update {V : ValidScopes} : @OrderConstraints V → RequestId → ThreadId → @OrderConstraints V := sorry
+
+def SystemState.propagate : SystemState → RequestId → ThreadId → SystemState
+  | state, reqId, thId =>
+  let reqOpt := state.requests.val[reqId]
+  match reqOpt with
+  | none => state
+  | some req =>
+    let requests' := state.requests.insert (req.propagate thId)
+    let scope := state.system.scopes.jointScope thId req.thread
+    let orderConstraints : OrderConstraints := state.orderConstraints
+    let orderConstraints' := orderConstraints.update reqId thId
+    { requests := requests', orderConstraints := orderConstraints',
+      seen := state.seen, removed := state.removed, satisfied := state.satisfied,
+      seenCoherent := sorry, removedCoherent := sorry,
+      satisfiedCoherent := state.satisfiedCoherent
+    }
+
 def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Bool := sorry
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState := sorry
 

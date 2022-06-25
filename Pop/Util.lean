@@ -1,14 +1,24 @@
 
 namespace Util
 
+def filterNones {α : Type} : List (Option α) → List α
+  | none::rest => filterNones rest
+  | (some val):: rest => val::(filterNones rest)
+  | [] => []
+
+partial def removeDuplicates [BEq α] : List α → List α
+  | [] => []
+  | (x :: xs) => x :: removeDuplicates (xs.filter (λ y => y != x))
+
+
 def List.sublist [BEq α] : List α → List α → Bool
-| l₁, l₂ => l₁.all (λ e => l₂.elem e)
+  | l₁, l₂ => l₁.all (λ e => l₂.elem e)
 
 inductive ListTree (α : Type) [BEq α] : List α → Type
-| leaf (val : List α) : ListTree α val
-| parentNil  (val : List α) : ListTree α val
-| parentCons (_ : ListTree α child) (_ : ListTree α sibling)
-(_ : List.sublist child sibling) : ListTree α sibling
+  | leaf (val : List α) : ListTree α val
+  | parentNil  (val : List α) : ListTree α val
+  | parentCons (_ : ListTree α child) (_ : ListTree α sibling)
+  (_ : List.sublist child sibling) : ListTree α sibling
 
 open ListTree
 

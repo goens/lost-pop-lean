@@ -1,4 +1,7 @@
-namespace POP
+import Pop.Util
+open Util
+
+namespace Pop
 
 def RequestId := Nat deriving ToString, BEq
 def Value := Nat deriving ToString, BEq
@@ -52,21 +55,27 @@ def Request.address? (r : Request) : Option Address := r.basic_type.address?
 def SatisfiedRead := RequestId × RequestId deriving ToString
 
 structure ValidScopes where
-  scopes : List (List ThreadId)
-  threads_in : ∀ n : ThreadId, n ∈ List.join scopes → [n] ∈ scopes
-  system_in : List.join scopes ∈ scopes
+  system_scope : List ThreadId
+  scopes : ListTree ThreadId system_scope
+  threads_in : ∀ n : ThreadId, n ∈ system_scope → [n] ∈ scopes
 
 structure Scope {V : ValidScopes} where
   threads : List ThreadId
   valid : threads ∈ V.scopes
 
+instance {V : ValidScopes} : Inhabited (@Scope V) where
+ default := {threads := [], valid := sorry}
+
 def ValidScopes.systemScope {V : ValidScopes } : @Scope V :=
-  {threads := List.join V.scopes, valid := V.system_in}
+  {threads := V.system_scope, valid := sorry}
 
 def ValidScopes.threadScope {V : ValidScopes } (t :  ThreadId) (h : [t] ∈ V.scopes) : (@Scope V) :=
   {threads := [t], valid := h}
 
-def ValidScopes.jointScope : (V : ValidScopes) → ThreadId → ThreadId → (@Scope V) := sorry
+def ValidScopes.jointScope : (V : ValidScopes) → ThreadId → ThreadId → (@Scope V)
+ | valid, t₁, t₂ => match valid.scopes.meet t₁ t₂ with
+   | some scope => {threads := scope, valid := sorry}
+   | none => unreachable! -- can we get rid of this case distinction?
 
 def Request.propagatedTo (r : Request) (t : ThreadId) : Bool := r.propagated_to.elem t
 
@@ -76,9 +85,10 @@ def Request.fullyPropagated {V : ValidScopes}  (r : Request) (s : optParam (@Sco
 
 structure System where
   scopes : ValidScopes
+  reorder_condition : Request → Request → Bool
 
 def System.threads : System → List ThreadId
- | s => List.join s.scopes.scopes
+ | s => s.scopes.system_scope
 
 def OrderConstraints {V : ValidScopes} :=  (@Scope V) → RequestId → RequestId → Bool
 
@@ -97,7 +107,12 @@ def OrderConstraints.purge {V : ValidScopes} (constraints : @OrderConstraints V)
     then false
     else constraints scope r₁ r₂
 
-def OrderConstraints.update {V : ValidScopes} : @OrderConstraints V → RequestId → ThreadId → @OrderConstraints V := sorry
+
+def OrderConstraints.append {V : ValidScopes} (constraints : @OrderConstraints V)
+  (scope : @Scope V) (reqs : List (RequestId × RequestId)) : @OrderConstraints V
+  | s, r₁, r₂ => if List.sublist s.threads scope.threads && reqs.elem (r₁, r₂)
+  then true
+  else constraints s r₁ r₂
 
 private def opReqId? : Option Request → Option RequestId := Option.map λ r => r.id
 
@@ -129,7 +144,7 @@ def growArray {α : Type} (a : Array (Option α)) (n : Nat) : Array (Option α) 
 private def RequestArray._insert : RequestArray → Request → Array (Option Request)
   | arr, req =>
     let vals' := growArray arr.val (arr.val.size - req.id.toNat)
-    arr.val.insertAt req.id (some req)
+    vals'.insertAt req.id (some req)
 
 -- can't be proving these things right now
 theorem RequestArrayInsertConsistent (arr : RequestArray) (req : Request) :
@@ -186,6 +201,17 @@ def SystemState.acceptRequest : SystemState → BasicRequest → ThreadId → Sy
     satisfiedCoherent := state.satisfiedCoherent
   }
 
+def SystemState.updateOrderConstraints (state : SystemState) : @Scope state.system.scopes → RequestId → ThreadId → @OrderConstraints state.system.scopes
+  | scope, reqId, thId =>
+  match state.requests.val[reqId] with
+    | none => state.orderConstraints
+    | some req =>
+      let pred := state.idsToReqs $ state.orderConstraints.predecessors scope reqId (reqIds state.requests)
+      let predReorder := pred.filter λ r => state.system.reorder_condition r req
+      let predThread := predReorder.filter λ r => r.propagatedTo thId
+      let newConstraints := [reqId].zip $ predThread.map Request.id
+      state.orderConstraints.append scope newConstraints
+
 def Request.isPropagated? : Request → ThreadId → Bool
   | req, thId => req.propagated_to.elem thId
 
@@ -214,7 +240,7 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
   | some req =>
     let requests' := state.requests.insert (req.propagate thId)
     let scope := state.system.scopes.jointScope thId req.thread
-    let orderConstraints' := state.orderConstraints.update reqId thId
+    let orderConstraints' := state.updateOrderConstraints scope reqId thId
     { requests := requests', orderConstraints := orderConstraints',
       seen := state.seen, removed := state.removed, satisfied := state.satisfied,
       seenCoherent := sorry, removedCoherent := sorry,
@@ -279,3 +305,5 @@ def SystemState.applyTrace : SystemState → List Transition → Except String S
 
 -- def Scope.isSubscrope : Scope → Scope → Boolean :=
 -- instance : LE Scope
+
+end Pop

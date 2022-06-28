@@ -89,6 +89,17 @@ def SystemState.possibleTransitions (state : SystemState) (unaccepted : List Tra
   let accepts := unaccepted.filter Transition.isAccept
   accepts ++ state.possibleSatisfyTransitions ++ state.possiblePropagateTransitions
 
+def SystemState.hasUnsatisfiedReads (state : SystemState) :=
+  let requests := filterNones state.requests.val.toList
+  let reads := requests.filter Request.isRead
+  let readids := reads.map Request.id
+  let unsatisfied := readids.filter state.isSatisfied
+  unsatisfied != []
+
+def SystemState.isDeadlocked (state : SystemState) (unaccepted : List Transition) :=
+  let transitions := state.possibleTransitions unaccepted
+  transitions == [] && state.hasUnsatisfiedReads
+
 -- This should be a monad transformer or smth...
 def SystemState.takeNthStep (state : SystemState) (acceptRequests : List Transition) (n : Nat) : Except String (Transition × SystemState) :=
   let transitions := state.possibleTransitions acceptRequests
@@ -109,8 +120,8 @@ def SystemState._runWithList  : SystemState →  List Transition → List Nat �
       match runStep with
         | Except.error "No more transitions possible" => Except.ok state
         | Except.ok (trans,state') =>
-          dbg_trace trans.toString
-          dbg_trace state'
+          -- dbg_trace trans.toString
+          -- dbg_trace state'
           state'._runWithList (accepts.removeAll [trans]) ns
         | Except.error e => Except.error e
 
@@ -118,6 +129,46 @@ def SystemState.runWithList  : SystemState →  List Transition → List Nat →
   | state, accepts, ns => if !accepts.all Transition.isAccept
   then throw "Running with non-accept transition inputs"
   else SystemState._runWithList state accepts ns
+
+private def appendTransitionStateAux : List (List Transition × SystemState) → Transition × SystemState  → List (List Transition × SystemState)
+  | partialTrace, (trans,state) => partialTrace.map λ (transitions, _) => (trans::transitions, state)
+
+-- is this DFS or BFS?
+partial def SystemState.runDFSAux : SystemState  → List Transition → (SystemState → Bool) →
+  List (List Transition × SystemState) → Transition → List (List Transition × SystemState)
+  | state, accepts, condition, partialTrace, transition =>
+  let accepts' := accepts.removeAll [transition]
+  let stepExcept := state.applyTransition transition
+  match stepExcept with
+    | Except.error _ => []
+    | Except.ok state' =>
+      let partialTrace' := appendTransitionStateAux partialTrace (transition,state')
+      if condition state' || state'.isDeadlocked accepts'
+      then partialTrace'
+      else
+        let transitions' := state'.possibleTransitions accepts'
+        List.join $ transitions'.map (state'.runDFSAux accepts' condition partialTrace')
+
+
+def SystemState.runDFS : SystemState → List Transition → (SystemState → Bool) →
+  List (List Transition × SystemState)
+  | state, accepts, condition =>
+  let transitions := state.possibleTransitions accepts
+  List.join $ transitions.map (state.runDFSAux accepts condition [([],state)])
+
+def SystemState.runDFSNoDeadlock : SystemState → List Transition → List (List Transition × SystemState)
+  | state, accepts => state.runDFS accepts λ _ => false
+
+-- Doesn't work. Just to add values here to do litmus tests.
+-- def SystemState.outcome : SystemState → List (Request × Request)
+--  | state =>
+--    let pairsOpt := state.satisfied.map λ (rdId, wrId) => (state.requests.val[rdId], state.requests.val[wrId])
+--    let optPairs := pairsOpt.map λ (opRd, opWr) => match (opRd,opWr) with
+--      | (some rd, some wr) => some (rd,wr)
+--      | _ => none
+--    filterNones optPairs
+
+-- | state, accepts => state.runDFS accepts λ _ => false
 
     -- let runStep := λ (acceptsRemaining, state) n => state.takeNthStep acceptsRemaining n
     -- ns.foldlM (init := (accepts, state)) runStep

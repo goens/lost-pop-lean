@@ -35,7 +35,7 @@ def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId →
 def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState
   | state, reqType, tId =>
   let req : Request := { propagated_to := [tId], thread := tId, basic_type := reqType, id := state.requests.val.size}
-  dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
+  --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
   let requests' := state.requests.insert req
   let seen' := req.id :: state.seen
   { requests := requests', system := state.system, seen := seen',

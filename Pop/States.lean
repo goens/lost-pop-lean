@@ -81,7 +81,7 @@ def BasicRequest.address? (r : BasicRequest) : Option Address := match r with
 
 def Request.address? (r : Request) : Option Address := r.basic_type.address?
 
-def SatisfiedRead := RequestId × RequestId deriving ToString
+def SatisfiedRead := RequestId × RequestId deriving ToString, BEq
 
 structure ValidScopes where
   system_scope : List ThreadId
@@ -189,7 +189,7 @@ def growArray {α : Type} (a : Array (Option α)) (n : Nat) : Array (Option α) 
 
 private def RequestArray._insert : RequestArray → Request → Array (Option Request)
   | arr, req =>
-    dbg_trace "growing [{arr}] of size {arr.val.size} to {req.id.toNat + 1} for Request {req}"
+    --dbg_trace "growing [{arr}] of size {arr.val.size} to {req.id.toNat + 1} for Request {req}"
     let vals' := growArray arr.val (req.id.toNat + 1)
     let i := req.id.toNat.toUSize
     if h : i.toNat < vals'.size

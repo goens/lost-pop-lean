@@ -74,8 +74,10 @@ def Request.possibleSatisfyTransitions (read : Request) (state : SystemState) : 
   if !read.isRead then [] else
     let requests := filterNones state.requests.val.toList
     let writes_propagated_eq := requests.filter λ write => write.isWrite && write.propagated_to == read.propagated_to
+    --dbg_trace s!"writes with eq propagation to {read.id}: {writes_propagated_eq}"
     let write_ids := writes_propagated_eq.map Request.id
-    let writes_valid := write_ids.filter (λ write => state.canSatisfyRead read.id write)
+    let writes_valid := write_ids.filter (λ write => state.canSatisfyRead read.id write) -- should be length 1
+    --dbg_trace s!"valid writes for transition: {writes_valid}" 
     writes_valid.map $ Transition.satisfyRead read.id
 
 def SystemState.possibleSatisfyTransitions (state :  SystemState) : List Transition :=

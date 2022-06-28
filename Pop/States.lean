@@ -3,10 +3,10 @@ open Util
 
 namespace Pop
 
-def RequestId := Nat deriving ToString, BEq
-def Value := Option Nat deriving ToString, BEq
-def Address := Nat deriving ToString, BEq
-def ThreadId := Nat deriving BEq, Ord, LT, LE, ToString
+def RequestId := Nat deriving ToString, BEq, Inhabited
+def Value := Option Nat deriving ToString, BEq, Inhabited
+def Address := Nat deriving ToString, BEq, Inhabited
+def ThreadId := Nat deriving BEq, Ord, LT, LE, ToString, Inhabited
 
 def RequestId.toNat : RequestId → Nat := λ x => x
 def ThreadId.toNat : RequestId → Nat := λ x => x
@@ -138,7 +138,9 @@ def OrderConstraints.predecessors {V : ValidScopes} (S : @Scope V) (req : Reques
 
 def OrderConstraints.between {V : ValidScopes} (S : @Scope V) (req₁ req₂ : RequestId)
   (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
-  sorry --reqs.filter (λ x => constraints S x req)
+  let preds₁ := constraints.predecessors S req₁ reqs
+  let preds₂ := constraints.predecessors S req₂ reqs
+  preds₂.removeAll preds₁
 
 def OrderConstraints.purge {V : ValidScopes} (constraints : @OrderConstraints V)
   (req : RequestId) : @OrderConstraints V :=
@@ -182,11 +184,13 @@ def reqIds : RequestArray → List RequestId
    filterNones opIds
 
 def growArray {α : Type} (a : Array (Option α)) (n : Nat) : Array (Option α) :=
+  --dbg_trace s!"growing array of size {a.size} by {n}"
   a.append (Array.mkArray (a.size - n) none)
 
 private def RequestArray._insert : RequestArray → Request → Array (Option Request)
   | arr, req =>
-    let vals' := growArray arr.val req.id.toNat
+    dbg_trace "growing [{arr}] of size {arr.val.size} to {req.id.toNat + 1} for Request {req}"
+    let vals' := growArray arr.val (req.id.toNat + 1)
     let i := req.id.toNat.toUSize
     if h : i.toNat < vals'.size
     then vals'.uset i (some req) h
@@ -210,7 +214,13 @@ theorem RequestArrayRemoveConsistent (arr : RequestArray) (reqId : RequestId) :
 --  unfold valConsistent
 
 def RequestArray.insert : RequestArray → Request → RequestArray
-  | arr, req => { val := arr._insert req, coherent := RequestArrayInsertConsistent arr req}
+  | arr, req =>
+    let i := req.id.toNat.toUSize
+    let val' := if h : i.toNat < arr.val.size
+      then arr.val.uset i (some req) h
+      else arr._insert req
+      -- RequestArrayInsertConsistent arr req
+    { val := val', coherent := sorry}
 
 def RequestArray.remove : RequestArray → RequestId → RequestArray
 | arr, reqId => { val := arr._remove reqId , coherent := RequestArrayRemoveConsistent arr reqId}

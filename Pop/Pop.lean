@@ -14,7 +14,7 @@ inductive Transition
 def Transition.toString : Transition → String
  | acceptRequest req tid => s!"Accept (T{tid}): {req}"
  | propagateToThread reqid tid => s!"Propagate Request {reqid} to Thread {tid}"
- | satisfyRead readid writeid => s!"Satisify Read Request {readid}) with Write Request {writeid}"
+ | satisfyRead readid writeid => s!"Satisify Read Request {readid} with Write Request {writeid}"
 instance : ToString Transition where toString := Transition.toString
 
 def Transition.isAccept : Transition → Bool
@@ -32,10 +32,10 @@ def Transition.isSatisfy : Transition → Bool
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool
  | _, _, _ => true
 
-def SystemState.acceptRequest : SystemState → BasicRequest → ThreadId → SystemState
+def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState
   | state, reqType, tId =>
   let req : Request := { propagated_to := [tId], thread := tId, basic_type := reqType, id := state.requests.val.size}
-  --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
+  dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
   let requests' := state.requests.insert req
   let seen' := req.id :: state.seen
   { requests := requests', system := state.system, seen := seen',
@@ -78,7 +78,9 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
     unpropagated && predPropagated.foldl (. && .) true
 
 def Request.propagate : Request → ThreadId → Request
-  | req, thId => { req with propagated_to := thId :: req.propagated_to}
+  | req, thId =>
+    let sorted := (thId :: req.propagated_to).toArray.qsort (λ x y => Nat.ble x y)
+    { req with propagated_to := sorted.toList}
 
 
 def SystemState.propagate : SystemState → RequestId → ThreadId → SystemState
@@ -102,6 +104,7 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
   match state.requests.val[readId], state.requests.val[writeId] with
     | some read, some write =>
       let scope := state.system.scopes.jointScope read.thread write.thread
+      --dbg_trace "can {writeId} satisfy {readId}?"
       let betweenIds := state.orderConstraints.between scope read.id write.id (reqIds state.requests)
       let between := state.idsToReqs betweenIds
       let writesToAddrBetween := between.filter (λ r => r.isWrite && r.address? == write.address?)
@@ -125,7 +128,7 @@ def SystemState.applyTransition : SystemState → Transition → Except String S
   | state, (.acceptRequest req tId) =>
     --dbg_trace "applying acceptRequest {req} T{tId} "
     if (state.canAcceptRequest req tId)
-    then Except.ok $ state.acceptRequest req tId
+    then Except.ok $ state.applyAcceptRequest req tId
     else throw s!"Invalid transition. Can't accept request {req} to Thread {tId}"
   | state, .propagateToThread reqId tId =>
     if (state.canPropagate reqId tId)

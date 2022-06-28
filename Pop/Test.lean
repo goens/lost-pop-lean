@@ -39,10 +39,10 @@ def testprogram := <| R x || W y ; W x|>
 #eval testprogram.toString
 
 
-def testaccept := inittso12.acceptRequest (mkRead 0) 0
-#eval testaccept.canPropagate 0 1 
-#eval testaccept.requests.val[0]
+def testaccept := inittso12.applyAcceptRequest (mkRead 0) 0
+#eval testaccept.canPropagate 0 1
 #eval testaccept.requests.val[0].get!.isPropagated 1
+#eval testaccept.requests.val[0]
     -- let scope := testaccept.system.scopes.jointScope 0 req.thread
     -- let pred := testaccept.orderConstraints.predecessors scope 0 (reqIds testaccept.requests)
     -- let reqOps := testaccept.requests.val.filter (λ req => match req with | none => false | some r => pred.elem r.id)

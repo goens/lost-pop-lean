@@ -9,20 +9,21 @@ open Util
 namespace Pop
 
 -- TODO: Add values to writes
-def mkRequest : String × Address → ThreadId → Option Transition
-  | ("R", addr), thId  => some $ Pop.Transition.acceptRequest (Pop.mkRead addr) thId
-  | ("W", addr), thId  => some $ Pop.Transition.acceptRequest (Pop.mkWrite addr) thId
-  | ("Fence", _), thId => some $ Pop.Transition.acceptRequest (Pop.mkBarrier) thId
+def mkRequest : String × Address × Value → ThreadId → Option Transition
+  | ("R", addr, _), thId  => some $ Pop.Transition.acceptRequest (Pop.mkRead addr) thId
+  | ("W", addr, val), thId  => some $ Pop.Transition.acceptRequest (Pop.mkWrite addr val) thId
+  | ("Fence", _, _), thId => some $ Pop.Transition.acceptRequest (Pop.mkBarrier) thId
   | _, _ => none
 
-def createAcceptList : List (List (String × String)) → List Transition
+def createAcceptList : List (List (String × String × Nat)) → List Transition
   | list =>
-  let variablesRaw := list.map λ thread => thread.map (λ r => if r.2.length == 0 then none else some r.2)
+  let variablesRaw := list.map λ thread => thread.map (λ r => if r.2.1.length == 0 then none else some r.2.1)
   let variables := removeDuplicates $ filterNones $ List.join variablesRaw
   let variableNums := variables.zip (List.range variables.length)
   let variableMap := Std.mkHashMap (capacity := variableNums.length) |> variableNums.foldl λ acc (k, v) => acc.insert k v
-  let replaceVar := λ (req,var) => (req, 1 + (Option.get! $ variableMap.find? var))
-  let replacedVariables : List (List (String × Nat)) := list.map λ thread => thread.map replaceVar
+  let replaceVar := λ (req,var,val) => (req, 1 + (Option.get! $ variableMap.find? var),val)
+  let replacedVariablesNat : List (List (String × Nat × Nat)) := list.map λ thread => thread.map replaceVar
+  let replacedVariables : List (List (String × Address × Value)) := replacedVariablesNat.map λ l => l.map (λ (str,addr,val) => (str,Address.ofNat addr, Value.ofNat val))
   let fullThreads := replacedVariables.zip (List.range replacedVariables.length)
   let mkThread := λ (reqs, thId) => filterNones $ reqs.map (λ r => mkRequest r thId)
   List.join $ fullThreads.map mkThread
@@ -31,7 +32,7 @@ declare_syntax_cat request
 declare_syntax_cat request_seq
 declare_syntax_cat request_set
 syntax "R" ident : request
-syntax "W" ident : request
+syntax "W" ident "=" num : request
 syntax "Fence"   : request
 syntax request ";" request_seq : request_seq
 syntax request : request_seq
@@ -42,9 +43,9 @@ syntax "<|" request_set "|>" : term
 -- syntax sepBy(request_seq,  "||") : request_set
 
 macro_rules
- | `(request| R $x:ident) => `(("R", $(Lean.quote x.getId.toString)))
- | `(request| W $x:ident) => `(("W", $(Lean.quote x.getId.toString)))
- | `(request| Fence     ) => `(("Fence", ""))
+ | `(request| R $x:ident) => `(("R", $(Lean.quote x.getId.toString), 0))
+ | `(request| W $x:ident = $y:num) => `(("W", $(Lean.quote x.getId.toString), $y))
+ | `(request| Fence     ) => `(("Fence", "", 0))
 
 macro_rules
   | `(request_seq| $r:request ) => `([$r])
@@ -66,7 +67,8 @@ def Request.possiblePropagateTransitions (req : Request) (state :  SystemState) 
 def SystemState.possiblePropagateTransitions (state :  SystemState) : List Transition :=
   let requests := filterNones state.requests.val.toList
   let requests_not_fully_propagated := requests.filter λ r => ! (@Request.fullyPropagated state.system.scopes r state.system.scopes.systemScope)
-  let requests_active := requests_not_fully_propagated.filter λ r => (state.seen.elem r.id) && (!state.removed.elem r.id)
+  let removedIds := state.removed.map Request.id
+  let requests_active := requests_not_fully_propagated.filter λ r => (state.seen.elem r.id) && (!removedIds.elem r.id)
   -- dbg_trace s!"active requests: {requests_active}"
   List.join $ requests_active.map λ r => r.possiblePropagateTransitions state
 
@@ -159,14 +161,19 @@ def SystemState.runDFS : SystemState → List Transition → (SystemState → Bo
 def SystemState.runDFSNoDeadlock : SystemState → List Transition → List (List Transition × SystemState)
   | state, accepts => state.runDFS accepts λ _ => false
 
--- Doesn't work. Just to add values here to do litmus tests.
--- def SystemState.outcome : SystemState → List (Request × Request)
---  | state =>
---    let pairsOpt := state.satisfied.map λ (rdId, wrId) => (state.requests.val[rdId], state.requests.val[wrId])
---    let optPairs := pairsOpt.map λ (opRd, opWr) => match (opRd,opWr) with
---      | (some rd, some wr) => some (rd,wr)
---      | _ => none
---    filterNones optPairs
+-- Doesn't work. Need to combine removed with requests
+-- def SystemState.satisfiedRequestPairs : SystemState → List (Request × Request)
+--   | state =>
+--     let pairsOpt := state.satisfied.map λ (rdId, wrId) => (state.requests.val[rdId], state.requests.val[wrId])
+--     let optPairs := pairsOpt.map λ (opRd, opWr) => match (opRd,opWr) with
+--       | (some rd, some wr) => some (rd,wr)
+--       | _ => none
+--     filterNones optPairs
+
+def SystemState.outcome : SystemState → List (ThreadId × Address × Value)
+  | state =>
+    -- TODO: this won't work for reads that stay there
+    state.removed.map λ rd => (rd.thread, rd.address?.get!, rd.value?)
 
 -- | state, accepts => state.runDFS accepts λ _ => false
 

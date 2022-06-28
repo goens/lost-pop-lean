@@ -113,15 +113,21 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
 
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState
  | state, readId, writeId =>
- let satisfied' := (readId,writeId)::state.satisfied
- let removed' :=  readId::state.removed
- let requests' := state.requests.remove readId
- let orderConstraints' := state.orderConstraints.purge readId
- { requests := requests', orderConstraints := orderConstraints',
-   removed := removed', satisfied := satisfied',
-   seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,
-   satisfiedCoherent := sorry
- }
+ let opRead := state.requests.val[readId]
+ let opWrite := state.requests.val[writeId]
+ match opRead, opWrite with
+   | some read, some write =>
+      let satisfied' := (readId,writeId)::state.satisfied
+      let read' := read.setValue write.value?
+      let removed' :=  read'::state.removed
+      let requests' := state.requests.remove readId
+      let orderConstraints' := state.orderConstraints.purge readId
+      { requests := requests', orderConstraints := orderConstraints',
+        removed := removed', satisfied := satisfied',
+        seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,
+        satisfiedCoherent := sorry
+      }
+   | _, _ => unreachable!
 
 open Transition in
 def SystemState.applyTransition : SystemState → Transition → Except String SystemState

@@ -28,14 +28,14 @@ def inittso12 : SystemState := SystemState.init tso12
 
 open Transition
 
-def trace := [acceptRequest (mkRead 0) 0, acceptRequest (mkWrite 0) 0]
-def trace2 := [acceptRequest (mkRead 0) 0, acceptRequest (mkWrite 0) 1, propagateToThread 0 1, propagateToThread 1 0, satisfyRead 0 1]
+def trace := [acceptRequest (mkRead 0) 0, acceptRequest (mkWrite 0 0) 0]
+def trace2 := [acceptRequest (mkRead 0) 0, acceptRequest (mkWrite 0 0) 1, propagateToThread 0 1, propagateToThread 1 0, satisfyRead 0 1]
 
 -- def res := printResult $ inittso12.applyTrace trace
 -- def res2 := printResult $ inittso12.applyTrace trace2
 
 
-def testprogram := <| R x || W y ; W x|>
+def testprogram := <| R x || W y=1; W x=2 |>
 #eval testprogram.toString
 
 

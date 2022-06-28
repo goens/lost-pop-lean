@@ -13,10 +13,12 @@ def ThreadId.toNat : RequestId → Nat := λ x => x
 def RequestId.ofNat : Nat → RequestId := λ x => x
 def ThreadId.ofNat : Nat → RequestId := λ x => x
 def Address.ofNat : Nat → Address := λ x => x
+def Value.ofNat : Nat → Value := λ x => some x
 
 instance : OfNat ThreadId n where  ofNat := ThreadId.ofNat n
 instance : OfNat RequestId n where  ofNat := RequestId.ofNat n
 instance : OfNat Address n where ofNat := Address.ofNat n
+instance : OfNat Value n where ofNat := Value.ofNat n
 
 structure ReadRequest where
  addr : Address
@@ -39,17 +41,26 @@ def mkRead (addr : Address) : BasicRequest :=
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
   BasicRequest.read rr
 
-def mkWrite (addr : Address) : BasicRequest :=
-  let wr : WriteRequest := { addr := addr, val := none}
+def mkWrite (addr : Address) (val : Value) : BasicRequest :=
+  let wr : WriteRequest := { addr := addr, val := val}
   BasicRequest.write wr
 
 def mkBarrier : BasicRequest := BasicRequest.barrier
 
 def BasicRequest.toString
-  | BasicRequest.read  rr => s!"read (Addr{rr.addr})"
-  | BasicRequest.write  wr => s!"write (Addr{wr.addr})"
+  | BasicRequest.read  rr => s!"read (Addr{rr.addr}) : {rr.val}"
+  | BasicRequest.write  wr => s!"write (Addr{wr.addr}) : {wr.val}"
   | BasicRequest.barrier => "barrier"
 instance : ToString BasicRequest where toString := BasicRequest.toString
+
+def BasicRequest.setValue : BasicRequest → Value → BasicRequest
+  | BasicRequest.read rr, v => BasicRequest.read {rr with val := v}
+  | br@_ , _ => br
+
+def BasicRequest.value? : BasicRequest → Value
+  | BasicRequest.read rr => rr.val
+  | BasicRequest.write wr => wr.val
+  | _ => none
 
 structure Request where
   id : RequestId
@@ -73,6 +84,9 @@ def Request.isRead    (r : Request) : Bool := r.basic_type.isRead
 def Request.isWrite   (r : Request) : Bool := r.basic_type.isWrite
 def Request.isBarrier (r : Request) : Bool := r.basic_type.isBarrier
 def Request.isMem     (r : Request) : Bool := !r.basic_type.isBarrier
+
+def Request.value? (r : Request ) : Value := r.basic_type.value?
+def Request.setValue (r : Request ) (v : Value) : Request := { r with basic_type := r.basic_type.setValue v}
 
 def BasicRequest.address? (r : BasicRequest) : Option Address := match r with
   | read  req => some req.addr
@@ -228,12 +242,12 @@ def RequestArray.remove : RequestArray → RequestId → RequestArray
 structure SystemState where
   requests : RequestArray
   seen : List RequestId
-  removed : List RequestId
+  removed : List Request
   system : System
   satisfied : List SatisfiedRead
   orderConstraints : @OrderConstraints system.scopes
   seenCoherent : ∀ id : RequestId, id ∈ seen → id ∈ reqIds requests
-  removedCoherent : ∀ id : RequestId, id ∈ removed → id ∈ reqIds requests
+  removedCoherent : ∀ id : RequestId, id ∈ (removed.map Request.id) → id ∈ reqIds requests
   satisfiedCoherent : ∀ id₁ id₂ : RequestId, (id₁,id₂) ∈ satisfied → id₁ ∈ seen ∧ id₂ ∈ seen
 
 def SystemState.toString : SystemState → String

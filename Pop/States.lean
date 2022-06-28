@@ -22,15 +22,18 @@ structure ReadRequest where
  addr : Address
  reads_from : Option RequestId
  val : Value
+ deriving BEq
 
 structure WriteRequest where
  addr : Address
  val : Value
+ deriving BEq
 
 inductive BasicRequest
  | read : ReadRequest → BasicRequest
  | write : WriteRequest → BasicRequest
  | barrier : BasicRequest
+ deriving BEq
 
 def mkRead (addr : Address) : BasicRequest :=
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
@@ -43,8 +46,8 @@ def mkWrite (addr : Address) : BasicRequest :=
 def mkBarrier : BasicRequest := BasicRequest.barrier
 
 def BasicRequest.toString
-  | BasicRequest.read  rr => s!"read ({rr.addr})"
-  | BasicRequest.write  wr => s!"write ({wr.addr})"
+  | BasicRequest.read  rr => s!"read (Addr{rr.addr})"
+  | BasicRequest.write  wr => s!"write (Addr{wr.addr})"
   | BasicRequest.barrier => "barrier"
 instance : ToString BasicRequest where toString := BasicRequest.toString
 
@@ -54,6 +57,10 @@ structure Request where
   thread : ThreadId
   basic_type : BasicRequest
   -- type : α
+  deriving BEq
+
+def Request.default : Request := {id := 0, propagated_to := [], thread := 0, basic_type := BasicRequest.barrier}
+instance : Inhabited Request where default := Request.default
 
 def Request.toString : Request → String
   | req => s!" Request {req.id} {req.basic_type} : [propagated to {req.propagated_to}, origin thread : {req.thread}]"
@@ -80,6 +87,12 @@ structure ValidScopes where
   system_scope : List ThreadId
   scopes : ListTree ThreadId system_scope
   threads_in : ∀ n : ThreadId, n ∈ system_scope → [n] ∈ scopes
+
+theorem empty_threads_in : ∀ n : ThreadId, n ∈ [] → [n] ∈ ListTree.leaf [] := by
+  intros
+  contradiction
+def ValidScopes.default : ValidScopes := { system_scope := [], scopes := ListTree.leaf [], threads_in := empty_threads_in}
+instance : Inhabited ValidScopes where default := ValidScopes.default
 
 structure Scope {V : ValidScopes} where
   threads : List ThreadId
@@ -109,12 +122,15 @@ structure System where
   scopes : ValidScopes
   reorder_condition : Request → Request → Bool
 
+def System.default : System := { scopes := ValidScopes.default, reorder_condition :=  (λ _ _ => false)}
+instance : Inhabited System where default := System.default
+
 def System.threads : System → List ThreadId
  | s => s.scopes.system_scope
 
 def OrderConstraints {V : ValidScopes} :=  (@Scope V) → RequestId → RequestId → Bool
 
-def OrderConstraints.empty {V : ValidScopes}  : @OrderConstraints V := λ _ _ _ => true
+def OrderConstraints.empty {V : ValidScopes}  : @OrderConstraints V := λ _ _ _ => false
 
 def OrderConstraints.predecessors {V : ValidScopes} (S : @Scope V) (req : RequestId)
     (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
@@ -157,7 +173,7 @@ def RequestArray.empty : RequestArray :=
   { val := Array.mk [], coherent := emptyArrayCoherent }
 
 def RequestArray.toString : RequestArray → String
-  | arr => String.intercalate "\n" $ List.map Request.toString $ filterNones arr.val.toList
+  | arr => String.intercalate ",\n" $ List.map Request.toString $ filterNones arr.val.toList
 instance : ToString RequestArray where toString := RequestArray.toString
 
 def reqIds : RequestArray → List RequestId
@@ -170,8 +186,13 @@ def growArray {α : Type} (a : Array (Option α)) (n : Nat) : Array (Option α) 
 
 private def RequestArray._insert : RequestArray → Request → Array (Option Request)
   | arr, req =>
-    let vals' := growArray arr.val (arr.val.size - req.id.toNat)
-    vals'.insertAt req.id (some req)
+    let vals' := growArray arr.val req.id.toNat
+    let i := req.id.toNat.toUSize
+    if h : i.toNat < vals'.size
+    then vals'.uset i (some req) h
+    else if i.toNat == vals'.size
+    then vals'.insertAt req.id (some req)
+    else unreachable! -- because of growArray before
 
 -- can't be proving these things right now
 theorem RequestArrayInsertConsistent (arr : RequestArray) (req : Request) :
@@ -211,6 +232,8 @@ def SystemState.toString : SystemState → String
   s!"removed: {state.removed.toString}\n" ++
   s!"satisfied: {state.satisfied.toString}\n"
 
+instance : ToString SystemState where toString := SystemState.toString
+
 theorem emptyCoherent (requests : RequestArray) :
   ∀ id : RequestId, id ∈ [] → id ∈ reqIds requests := by
   intros id h
@@ -229,8 +252,14 @@ def SystemState.init (S : System) : SystemState :=
     satisfiedCoherent := empty2Coherent []
   }
 
+def SystemState.default := SystemState.init System.default
+instance : Inhabited SystemState where default := SystemState.default
+
 def SystemState.idsToReqs : SystemState → List RequestId → List Request
   | state, ids => filterNones $ ids.map (λ id => state.requests.val[id])
+
+def SystemState.isSatisfied : SystemState → RequestId → Bool
+  | state, rid => !(state.satisfied.filter λ (srd,_) => srd == rid).isEmpty
 
 -- private def maxThread : ThreadId → List ThreadId → ThreadId
 --   | curmax, n::rest => if curmax < n then maxThread n rest else maxThread curmax rest

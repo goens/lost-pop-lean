@@ -9,12 +9,25 @@ inductive Transition
 | acceptRequest : BasicRequest → ThreadId → Transition
 | propagateToThread : RequestId → ThreadId → Transition
 | satisfyRead : RequestId → RequestId → Transition
+ deriving BEq
 
 def Transition.toString : Transition → String
- | acceptRequest req tid => s!"Accept ({tid}): {req}"
+ | acceptRequest req tid => s!"Accept (T{tid}): {req}"
  | propagateToThread reqid tid => s!"Propagate Request {reqid} to Thread {tid}"
  | satisfyRead readid writeid => s!"Satisify Read Request {readid}) with Write Request {writeid}"
 instance : ToString Transition where toString := Transition.toString
+
+def Transition.isAccept : Transition → Bool
+ | acceptRequest _ _ => true
+ | _ => false
+
+def Transition.isPropagate : Transition → Bool
+  | propagateToThread _ _ => true
+  | _ => false
+
+def Transition.isSatisfy : Transition → Bool
+  | satisfyRead _ _ => true
+  | _ => false
 
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool
  | _, _, _ => true
@@ -22,13 +35,15 @@ def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId →
 def SystemState.acceptRequest : SystemState → BasicRequest → ThreadId → SystemState
   | state, reqType, tId =>
   let req : Request := { propagated_to := [tId], thread := tId, basic_type := reqType, id := state.requests.val.size}
+  --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
   let requests' := state.requests.insert req
-  { requests := requests', system := state.system, seen := state.seen,
+  let seen' := req.id :: state.seen
+  { requests := requests', system := state.system, seen := seen',
     orderConstraints := state.orderConstraints,
     removed := state.removed, satisfied := state.satisfied,
     seenCoherent := sorry
     removedCoherent := sorry
-    satisfiedCoherent := state.satisfiedCoherent
+    satisfiedCoherent := sorry
   }
 
 def SystemState.updateOrderConstraints (state : SystemState) : @Scope state.system.scopes → RequestId → ThreadId → @OrderConstraints state.system.scopes
@@ -40,9 +55,10 @@ def SystemState.updateOrderConstraints (state : SystemState) : @Scope state.syst
       let predReorder := pred.filter λ r => state.system.reorder_condition r req
       let predThread := predReorder.filter λ r => r.propagatedTo thId
       let newConstraints := [reqId].zip $ predThread.map Request.id
+      --dbg_trace s!"new constraints: {newConstraints}"
       state.orderConstraints.append scope newConstraints
 
-def Request.isPropagated? : Request → ThreadId → Bool
+def Request.isPropagated : Request → ThreadId → Bool
   | req, thId => req.propagated_to.elem thId
 
 def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
@@ -50,13 +66,16 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   match state.requests.val[reqId] with
   | none => false
   | some req =>
-    let unpropagated := req.isPropagated? thId
+    let unpropagated := !req.isPropagated thId
     let scope := state.system.scopes.jointScope thId req.thread
     let pred := state.orderConstraints.predecessors scope reqId (reqIds state.requests)
-    let reqOps := state.requests.val.filter (λ req => match req with | none => false | some r => pred.elem r.id)
+    let properPred := pred.removeAll [req.id]
+    --dbg_trace s!"R{req.id}.pred = {properPred}"
+    let reqOps := state.requests.val.filter (λ req => match req with | none => false | some r => properPred.elem r.id)
     let reqs := filterNones reqOps.toList
-    let predPropagated := reqs.map (λ r => r.fullyPropagated state.system.scopes.systemScope)
-    unpropagated || predPropagated.foldl (. && .) true
+    let predPropagated := reqs.map (λ r => r.fullyPropagated scope)
+    --dbg_trace s!"R{req.id} unpropagated (T{thId}): {unpropagated}, predPropagated: {predPropagated}"
+    unpropagated && predPropagated.foldl (. && .) true
 
 def Request.propagate : Request → ThreadId → Request
   | req, thId => { req with propagated_to := thId :: req.propagated_to}
@@ -104,6 +123,7 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
 open Transition in
 def SystemState.applyTransition : SystemState → Transition → Except String SystemState
   | state, (.acceptRequest req tId) =>
+    --dbg_trace "applying acceptRequest {req} T{tId} "
     if (state.canAcceptRequest req tId)
     then Except.ok $ state.acceptRequest req tId
     else throw s!"Invalid transition. Can't accept request {req} to Thread {tId}"

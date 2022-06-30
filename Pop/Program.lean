@@ -139,14 +139,18 @@ private def appendTransitionStateAux : List (List Transition × SystemState) →
 partial def SystemState.runDFSAux : SystemState  → List Transition → (SystemState → Bool) →
   List (List Transition × SystemState) → Transition → List (List Transition × SystemState)
   | state, accepts, condition, partialTrace, transition =>
+  dbg_trace s!"partialTrace {partialTrace.map fun (t,_) => t}"
+  dbg_trace s!"executing {transition}"
   let accepts' := accepts.removeAll [transition]
   let stepExcept := state.applyTransition transition
   match stepExcept with
     | Except.error _ => []
     | Except.ok state' =>
       let partialTrace' := appendTransitionStateAux partialTrace (transition,state')
-      if condition state' || state'.isDeadlocked accepts'
+      if condition state'
       then partialTrace'
+      else if state'.isDeadlocked accepts'
+      then []
       else
         let transitions' := state'.possibleTransitions accepts'
         List.join $ transitions'.map (state'.runDFSAux accepts' condition partialTrace')

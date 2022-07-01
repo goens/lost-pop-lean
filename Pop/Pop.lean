@@ -130,23 +130,29 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
    | _, _ => unreachable!
 
 open Transition in
+def SystemState.applyTransition! : SystemState → Transition → SystemState
+   | state, (.acceptRequest req tId) => state.applyAcceptRequest req tId
+   | state, .propagateToThread reqId tId => state.propagate reqId tId
+   | state, satisfyRead readId writeId => state.satisfy readId writeId
+
+open Transition in
+def SystemState.canApplyTransition : SystemState → Transition → Bool
+  | state, .acceptRequest req tId => state.canAcceptRequest req tId
+  | state, .propagateToThread reqId tId => state.canPropagate reqId tId
+  | state, satisfyRead readId writeId => state.canSatisfyRead readId writeId
+
+open Transition in
 def SystemState.applyTransition : SystemState → Transition → Except String SystemState
-  | state, (.acceptRequest req tId) =>
-    --dbg_trace "applying acceptRequest {req} T{tId} "
-    if (state.canAcceptRequest req tId)
-    then Except.ok $ state.applyAcceptRequest req tId
-    else throw s!"Invalid transition. Can't accept request {req} to Thread {tId}"
-  | state, .propagateToThread reqId tId =>
-    if (state.canPropagate reqId tId)
-    then Except.ok $ state.propagate reqId tId
-    else throw s!"Invalid transition. Can't propagate Request {reqId} to Thread {tId}"
-  | state, satisfyRead readId writeId =>
-    if (state.canSatisfyRead readId writeId)
-    then Except.ok $ state.satisfy readId writeId
-    else throw s!"Invalid transition. Can't satisfy Request {readId} with {writeId}"
+  | state, t =>
+    if state.canApplyTransition t
+    then Except.ok $ state.applyTransition! t
+    else throw s!"Invalid transition {t}."
 
 def SystemState.applyTrace : SystemState → List Transition → Except String SystemState
   | state, transitions => transitions.foldlM SystemState.applyTransition state
+
+def SystemState.applyTrace! : SystemState → List Transition → SystemState
+  | state, transitions => transitions.foldl SystemState.applyTransition! state
 
 def printResult : Except String SystemState → String
  | Except.ok state => state.toString

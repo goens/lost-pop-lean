@@ -184,3 +184,42 @@ def SystemState.outcome : SystemState → List (ThreadId × Address × Value)
     -- let runStep := λ (acceptsRemaining, state) n => state.takeNthStep acceptsRemaining n
     -- ns.foldlM (init := (accepts, state)) runStep
     -- ns.foldlM  (init := state) λ state.takeNthStep accepts.zip ns 
+
+def SystemState.initZeroesUnpropagatedTransitions : SystemState → List Address → List Transition
+  | state, addresses =>
+  -- Does the threadId matter? For now, using 0
+  addresses.map λ addr => Pop.Transition.acceptRequest (Pop.mkWrite addr 0) 0
+
+def SystemState.initZeroesUnpropagated! : SystemState → List Address → SystemState
+  | state, addresses =>
+    let writeReqs := state.initZeroesUnpropagatedTransitions addresses
+    state.applyTrace! writeReqs
+
+def SystemState.initZeroesUnpropagated : SystemState → List Address → Except String SystemState
+  | state, addresses =>
+  let writeReqs := state.initZeroesUnpropagatedTransitions addresses
+  state.applyTrace writeReqs
+
+def SystemState.initZeroesPropagateTransitions : SystemState → List Address → List Transition
+  | state, addresses =>
+  let reqs := filterNones $ state.requests.val.toList
+  -- this filter should be uneccessary if SystemState is empty
+  let writeReqs := reqs.filter (λ req => req.isWrite && addresses.elem req.address?.get! && req.value? == some 0)
+  let writeReqIds := writeReqs.map Request.id
+  let threads := state.system.threads.removeAll [0]
+  List.join $ writeReqIds.map λ wr => threads.foldl (λ reqs thId => (Pop.Transition.propagateToThread wr thId) :: reqs) []
+
+def SystemState.initZeroesPropagate! : SystemState → List Address → SystemState
+  | state, addresses => state.applyTrace! $ state.initZeroesPropagateTransitions addresses
+def SystemState.initZeroesPropagate : SystemState → List Address → Except String SystemState
+  | state, addresses => state.applyTrace $ state.initZeroesPropagateTransitions addresses
+
+def SystemState.initZeroes! : SystemState → List Address → SystemState
+  | state, addresses =>
+    let unpropagated := state.initZeroesUnpropagated! addresses
+    unpropagated.initZeroesPropagate! addresses
+
+def SystemState.initZeroes : SystemState → List Address → Except String SystemState
+  | state, addresses =>
+    let unpropagated := state.initZeroesUnpropagated addresses
+    Except.bind  unpropagated (λ st => st.initZeroesPropagate addresses)

@@ -46,8 +46,18 @@ def ListTree.meet [BEq α] {l : List α} : ListTree α l → α → α → Optio
       | res@(some _) => res
       | none => meet sibling a b
 
-def ListTree.joinSub [BEq α] {l₁ l₂: List α} (h : List.sublist l₁ l₂) : ListTree α l₁ → ListTree α l₂ → ListTree α l₂
-  | t1@(leaf l₁), t₂@(parentNil l₂) => parentCons (leaf l₁) ()
+theorem List.sublist_trans [BEq α] (a b c : List α) : sublist a b → sublist b c → sublist a c := by
+  intros hab hbc
+  induction a <;> induction b <;> induction c <;> simp [List.sublist, List.all, List.foldr, List.elem] <;> try contradiction
+  sorry  -- TODO
+
+-- def ListTree.joinSub [BEq α] {l₁ l₂: List α} (h : List.sublist l₁ l₂) : ListTree α l₁ → ListTree α l₂ → ListTree α l₂
+--   | (leaf l₁), (parentNil l₂) => parentCons (leaf l₁) (parentNil l₂) h
+--   | (leaf l₁), (leaf l₂) => parentCons (leaf l₁) (parentNil l₂) h
+--   | (leaf l₁), parentCons (children : ListTree α child) (siblings : ListTree α l₂) sub =>
+--     let hchild := List.sublist_trans sub 
+-- 
+--   parentCons (joinSub sub (leaf l₁) children) siblings sub
   
 
 -- def ListTree.mkAux [BEq α] {l₁ l₂ : List α} : List (List α) → ListTree α l₁ → ListTree α l₂

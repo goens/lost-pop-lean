@@ -170,6 +170,11 @@ def OrderConstraints.append {V : ValidScopes} (constraints : @OrderConstraints V
   then true
   else constraints s r₁ r₂
 
+def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints V) (scope : @Scope V) (reqs : List RequestId) : String :=
+   let reqPairs := List.join $ reqs.map (λ r => reqs.foldl (λ rs' r' => (r,r')::rs') [])
+   let reqTrue := reqPairs.filter $ λ (r₁,r₂) => constraints scope r₁ r₂
+   reqTrue.toString
+
 private def opReqId? : Option Request → Option RequestId := Option.map λ r => r.id
 
 private def valConsistent (vals :  Array (Option Request)) : Bool :=
@@ -250,11 +255,15 @@ structure SystemState where
   removedCoherent : ∀ id : RequestId, id ∈ (removed.map Request.id) → id ∈ reqIds requests
   satisfiedCoherent : ∀ id₁ id₂ : RequestId, (id₁,id₂) ∈ satisfied → id₁ ∈ seen ∧ id₂ ∈ seen
 
+def SystemState.oderConstraintsString (state : SystemState) (scope : optParam (@Scope state.system.scopes) state.system.scopes.systemScope) : String :=
+  state.orderConstraints.toString scope $ filterNones $ state.requests.val.toList.map $ Option.map Request.id
+
 def SystemState.toString : SystemState → String
   | state => s!"requests:\n{state.requests.toString}\n"  ++
   s!"seen: {state.seen.toString}\n" ++
   s!"removed: {state.removed.toString}\n" ++
-  s!"satisfied: {state.satisfied.toString}\n"
+  s!"satisfied: {state.satisfied.toString}\n" ++
+  s!"constraints: {state.oderConstraintsString}\n"
 
 instance : ToString SystemState where toString := SystemState.toString
 

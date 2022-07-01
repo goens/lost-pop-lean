@@ -15,10 +15,10 @@ def trace2 := [acceptRequest (mkRead 0) 0, acceptRequest (mkWrite 0 0) 1, propag
 
 
 def testprogram := <| R x || W y=1; W x=2 |>
-#eval testprogram.toString
+#eval testprogram.2.toString
 
 
-def testaccept := inittso12.applyAcceptRequest (mkRead 0) 0
+def testaccept := inittso_2.applyAcceptRequest (mkRead 0) 0
 #eval testaccept.canPropagate 0 1
 #eval testaccept.requests.val[0].get!.isPropagated 1
 #eval testaccept.requests.val[0]
@@ -30,5 +30,13 @@ def testaccept := inittso12.applyAcceptRequest (mkRead 0) 0
     -- unpropagated || predPropagated.foldl (. && .) true
 -- #eval inittso12.system.threads
 --#eval testaccept.toOption.get!.canPropagate 0 1
+
+def test_iriw := (inittso_4.applyTrace! Litmus.IRIW.1).applyTrace! Litmus.IRIW.2
+def test_iriw_prop_wr  := test_iriw.applyTrace! $ mkPropagateTransitions [7] [0,1,2]
+
+-- #eval test_iriw_prop_wr
+-- #eval test_iriw_prop_wr.orderConnstraints state.system.scopes.system_scope 1 7
+-- #eval test_iriw_prop_wr.orderConnstraints state.system.scopes.system_scope 0 7
+
 
 end Test

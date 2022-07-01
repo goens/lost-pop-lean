@@ -8,6 +8,9 @@ def filterNones {α : Type} : List (Option α) → List α
   | (some val):: rest => val::(filterNones rest)
   | [] => []
 
+def blesort : List Nat → List Nat
+  | as => Array.toList $ Array.qsort as.toArray (λ x y => Nat.ble x y)
+
 partial def removeDuplicates [BEq α] : List α → List α
   | [] => []
   | (x :: xs) => x :: removeDuplicates (xs.filter (λ y => y != x))

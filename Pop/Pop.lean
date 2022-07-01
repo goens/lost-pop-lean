@@ -37,7 +37,7 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
   let req : Request := { propagated_to := [tId], thread := tId, basic_type := reqType, id := state.requests.val.size}
   --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
   let requests' := state.requests.insert req
-  let seen' := req.id :: state.seen
+   let seen' := blesort $ state.seen ++ [req.id]
   { requests := requests', system := state.system, seen := seen',
     orderConstraints := state.orderConstraints,
     removed := state.removed, satisfied := state.satisfied,

@@ -1,12 +1,13 @@
 import Pop.Util
-open Util
+import Std
+open Util Std.HashMap
 
 namespace Pop
 
-def RequestId := Nat deriving ToString, BEq, Inhabited
+def RequestId := Nat deriving ToString, BEq, Inhabited, Hashable
 def Value := Option Nat deriving ToString, BEq, Inhabited
 def Address := Nat deriving ToString, BEq, Inhabited
-def ThreadId := Nat deriving BEq, Ord, LT, LE, ToString, Inhabited
+def ThreadId := Nat deriving BEq, Ord, LT, LE, ToString, Inhabited, Hashable
 
 def RequestId.toNat : RequestId → Nat := λ x => x
 def ThreadId.toNat : RequestId → Nat := λ x => x
@@ -112,6 +113,13 @@ structure Scope {V : ValidScopes} where
   threads : List ThreadId
   valid : threads ∈ V.scopes
 
+def ValidScopes.validate (V : ValidScopes) (threads : List ThreadId) : (@Scope V) :=
+ { threads := threads, valid := sorry }
+
+def ValidScopes.subscopes (V : ValidScopes) (S : @Scope V) : List (@Scope V) :=
+  let children := V.scopes.children S.threads
+  children.map V.validate
+
 instance {V : ValidScopes} : Inhabited (@Scope V) where
  default := {threads := [], valid := sorry}
 
@@ -142,13 +150,30 @@ instance : Inhabited System where default := System.default
 def System.threads : System → List ThreadId
  | s => s.scopes.system_scope
 
-def OrderConstraints {V : ValidScopes} :=  (@Scope V) → RequestId → RequestId → Bool
+-- this seems to be the worst performing part by far!
+structure OrderConstraints {V : ValidScopes} where
+  val : Std.HashMap (List ThreadId) (Std.HashMap (RequestId × RequestId) Bool)
+  default : Bool
 
-def OrderConstraints.empty {V : ValidScopes}  : @OrderConstraints V := λ _ _ _ => false
+def OrderConstraints.empty {V : ValidScopes} (numReqs : optParam Nat 10) : @OrderConstraints V :=
+ let scopes := V.scopes.toList
+ { default := false, val :=
+ Std.mkHashMap (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.mkHashMap (capacity := numReqs))
+ }
+
+
+def OrderConstraints.lookup {V : ValidScopes} (ordc : @OrderConstraints V)
+  (S : @Scope V) (req₁ req₂ : RequestId) : Bool :=
+  let sc_ordc := ordc.val.find? S.threads
+  match sc_ordc with
+    | none => ordc.default
+    | some hashmap =>
+      hashmap.findD (req₁, req₂) ordc.default
 
 def OrderConstraints.predecessors {V : ValidScopes} (S : @Scope V) (req : RequestId)
     (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
-    reqs.filter (λ x => constraints S x req)
+    let sc_oc := constraints.lookup S -- hope this gets optimized accordingly...
+    reqs.filter (λ x => sc_oc x req)
 
 def OrderConstraints.between {V : ValidScopes} (S : @Scope V) (req₁ req₂ : RequestId)
   (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
@@ -156,23 +181,50 @@ def OrderConstraints.between {V : ValidScopes} (S : @Scope V) (req₁ req₂ : R
   let preds₂ := constraints.predecessors S req₂ reqs
   preds₂.removeAll preds₁
 
+-- Maybe I don't need this (at least for now)
+/-
+def OrderConstraints.purgeScope {V : ValidScopes} (constraints : @OrderConstraints V)
+  (scope : @Scope V) (req : RequestId) : @OrderConstraints V :=
+match constraints.val.find? V.system_scope with
+| none => constraints
+| some ss_oc =>
+let allReqPairs := ss_oc.toArray.map λ (pair,_) => pair
+let reqPairs := allReqPairs.filter λ (r₁, r₂) => r₁ == req || r₂ == req
+let val' := constraints.val.toArray.foldl λ scope sc_oc => Id.run do
+let sc_oc' := reqPairs.foldl (init := sc_oc) λ oc reqs => oc.insert reqs false
+return sc_oc'
+{ constraints with val := val'}
+
 def OrderConstraints.purge {V : ValidScopes} (constraints : @OrderConstraints V)
   (req : RequestId) : @OrderConstraints V :=
-  λ scope r₁ r₂ =>
-    if r₁ == req || r₂ == req
-    then false
-    else constraints scope r₁ r₂
+  match constraints.val.find? V.system_scope with
+    | none => constraints
+    | some ss_oc =>
+      let allReqPairs := ss_oc.toArray.map λ (pair,_) => pair
+      let reqPairs := allReqPairs.filter λ (r₁, r₂) => r₁ == req || r₂ == req
+      let val' := constraints.val.toArray.foldl λ scope sc_oc => Id.run do
+        let sc_oc' := reqPairs.foldl (init := sc_oc) λ oc reqs => oc.insert reqs false
+        return sc_oc'
+      { constraints with val := val'}
+-/
 
+def OrderConstraints.add_single_scope {V : ValidScopes} (constraints : @OrderConstraints V)
+  (scope : @Scope V) (reqs : List (RequestId × RequestId)) : @OrderConstraints V :=
+  match constraints.val.find? scope.threads with
+   | none => constraints
+   | some sc_oc =>
+       let sc_oc' := reqs.foldl (init := sc_oc) λ oc req => oc.insert req true
+       let val' := constraints.val.insert scope.threads sc_oc'
+       { constraints with val := val' }
 
-def OrderConstraints.append {V : ValidScopes} (constraints : @OrderConstraints V)
-  (scope : @Scope V) (reqs : List (RequestId × RequestId)) : @OrderConstraints V
-  | s, r₁, r₂ => if List.sublist s.threads scope.threads && reqs.elem (r₁, r₂)
-  then true
-  else constraints s r₁ r₂
+def OrderConstraints.add_subscopes {V : ValidScopes} (constraints : @OrderConstraints V)
+(scope : @Scope V) (reqs : List (RequestId × RequestId)) : @OrderConstraints V :=
+  let subscopes := V.subscopes scope
+  subscopes.foldl (init := constraints) λ oc sc => oc.add_single_scope sc reqs
 
 def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints V) (scope : @Scope V) (reqs : List RequestId) : String :=
    let reqPairs := List.join $ reqs.map (λ r => reqs.foldl (λ rs' r' => (r,r')::rs') [])
-   let reqTrue := reqPairs.filter $ λ (r₁,r₂) => constraints scope r₁ r₂
+   let reqTrue := reqPairs.filter $ λ (r₁,r₂) => constraints.lookup scope r₁ r₂
    reqTrue.toString
 
 private def opReqId? : Option Request → Option RequestId := Option.map λ r => r.id

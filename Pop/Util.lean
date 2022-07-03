@@ -39,6 +39,17 @@ def ListTree.leaves [BEq α] {l : List α} :  ListTree α l → List (List α)
 | parentNil _ => []
 | parentCons child sibling _ => leaves child ++ leaves sibling
 
+def ListTree.toList [BEq α] {l : List α} :  ListTree α l → List (List α)
+ | leaf val => [val]
+ | parentNil val => [val]
+ | parentCons child sibling _ => toList child ++ toList sibling
+
+-- TODO: Is this the proper name?
+def ListTree.children [BEq α] {l : List α} (lt :  ListTree α l) (lst : List α) : List (List α) :=
+  match lt with
+  | leaf val => if List.sublist val lst then [val] else []
+  | parentNil val => if List.sublist val lst then [val] else []
+  | parentCons child _ _ => children child lst
 
 def ListTree.meet [BEq α] {l : List α} : ListTree α l → α → α → Option (List α)
   | leaf val, a, b => if (val.elem a && val.elem b) then (some val) else none

@@ -16,5 +16,5 @@ def main : IO Unit := do
   --    println! reslitmus
   --    println! "------"
   println! s!"{Test.test_iriw_prop_wr}"
-  println! s!"{Test.test_iriw_prop_wr.orderConstraints Test.test_iriw_prop_wr.system.scopes.systemScope 1 7}"
-  println! s!"{Test.test_iriw_prop_wr.orderConstraints Test.test_iriw_prop_wr.system.scopes.systemScope 0 7}"
+  println! s!"{Test.test_iriw_prop_wr.orderConstraints.lookup Test.test_iriw_prop_wr.system.scopes.systemScope 1 7}"
+  println! s!"{Test.test_iriw_prop_wr.orderConstraints.lookup Test.test_iriw_prop_wr.system.scopes.systemScope 0 7}"

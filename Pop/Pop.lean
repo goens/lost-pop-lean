@@ -56,7 +56,7 @@ def SystemState.updateOrderConstraints (state : SystemState) : @Scope state.syst
       let predThread := predReorder.filter λ r => r.propagatedTo thId
       let newConstraints := [reqId].zip $ predThread.map Request.id
       --dbg_trace s!"new constraints: {newConstraints}"
-      state.orderConstraints.append scope newConstraints
+      state.orderConstraints.add_subscopes scope newConstraints
 
 def Request.isPropagated : Request → ThreadId → Bool
   | req, thId => req.propagated_to.elem thId
@@ -121,7 +121,7 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
       let read' := read.setValue write.value?
       let removed' :=  read'::state.removed
       let requests' := state.requests.remove readId
-      let orderConstraints' := state.orderConstraints.purge readId
+      let orderConstraints' := state.orderConstraints --.purge readId
       { requests := requests', orderConstraints := orderConstraints',
         removed := removed', satisfied := satisfied',
         seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,

@@ -44,12 +44,15 @@ def valid_scopes_4 : ValidScopes := { system_scope := List.range 4, scopes := sc
 
 def tso_reorder : Request → Request → Bool
 | r₁, r₂ => if r₁.isBarrier || r₂.isBarrier
-then false
-else
-let sc_per_loc := r₁.address? == r₂.address? && r₁.address? != none
-let ppo := (r₁.thread != r₂.thread) || (r₂.isWrite && r₁.isRead)
-sc_per_loc || ppo
--- TODO: satisfied but not deleted?
+  then false
+  else
+  let sc_per_loc := r₁.address? != r₂.address?
+  --dbg_trace s!"sc_per_loc: {sc_per_loc}"
+  let ppo := (r₁.thread != r₂.thread) || !(r₂.isWrite && r₁.isRead)
+  --dbg_trace s!"ppo: {sc_per_loc}"
+  if sc_per_loc then ppo else false
+  -- TODO: satisfied but not deleted?
+
 def tso_2_sys : System := { scopes := valid_scopes_2, reorder_condition := tso_reorder}
 def tso_4_sys : System := { scopes := valid_scopes_4, reorder_condition := tso_reorder}
 

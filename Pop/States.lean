@@ -63,11 +63,28 @@ def BasicRequest.value? : BasicRequest → Value
   | BasicRequest.write wr => wr.val
   | _ => none
 
+structure ValidScopes where
+  system_scope : List ThreadId
+  scopes : ListTree ThreadId system_scope
+  threads_in : ∀ n : ThreadId, n ∈ system_scope → [n] ∈ scopes
+
+theorem empty_threads_in : ∀ n : ThreadId, n ∈ [] → [n] ∈ ListTree.leaf [] := by
+  intros
+  contradiction
+def ValidScopes.default : ValidScopes := { system_scope := [], scopes := ListTree.leaf [], threads_in := empty_threads_in}
+instance : Inhabited ValidScopes where default := ValidScopes.default
+
+structure Scope {V : ValidScopes} where
+  threads : List ThreadId
+  valid : threads ∈ V.scopes
+
+
 structure Request where
   id : RequestId
   propagated_to : List ThreadId
   thread : ThreadId
   basic_type : BasicRequest
+  -- scope : Scope
   -- type : α
   deriving BEq
 
@@ -97,21 +114,6 @@ def BasicRequest.address? (r : BasicRequest) : Option Address := match r with
 def Request.address? (r : Request) : Option Address := r.basic_type.address?
 
 def SatisfiedRead := RequestId × RequestId deriving ToString, BEq
-
-structure ValidScopes where
-  system_scope : List ThreadId
-  scopes : ListTree ThreadId system_scope
-  threads_in : ∀ n : ThreadId, n ∈ system_scope → [n] ∈ scopes
-
-theorem empty_threads_in : ∀ n : ThreadId, n ∈ [] → [n] ∈ ListTree.leaf [] := by
-  intros
-  contradiction
-def ValidScopes.default : ValidScopes := { system_scope := [], scopes := ListTree.leaf [], threads_in := empty_threads_in}
-instance : Inhabited ValidScopes where default := ValidScopes.default
-
-structure Scope {V : ValidScopes} where
-  threads : List ThreadId
-  valid : threads ∈ V.scopes
 
 def ValidScopes.validate (V : ValidScopes) (threads : List ThreadId) : (@Scope V) :=
  { threads := threads, valid := sorry }
@@ -149,6 +151,9 @@ instance : Inhabited System where default := System.default
 
 def System.threads : System → List ThreadId
  | s => s.scopes.system_scope
+
+def System.requestScope (sys : System) (req : Request) : @Scope sys.scopes :=
+  sys.scopes.systemScope -- TODO: change here for scoped version
 
 -- this seems to be the worst performing part by far!
 structure OrderConstraints {V : ValidScopes} where
@@ -220,6 +225,7 @@ def OrderConstraints.add_single_scope {V : ValidScopes} (constraints : @OrderCon
 def OrderConstraints.add_subscopes {V : ValidScopes} (constraints : @OrderConstraints V)
 (scope : @Scope V) (reqs : List (RequestId × RequestId)) : @OrderConstraints V :=
   let subscopes := V.subscopes scope
+  --dbg_trace s!"{scope.threads}.subscopes: {subscopes.map λ s => s.threads}"
   subscopes.foldl (init := constraints) λ oc sc => oc.add_single_scope sc reqs
 
 def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints V) (scope : @Scope V) (reqs : List RequestId) : String :=

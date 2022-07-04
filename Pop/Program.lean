@@ -71,7 +71,7 @@ def createAcceptList : List (List (String × String × Nat)) → List Transition
   let mkThread := λ (reqs, thId) => filterNones $ reqs.map (λ r => mkRequest r thId)
   let reqs := List.join $ fullThreads.map mkThread
   let initWrites := initZeroesUnpropagatedTransitions (List.range variables.length)
-  let initPropagates :=  mkPropagateTransitions (List.range reqs.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
+  let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
   (initWrites ++ initPropagates, reqs)
 
 declare_syntax_cat request
@@ -185,8 +185,8 @@ private def appendTransitionStateAux : List (List Transition × SystemState) →
 partial def SystemState.runDFSAux : SystemState  → List Transition → (SystemState → Bool) →
   List (List Transition × SystemState) → Transition → List (List Transition × SystemState)
   | state, accepts, condition, partialTrace, transition =>
-  dbg_trace s!"partialTrace {partialTrace.map fun (t,_) => t}"
-  dbg_trace s!"executing {transition}"
+  -- dbg_trace s!"partialTrace {partialTrace.map fun (t,_) => t}"
+  -- dbg_trace s!"executing {transition}"
   let accepts' := accepts.removeAll [transition]
   let stepExcept := state.applyTransition transition
   match stepExcept with
@@ -202,14 +202,20 @@ partial def SystemState.runDFSAux : SystemState  → List Transition → (System
         List.join $ transitions'.map (state'.runDFSAux accepts' condition partialTrace')
 
 
-def SystemState.runDFS : SystemState → List Transition → (SystemState → Bool) →
+def SystemState.runDFS : SystemState → List Transition × List Transition → (SystemState → Bool) →
   List (List Transition × SystemState)
-  | state, accepts, condition =>
-  let transitions := state.possibleTransitions accepts
-  List.join $ transitions.map (state.runDFSAux accepts condition [([],state)])
+  | state, (inittransitions, accepts), condition =>
+  let stateinit := state.applyTrace inittransitions
+  match stateinit with
+    | .ok st =>
+      let transitions := st.possibleTransitions accepts
+      List.join $ transitions.map (st.runDFSAux accepts condition [([],state)])
+    | .error _ =>
+      --dbg_trace s!"error: {e}"
+      [(inittransitions,state)]
 
-def SystemState.runDFSNoDeadlock : SystemState → List Transition → List (List Transition × SystemState)
-  | state, accepts => state.runDFS accepts λ _ => false
+def SystemState.runDFSNoDeadlock : SystemState → List Transition × List Transition → List (List Transition × SystemState)
+  | state, litmus => state.runDFS litmus λ _ => false
 
 -- Doesn't work. Need to combine removed with requests
 -- def SystemState.satisfiedRequestPairs : SystemState → List (Request × Request)

@@ -49,7 +49,7 @@ def ListTree.children [BEq α] {l : List α} (lt :  ListTree α l) (lst : List �
   match lt with
   | leaf val => if List.sublist val lst then [val] else []
   | parentNil val => if List.sublist val lst then [val] else []
-  | parentCons child _ _ => children child lst
+  | parentCons child rest _ => (children child lst) ++ (children rest lst)
 
 def ListTree.meet [BEq α] {l : List α} : ListTree α l → α → α → Option (List α)
   | leaf val, a, b => if (val.elem a && val.elem b) then (some val) else none

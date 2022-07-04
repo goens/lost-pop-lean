@@ -32,12 +32,46 @@ def Transition.isSatisfy : Transition → Bool
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool
  | _, _, _ => true
 
+def SystemState.updateOrderConstraints (state : SystemState) : @Scope state.system.scopes → RequestId → ThreadId → optParam Bool true → @OrderConstraints state.system.scopes
+  | scope, reqId, thId, before =>
+  /-
+    add a constraint req, req' iff:
+    * req' already propagated to thId
+    * req' not propagated to req'.thread
+    * req, req' not already ordered
+    * req, req' can't be reoredered
+    -/
+  match state.requests.val[reqId] with
+    | none => state.orderConstraints
+    | some req =>
+      let conditions := λ req' : Request =>
+        --dbg_trace s!"{req.id}, {req'.id} : "
+        --dbg_trace s!"{req'.propagatedTo thId}"
+        --dbg_trace s!"{!(req'.propagatedTo req.thread)}"
+        --dbg_trace s!"{!(state.orderConstraints.lookup scope req.id req'.id)}"
+        --dbg_trace s!"{!(state.orderConstraints.lookup scope req'.id req.id)}"
+        --dbg_trace s!"{!(state.system.reorder_condition req req')}"
+        req'.propagatedTo thId &&
+        !(req'.propagatedTo req.thread) &&
+        !(state.orderConstraints.lookup scope req.id req'.id) &&
+        !(state.orderConstraints.lookup scope req'.id req.id) &&
+        !(state.system.reorder_condition req req')
+      let seen := state.idsToReqs $ state.seen
+      --dbg_trace s!"seen: {seen}"
+      let newReqs := seen.filter conditions
+      let newConstraints := if before
+        then newReqs.map λ req' => (req.id, req'.id)
+        else newReqs.map λ req' => (req'.id, req.id)
+      --dbg_trace s!"new constraints: {newConstraints}"
+      state.orderConstraints.add_subscopes scope newConstraints
+
 def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState
   | state, reqType, tId =>
   let req : Request := { propagated_to := [tId], thread := tId, basic_type := reqType, id := state.requests.val.size}
   --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
   let requests' := state.requests.insert req
-   let seen' := blesort $ state.seen ++ [req.id]
+  let seen' := blesort $ state.seen ++ [req.id]
+  let orderConstraints' := state.updateOrderConstraints (state.system.requestScope req) req.id tId
   { requests := requests', system := state.system, seen := seen',
     orderConstraints := state.orderConstraints,
     removed := state.removed, satisfied := state.satisfied,
@@ -45,18 +79,6 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
     removedCoherent := sorry
     satisfiedCoherent := sorry
   }
-
-def SystemState.updateOrderConstraints (state : SystemState) : @Scope state.system.scopes → RequestId → ThreadId → @OrderConstraints state.system.scopes
-  | scope, reqId, thId =>
-  match state.requests.val[reqId] with
-    | none => state.orderConstraints
-    | some req =>
-      let pred := state.idsToReqs $ state.orderConstraints.predecessors scope reqId (reqIds state.requests)
-      let predReorder := pred.filter λ r => state.system.reorder_condition r req
-      let predThread := predReorder.filter λ r => r.propagatedTo thId
-      let newConstraints := [reqId].zip $ predThread.map Request.id
-      --dbg_trace s!"new constraints: {newConstraints}"
-      state.orderConstraints.add_subscopes scope newConstraints
 
 def Request.isPropagated : Request → ThreadId → Bool
   | req, thId => req.propagated_to.elem thId

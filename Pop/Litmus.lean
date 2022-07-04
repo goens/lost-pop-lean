@@ -8,7 +8,7 @@ namespace Litmus
 
 
 def IRIW := <| W x=1 ||  R x; R y || R y; R x || W y=1 |>
-def MP := <| W x=0; W y=0; W x=1; W y=1 ||  R y; R x |>
+def MP := <|  W x=1; W y=1 ||  R y; R x |>
 def MP_fence1 := <| W x=0; W y=0; W x=1; Fence; W y=1 ||  R y; R x |>
 def MP_fence2 := <| W x=0; W y=0; W x=1; W y=1 ||  R y; Fence; R x |>
 def MP_fence := <| W x=0; W y=0; W x=1; Fence; W y=1 ||  R y; Fence; R x |>
@@ -58,7 +58,6 @@ def tso_4_sys : System := { scopes := valid_scopes_4, reorder_condition := tso_r
 
 def inittso_2 : SystemState := SystemState.init tso_2_sys
 def inittso_4 : SystemState := SystemState.init tso_4_sys
-
 -- #eval inittso_2.initZeroes [0,1,2]
 
 end Litmus

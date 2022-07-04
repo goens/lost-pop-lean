@@ -32,8 +32,8 @@ def Transition.isSatisfy : Transition → Bool
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool
  | _, _, _ => true
 
-def SystemState.updateOrderConstraints (state : SystemState) : @Scope state.system.scopes → RequestId → ThreadId → optParam Bool true → @OrderConstraints state.system.scopes
-  | scope, reqId, thId, before =>
+def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope state.system.scopes → RequestId → ThreadId → @OrderConstraints state.system.scopes
+  | scope, reqId, thId =>
   /-
     add a constraint req, req' iff:
     * req' already propagated to thId
@@ -59,11 +59,18 @@ def SystemState.updateOrderConstraints (state : SystemState) : @Scope state.syst
       let seen := state.idsToReqs $ state.seen
       --dbg_trace s!"seen: {seen}"
       let newReqs := seen.filter conditions
-      let newConstraints := if before
-        then newReqs.map λ req' => (req.id, req'.id)
-        else newReqs.map λ req' => (req'.id, req.id)
+      let newConstraints := newReqs.map λ req' => (req.id, req'.id) -- incoming req. goes before others
       --dbg_trace s!"new constraints: {newConstraints}"
       state.orderConstraints.add_subscopes scope newConstraints
+
+def SystemState.updateOrderConstraintsAccept (state : SystemState) : Request → @OrderConstraints state.system.scopes
+  | req =>
+    let seen := state.idsToReqs $ state.seen
+    let scope := state.system.requestScope req
+    let newReqs := seen.filter λ req'  => !(state.system.reorder_condition req' req)
+    let newConstraints := newReqs.map λ req' => (req'.id, req.id)
+    --dbg_trace s!"seen: {seen}, new: {newReqs}"
+    state.orderConstraints.add_subscopes scope newConstraints
 
 def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState
   | state, reqType, tId =>
@@ -71,9 +78,9 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
   --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
   let requests' := state.requests.insert req
   let seen' := blesort $ state.seen ++ [req.id]
-  let orderConstraints' := state.updateOrderConstraints (state.system.requestScope req) req.id tId
+  let orderConstraints' := state.updateOrderConstraintsAccept req
   { requests := requests', system := state.system, seen := seen',
-    orderConstraints := state.orderConstraints,
+    orderConstraints := orderConstraints',
     removed := state.removed, satisfied := state.satisfied,
     seenCoherent := sorry
     removedCoherent := sorry
@@ -113,7 +120,7 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
   | some req =>
     let requests' := state.requests.insert (req.propagate thId)
     let scope := state.system.scopes.jointScope thId req.thread
-    let orderConstraints' := state.updateOrderConstraints scope reqId thId
+    let orderConstraints' := state.updateOrderConstraintsPropagate scope reqId thId
     { requests := requests', orderConstraints := orderConstraints',
       seen := state.seen, removed := state.removed, satisfied := state.satisfied,
       seenCoherent := sorry, removedCoherent := sorry,
@@ -125,12 +132,18 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
   if (state.satisfied.map λ x => x.1).elem readId then false else
   match state.requests.val[readId], state.requests.val[writeId] with
     | some read, some write =>
-      let scope := state.system.scopes.jointScope read.thread write.thread
-      --dbg_trace "can {writeId} satisfy {readId}?"
-      let betweenIds := state.orderConstraints.between scope read.id write.id (reqIds state.requests)
-      let between := state.idsToReqs betweenIds
-      let writesToAddrBetween := between.filter (λ r => r.isWrite && r.address? == write.address?)
-      writesToAddrBetween.length == 0
+      if !read.isRead || !write.isWrite then false
+      else if read.address? != write.address? then false
+      else if (blesort read.propagated_to) != (blesort write.propagated_to) then false
+      else
+        let scope := state.system.scopes.jointScope read.thread write.thread
+        --dbg_trace "can {writeId} satisfy {readId}?"
+        let oc := state.orderConstraints.lookup scope writeId readId
+        let betweenIds := state.orderConstraints.between scope write.id read.id (reqIds state.requests)
+        dbg_trace s!"between {readId} and {writeId}: {betweenIds}"
+        let between := state.idsToReqs betweenIds
+        let writesToAddrBetween := between.filter (λ r => r.isWrite && r.address? == write.address?)
+        oc && writesToAddrBetween.length == 0
     | _, _ => false
 
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState

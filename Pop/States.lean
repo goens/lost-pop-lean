@@ -184,7 +184,7 @@ def OrderConstraints.between {V : ValidScopes} (S : @Scope V) (req₁ req₂ : R
   (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
   let preds₁ := constraints.predecessors S req₁ reqs
   let preds₂ := constraints.predecessors S req₂ reqs
-  preds₂.removeAll preds₁
+  preds₂.removeAll (req₁::preds₁)
 
 -- Maybe I don't need this (at least for now)
 /-

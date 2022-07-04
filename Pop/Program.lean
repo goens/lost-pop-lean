@@ -185,8 +185,8 @@ private def appendTransitionStateAux : List (List Transition × SystemState) →
 partial def SystemState.runDFSAux : SystemState  → List Transition → (SystemState → Bool) →
   List (List Transition × SystemState) → Transition → List (List Transition × SystemState)
   | state, accepts, condition, partialTrace, transition =>
-  -- dbg_trace s!"partialTrace {partialTrace.map fun (t,_) => t}"
-  -- dbg_trace s!"executing {transition}"
+  --dbg_trace s!"partialTrace {partialTrace.map fun (t,_) => t}"
+  --dbg_trace s!"executing {transition}"
   let accepts' := accepts.removeAll [transition]
   let stepExcept := state.applyTransition transition
   match stepExcept with
@@ -235,5 +235,4 @@ def SystemState.outcome : SystemState → List (ThreadId × Address × Value)
 
     -- let runStep := λ (acceptsRemaining, state) n => state.takeNthStep acceptsRemaining n
     -- ns.foldlM (init := (accepts, state)) runStep
-    -- ns.foldlM  (init := state) λ state.takeNthStep accepts.zip ns 
-
+    -- ns.foldlM  (init := state) λ state.takeNthStep accepts.zip ns

@@ -32,11 +32,22 @@ def testaccept := inittso_2.applyAcceptRequest (mkRead 0) 0
 --#eval testaccept.toOption.get!.canPropagate 0 1
 
 def test_iriw := (inittso_4.applyTrace! Litmus.IRIW.1).applyTrace! Litmus.IRIW.2
+--#eval test_iriw
+--#eval test_iriw.applyTrace $ mkPropagateTransitions [7] [1]
 def test_iriw_prop_wr  := test_iriw.applyTrace! $ mkPropagateTransitions [7] [0,1,2]
 
--- #eval test_iriw_prop_wr
+#eval test_iriw_prop_wr
 -- #eval test_iriw_prop_wr.orderConnstraints state.system.scopes.system_scope 1 7
 -- #eval test_iriw_prop_wr.orderConnstraints state.system.scopes.system_scope 0 7
+
+def test_mp := (inittso_2.applyTrace! Litmus.MP.1).applyTrace! Litmus.MP.2
+def test_mp2 := test_mp.applyTrace! $ mkPropagateTransitions [4,5] [0]
+def test_mp3 := test_mp2.applyTrace! $ mkPropagateTransitions [2,3] [1]
+#eval test_mp2
+#eval test_mp2.possibleTransitions []
+#eval test_mp3
+#eval test_mp3.possibleTransitions []
+
 
 
 end Test

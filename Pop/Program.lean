@@ -181,10 +181,12 @@ def SystemState.runWithList  : SystemState →  List Transition → List Nat →
 private def appendTransitionStateAux : List (List Transition × SystemState) → Transition × SystemState  → List (List Transition × SystemState)
   | partialTrace, (trans,state) => partialTrace.map λ (transitions, _) => (trans::transitions, state)
 
+/-
+Sack overflow :
+
 -- is this DFS or BFS?
-partial def SystemState.runDFSAux : SystemState  → List Transition → (SystemState → Bool) →
-  List (List Transition × SystemState) → Transition → List (List Transition × SystemState)
-  | state, accepts, condition, partialTrace, transition =>
+partial def SystemState.runDFSAux (state : SystemState) (accepts : List Transition) (condition : SystemState → Bool)
+  (partialTrace : List (List Transition × SystemState)) (transition : Transition): List (List Transition × SystemState) :=
   --dbg_trace s!"partialTrace {partialTrace.map fun (t,_) => t}"
   --dbg_trace s!"executing {transition}"
   let accepts' := accepts.removeAll [transition]
@@ -201,7 +203,6 @@ partial def SystemState.runDFSAux : SystemState  → List Transition → (System
         let transitions' := state'.possibleTransitions accepts'
         List.join $ transitions'.map (state'.runDFSAux accepts' condition partialTrace')
 
-
 def SystemState.runDFS : SystemState → List Transition × List Transition → (SystemState → Bool) →
   List (List Transition × SystemState)
   | state, (inittransitions, accepts), condition =>
@@ -213,9 +214,54 @@ def SystemState.runDFS : SystemState → List Transition × List Transition → 
     | .error _ =>
       --dbg_trace s!"error: {e}"
       [(inittransitions,state)]
+-/
+-- the unapologetically imperative version:
+def SystemState.runBFS (state : SystemState) (inittuple : List Transition × List Transition)
+ (condition : SystemState → Bool) (stopAtCondition : optParam Bool false) : List (List Transition × SystemState) :=
+match inittuple with
+  | (inittransitions, accepts) =>
+  let stateinit := state.applyTrace inittransitions
+  match stateinit with
+    | .ok st =>
+    Id.run do
+      let mut transitions := st.possibleTransitions accepts
+      let mut unexplored := transitions.map (λ tr => ([tr],accepts))  |>.toArray
+      let mut found := []
+      let mut partialTrace := []
+      let mut acceptsRemaining := []
+      while unexplored.size != 0 do
+          dbg_trace s!"{unexplored.size} unexplored"
+          --dbg_trace s!"{unexplored} unexplored"
+          partialTrace := unexplored[unexplored.size - 1].1
+          acceptsRemaining := unexplored[unexplored.size - 1].2
+          let st' := st.applyTrace! partialTrace
+          transitions := st'.possibleTransitions acceptsRemaining
+          unexplored := unexplored.pop
+          if unexplored.contains (partialTrace,acceptsRemaining) then
+            dbg_trace s!"this should not happen! {unexplored} contains {(partialTrace,acceptsRemaining)}"
+          --dbg_trace s!"unexplored.pop {unexplored.size}"
+          -- either save the state (memory cost) or recompute it (computational cost)
+          found := if condition st' then (partialTrace,st')::found else found
+          unexplored := if stopAtCondition && condition st'
+          then Array.mk []
+          else
+            let newPTs := transitions.map λ t => t::partialTrace
+            let newACs := transitions.map λ t => acceptsRemaining.removeAll [t]
+            let newPairs := newPTs.zip newACs |>.filter λ pair => !unexplored.contains pair
+            unexplored.append newPairs.toArray
+            --if unexplored.size > 11337 then
+            -- dbg_trace s!"state: {st'}"
+            -- dbg_trace s!"possible transitions: {transitions}"
+            --unexplored := #[]
 
-def SystemState.runDFSNoDeadlock : SystemState → List Transition × List Transition → List (List Transition × SystemState)
-  | state, litmus => state.runDFS litmus λ _ => false
+      return found
+    | .error _ =>
+    --dbg_trace s!"error: {e}"
+    [(inittransitions,state)]
+
+
+def SystemState.runBFSNoDeadlock : SystemState → List Transition × List Transition → List (List Transition × SystemState)
+  | state, litmus => state.runBFS litmus λ _ => false
 
 -- Doesn't work. Need to combine removed with requests
 -- def SystemState.satisfiedRequestPairs : SystemState → List (Request × Request)

@@ -140,7 +140,7 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
         --dbg_trace "can {writeId} satisfy {readId}?"
         let oc := state.orderConstraints.lookup scope writeId readId
         let betweenIds := state.orderConstraints.between scope write.id read.id (reqIds state.requests)
-        dbg_trace s!"between {readId} and {writeId}: {betweenIds}"
+        --dbg_trace s!"between {readId} and {writeId}: {betweenIds}"
         let between := state.idsToReqs betweenIds
         let writesToAddrBetween := between.filter (λ r => r.isWrite && r.address? == write.address?)
         oc && writesToAddrBetween.length == 0

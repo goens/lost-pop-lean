@@ -291,7 +291,8 @@ def SystemState.runBFSNoDeadlock : SystemState → List Transition × List Trans
 def SystemState.outcome : SystemState → List (ThreadId × Address × Value)
   | state =>
     -- TODO: this won't work for reads that stay there
-    state.removed.map λ rd => (rd.thread, rd.address?.get!, rd.value?)
+    let triple := state.removed.map λ rd => (rd.thread, rd.address?.get!, rd.value?)
+    triple.toArray.qsort (λ (th,ad,_) (th',ad',_) => lexble (th,ad) (th',ad')) |>.toList
 
 -- | state, accepts => state.runDFS accepts λ _ => false
 

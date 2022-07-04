@@ -164,9 +164,9 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
  let opWrite := state.requests.val[writeId]
  match opRead, opWrite with
    | some read, some write =>
-      let satisfied' := (readId,writeId)::state.satisfied
+      let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexble |>.toList
       let read' := read.setValue write.value?
-      let removed' :=  read'::state.removed
+      let removed' :=  (read'::state.removed).toArray.qsort (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
       let requests' := state.requests.remove readId
       let orderConstraints' := state.orderConstraints --.purge readId
       { requests := requests', orderConstraints := orderConstraints',

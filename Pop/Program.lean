@@ -222,33 +222,40 @@ match inittuple with
   | (inittransitions, accepts) =>
   let stateinit := state.applyTrace inittransitions
   match stateinit with
-    | .ok st =>
+    | .ok startState =>
     Id.run do
-      let mut transitions := st.possibleTransitions accepts
-      let mut unexplored := transitions.map (λ tr => ([tr],accepts))  |>.toArray
+      let mut transitions := startState.possibleTransitions accepts
+      -- either save the state (memory cost) or recompute it (computational cost)
+      -- we choose the former so that we can also filter out states that we've seen before
+      let mut unexplored := transitions.map (λ tr => ([tr],accepts,startState))  |>.toArray
       let mut found := []
-      let mut partialTrace := []
+      let mut transition := transitions.head!
+      let mut partialTrace := [transition]
       let mut acceptsRemaining := []
       while unexplored.size != 0 do
           dbg_trace s!"{unexplored.size} unexplored"
           --dbg_trace s!"{unexplored} unexplored"
           partialTrace := unexplored[unexplored.size - 1].1
-          acceptsRemaining := unexplored[unexplored.size - 1].2
-          let st' := st.applyTrace! partialTrace
-          transitions := st'.possibleTransitions acceptsRemaining
+          transition := partialTrace.head!
+          acceptsRemaining := unexplored[unexplored.size - 1].2.1
+          let st := unexplored[unexplored.size - 1].2.2
+          transitions := st.possibleTransitions acceptsRemaining
+          acceptsRemaining := acceptsRemaining.removeAll [transition]
           unexplored := unexplored.pop
-          if unexplored.contains (partialTrace,acceptsRemaining) then
-            dbg_trace s!"this should not happen! {unexplored} contains {(partialTrace,acceptsRemaining)}"
+          -- if unexplored.any (λ (_,a,s) => a == acceptsRemaining && s == st') then
+          --   dbg_trace s!"this should not happen! {unexplored} contains {(partialTrace,acceptsRemaining)}"
           --dbg_trace s!"unexplored.pop {unexplored.size}"
-          -- either save the state (memory cost) or recompute it (computational cost)
-          found := if condition st' then (partialTrace,st')::found else found
-          unexplored := if stopAtCondition && condition st'
+          found := if condition st then (partialTrace,st)::found else found
+          unexplored := if stopAtCondition && condition st
           then Array.mk []
           else
             let newPTs := transitions.map λ t => t::partialTrace
+            -- TODO: this could yield a bug if we have two identical requests in a litmus test
             let newACs := transitions.map λ t => acceptsRemaining.removeAll [t]
-            let newPairs := newPTs.zip newACs |>.filter λ pair => !unexplored.contains pair
-            unexplored.append newPairs.toArray
+            let newSTs := transitions.map λ t => st.applyTransition! t
+            let newPairs := newACs.zip newSTs |>.filter λ pair => !unexplored.any λ (_,pair') => pair == pair'
+            let newTriples := newPTs.zip newPairs
+            unexplored.append newTriples.toArray
             --if unexplored.size > 11337 then
             -- dbg_trace s!"state: {st'}"
             -- dbg_trace s!"possible transitions: {transitions}"

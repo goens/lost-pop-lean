@@ -11,6 +11,8 @@ inductive Transition
 | satisfyRead : RequestId → RequestId → Transition
  deriving BEq
 
+instance : Inhabited Transition where default := Transition.acceptRequest default 0
+
 def Transition.toString : Transition → String
  | acceptRequest req tid => s!"Accept (T{tid}): {req}"
  | propagateToThread reqid tid => s!"Propagate Request {reqid} to Thread {tid}"

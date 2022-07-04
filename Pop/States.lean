@@ -38,6 +38,8 @@ inductive BasicRequest
  | barrier : BasicRequest
  deriving BEq
 
+instance : Inhabited BasicRequest where default := BasicRequest.barrier
+
 def mkRead (addr : Address) : BasicRequest :=
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
   BasicRequest.read rr
@@ -155,6 +157,11 @@ def System.threads : System → List ThreadId
 def System.requestScope (sys : System) (req : Request) : @Scope sys.scopes :=
   sys.scopes.systemScope -- TODO: change here for scoped version
 
+theorem sameOrderConstraints {system₁ system₂ : System} :
+  system₁ = system₂ → system₁.scopes = system₂.scopes := by
+  intros h
+  rw [h]
+
 -- this seems to be the worst performing part by far!
 structure OrderConstraints {V : ValidScopes} where
   val : Std.HashMap (List ThreadId) (Std.HashMap (RequestId × RequestId) Bool)
@@ -165,7 +172,6 @@ def OrderConstraints.empty {V : ValidScopes} (numReqs : optParam Nat 10) : @Orde
  { default := false, val :=
  Std.mkHashMap (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.mkHashMap (capacity := numReqs))
  }
-
 
 def OrderConstraints.lookup {V : ValidScopes} (ordc : @OrderConstraints V)
   (S : @Scope V) (req₁ req₂ : RequestId) : Bool :=
@@ -185,6 +191,18 @@ def OrderConstraints.between {V : ValidScopes} (S : @Scope V) (req₁ req₂ : R
   let preds₁ := constraints.predecessors S req₁ reqs
   let preds₂ := constraints.predecessors S req₂ reqs
   preds₂.removeAll (req₁::preds₁)
+
+def OrderConstraints.compare {V₁ V₂ : ValidScopes} ( oc₁ : @OrderConstraints V₁) (oc₂ : @OrderConstraints V₂)
+  (requests : List RequestId) : Bool :=
+  if V₁.scopes.toList != V₂.scopes.toList
+    then false
+    else
+      let scopes₁ := V₁.scopes.toList.map V₁.validate
+      let scopes₂ := V₂.scopes.toList.map V₂.validate
+      let scopes := scopes₁.zip scopes₂ -- pretty hacky: should get types to match
+      let reqPairs := List.join $ requests.map λ r₁ => requests.foldl (init := []) λ reqs r₂ => (r₁,r₂)::reqs
+      let keys := List.join $ scopes.map λ s => reqPairs.foldl (init := []) λ ks (r₁,r₂) => (s,r₁,r₂)::ks
+      keys.all λ (s,r₁,r₂) => (oc₁.lookup s.1 r₁ r₂ == oc₂.lookup s.2 r₁ r₂)
 
 -- Maybe I don't need this (at least for now)
 /-
@@ -246,6 +264,8 @@ private def valConsistent (vals :  Array (Option Request)) : Bool :=
 structure RequestArray where
   val : Array (Option Request)
   coherent : valConsistent val = true
+
+instance : BEq RequestArray where beq := λ r₁ r₂ => r₁.val == r₂.val
 
 theorem emptyArrayCoherent : valConsistent (Array.mk []) := by simp
 def RequestArray.empty : RequestArray :=
@@ -312,6 +332,19 @@ structure SystemState where
   seenCoherent : ∀ id : RequestId, id ∈ seen → id ∈ reqIds requests
   removedCoherent : ∀ id : RequestId, id ∈ (removed.map Request.id) → id ∈ reqIds requests
   satisfiedCoherent : ∀ id₁ id₂ : RequestId, (id₁,id₂) ∈ satisfied → id₁ ∈ seen ∧ id₂ ∈ seen
+
+def SystemState.beq (state₁ state₂ : SystemState)
+  -- (samesystem : state₁.system = state₂.system)
+  : Bool :=
+  state₁.requests == state₂.requests &&
+  state₁.seen == state₂.seen &&
+  state₁.removed == state₂.removed &&
+  state₁.satisfied == state₂.satisfied &&
+  -- this will be expensive!
+  state₁.orderConstraints.compare state₂.orderConstraints (reqIds state₁.requests)
+
+
+instance : BEq SystemState where beq := SystemState.beq
 
 def SystemState.oderConstraintsString (state : SystemState) (scope : optParam (@Scope state.system.scopes) state.system.scopes.systemScope) : String :=
   state.orderConstraints.toString scope $ filterNones $ state.requests.val.toList.map $ Option.map Request.id

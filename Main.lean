@@ -11,7 +11,7 @@ def main : IO Unit := do
 
   -- println! s!"running litmus on {Litmus.x86}"
   --let resRaw := Litmus.x86.map $ Litmus.inittso_2.runBFSNoDeadlock
-  let resRaw := [Litmus.inittso_2.runBFS Litmus.MP (λ st => st.satisfied.length > 0) (stopAtCondition := true)]
+  let resRaw := [Litmus.inittso_2.runBFS Litmus.MP (λ st => st.satisfied.length > 1) (stopAtCondition := true)]
   --println! s!"resRaw : {resRaw}"
   for res in resRaw do
      let reslitmus := Util.removeDuplicates $ res.map λ (_,st) => st.outcome

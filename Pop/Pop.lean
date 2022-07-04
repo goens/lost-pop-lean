@@ -74,9 +74,19 @@ def SystemState.updateOrderConstraintsAccept (state : SystemState) : Request →
     --dbg_trace s!"seen: {seen}, new: {newReqs}"
     state.orderConstraints.add_subscopes scope newConstraints
 
+def SystemState.freshId : SystemState → RequestId
+  | state =>
+    let removed := state.removed.map Request.id
+    let active := reqIds state.requests
+    let ids : List Nat := removed ++ active
+    let max := ids.maximum?
+    match max with
+      | none => unreachable!
+      | some id => (Nat.succ id)
+
 def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState
   | state, reqType, tId =>
-  let req : Request := { propagated_to := [tId], thread := tId, basic_type := reqType, id := state.requests.val.size}
+  let req : Request := { propagated_to := [tId], thread := tId, basic_type := reqType, id := state.freshId}
   --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
   let requests' := state.requests.insert req
   let seen' := blesort $ state.seen ++ [req.id]

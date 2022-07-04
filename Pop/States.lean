@@ -301,26 +301,28 @@ theorem RequestArrayInsertConsistent (arr : RequestArray) (req : Request) :
   -- unfold RequestArray._insert
   -- simp
 
-def RequestArray._remove : RequestArray → RequestId → Array (Option Request)
- | arr, reqId => arr.val.insertAt reqId none
-
--- should be pretty trivial
-theorem RequestArrayRemoveConsistent (arr : RequestArray) (reqId : RequestId) :
-  valConsistent (arr._remove reqId) = true := by sorry
---  unfold RequestArray._remove
---  unfold valConsistent
+def RequestArray.insertAtPosition : RequestArray → Option Request → USize → RequestArray
+  | arr, opReq, i =>
+    let val' := if h : i.toNat < arr.val.size
+      then arr.val.uset i opReq h
+      else match opReq with
+        | some req => arr._insert req
+        | none => arr.val
+      -- RequestArrayInsertConsistent arr req
+    { val := val', coherent := sorry}
 
 def RequestArray.insert : RequestArray → Request → RequestArray
   | arr, req =>
     let i := req.id.toNat.toUSize
-    let val' := if h : i.toNat < arr.val.size
-      then arr.val.uset i (some req) h
-      else arr._insert req
-      -- RequestArrayInsertConsistent arr req
-    { val := val', coherent := sorry}
+    arr.insertAtPosition (some req) i
 
 def RequestArray.remove : RequestArray → RequestId → RequestArray
-| arr, reqId => { val := arr._remove reqId , coherent := RequestArrayRemoveConsistent arr reqId}
+  | arr, reqId =>
+    match arr.val[reqId] with
+      | none => arr
+      | some req =>
+        let i := req.id.toNat.toUSize
+        arr.insertAtPosition none i
 
 structure SystemState where
   requests : RequestArray

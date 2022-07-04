@@ -232,13 +232,18 @@ match inittuple with
       let mut transition := transitions.head!
       let mut partialTrace := [transition]
       let mut acceptsRemaining := []
+      dbg_trace s!"starting state {startState}"
       while unexplored.size != 0 do
-          dbg_trace s!"{unexplored.size} unexplored"
+          --dbg_trace s!"{unexplored.size} unexplored"
           --dbg_trace s!"{unexplored} unexplored"
           partialTrace := unexplored[unexplored.size - 1].1
           transition := partialTrace.head!
           acceptsRemaining := unexplored[unexplored.size - 1].2.1
           let st := unexplored[unexplored.size - 1].2.2
+          if (reqIds st.requests).length != (removeDuplicates $ reqIds st.requests).length then
+            dbg_trace s!"found double req after {partialTrace}"
+            dbg_trace s!"{st}"
+            dbg_trace s!"{st.requests.val[5]}"
           transitions := st.possibleTransitions acceptsRemaining
           acceptsRemaining := acceptsRemaining.removeAll [transition]
           unexplored := unexplored.pop
@@ -252,12 +257,16 @@ match inittuple with
             let newPTs := transitions.map λ t => t::partialTrace
             -- TODO: this could yield a bug if we have two identical requests in a litmus test
             let newACs := transitions.map λ t => acceptsRemaining.removeAll [t]
+            let _ := transitions.any λ t => if st.canApplyTransition t
+              then dbg_trace s!"applied invalid transition {t} at {st}"
+              true
+              else false
             let newSTs := transitions.map λ t => st.applyTransition! t
             let newPairs := newACs.zip newSTs |>.filter λ pair => !unexplored.any λ (_,pair') => pair == pair'
             let newTriples := newPTs.zip newPairs
             unexplored.append newTriples.toArray
             --if unexplored.size > 11337 then
-            -- dbg_trace s!"state: {st'}"
+            --dbg_trace s!"state: {st}"
             -- dbg_trace s!"possible transitions: {transitions}"
             --unexplored := #[]
 

@@ -12,8 +12,15 @@ def main : IO Unit := do
   -- println! s!"running litmus on {Litmus.x86}"
   --let resRaw := Litmus.x86.map $ Litmus.inittso_2.runBFSNoDeadlock
   --println! s!"resRaw : {resRaw}"
-  for lit in Litmus.x86 do
-      let res := Litmus.inittso_2.runBFS lit (λ st => st.satisfied.length > 1) (stopAtCondition := false)
+  for lit in Litmus.x86_4 do
+     let res := Litmus.inittso_4.runBFS lit (λ st => st.satisfied.length == 4) (stopAtCondition := false)
+     let reslitmus := Util.removeDuplicates $ res.map λ (_,st) => st.outcome
+     let outcomes_clean := reslitmus.map λ outcome => outcome.map λ (thread,(addr,val)) => val
+     println! s!" outcomes: {outcomes_clean}"
+     println! "-------------"
+
+  for lit in Litmus.x86_2 do
+      let res := Litmus.inittso_2.runBFS lit (λ st => st.satisfied.length == 2) (stopAtCondition := false)
       let reslitmus := Util.removeDuplicates $ res.map λ (_,st) => st.outcome
       let outcomes_clean := reslitmus.map λ outcome => outcome.map λ (thread,(addr,val)) => val
       println! s!" outcomes: {outcomes_clean}"

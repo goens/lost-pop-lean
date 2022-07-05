@@ -8,12 +8,14 @@ namespace Litmus
 
 
 def IRIW := <| W x=1 ||  R x; R y || R y; R x || W y=1 |>
+def IRIW_fences := <| W x=1 ||  R x; Fence; R y || R y; Fence; R x || W y=1 |>
 def MP := <|  W x=1; W y=1 ||  R y; R x |>
 def MP_fence1 := <| W x=1; Fence; W y=1 ||  R y; R x |>
 def MP_fence2 := <| W x=1; W y=1 ||  R y; Fence; R x |>
 def MP_fence := <| W x=1; Fence; W y=1 ||  R y; Fence; R x |>
 
-def x86 := [MP,MP_fence1,MP_fence2,MP_fence]
+def x86_2 := [MP,MP_fence1,MP_fence2,MP_fence]
+def x86_4 := [IRIW, IRIW_fences]
 --def x86 := [MP] -- ,MP_fence1,MP_fence2,MP_fence]
 
 -- I should automate this somehow...

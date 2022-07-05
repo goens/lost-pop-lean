@@ -35,7 +35,12 @@ def test_iriw_prop_wr  := test_iriw.applyTrace! $ mkPropagateTransitions [7] [0,
 -- #eval test_iriw_prop_wr.orderConnstraints state.system.scopes.system_scope 1 7
 -- #eval test_iriw_prop_wr.orderConnstraints state.system.scopes.system_scope 0 7
 
-def test_mp := (inittso_2.applyTrace! Litmus.MP.1).applyTrace! $ List.join $ Litmus.MP.2.map (Array.toList) |>.toList
+def mp_1_0_trace := [Litmus.MP.2[1][0], Litmus.MP.2[1][0]] ++ [Transition.propagateToThread 3 0, Transition.satisfyRead 3 0, Litmus.MP.2[0][0], Litmus.MP.2[0][1]] -- ++ (mkPropagateTransitions [4,5] [1]) ++ [Transition.propagateToThread 2 0] --, Transition.satisfyRead 2 1]
+def mp_1_0 := (inittso_2.applyTrace! Litmus.MP.1).applyTrace! mp_1_0_trace
+#eval mp_1_0 --.possibleTransitions #[]
+def mp_accepts := List.join $ Litmus.MP.2.map (Array.toList) |>.toList
+def test_mp := (inittso_2.applyTrace! Litmus.MP.1).applyTrace! mp_accepts
+#eval test_mp
 def test_mp2 := test_mp.applyTrace! $ mkPropagateTransitions [4,5] [0]
 def test_mp3 := test_mp2.applyTrace! $ mkPropagateTransitions [2,3] [1]
 

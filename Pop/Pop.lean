@@ -67,7 +67,7 @@ def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope s
 
 def SystemState.updateOrderConstraintsAccept (state : SystemState) : Request → @OrderConstraints state.system.scopes
   | req =>
-    let seen := state.idsToReqs $ state.seen
+    let seen := state.idsToReqs state.seen |>.filter (Request.propagatedTo . req.thread)
     let scope := state.system.requestScope req
     let newReqs := seen.filter λ req'  => !(state.system.reorder_condition req' req)
     let newConstraints := newReqs.map λ req' => (req'.id, req.id)
@@ -114,7 +114,9 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
     --dbg_trace s!"R{req.id}.pred = {properPred}"
     let reqOps := state.requests.val.filter (λ req => match req with | none => false | some r => properPred.elem r.id)
     let reqs := filterNones reqOps.toList
-    let predPropagated := reqs.map (λ r => r.fullyPropagated scope)
+    -- TODO: when here?
+    --let predPropagated := reqs.map (λ r => r.fullyPropagated scope)
+    let predPropagated := reqs.map (λ r => r.propagatedTo thId)
     --dbg_trace s!"R{req.id} unpropagated (T{thId}): {unpropagated}, predPropagated: {predPropagated}"
     unpropagated && predPropagated.foldl (. && .) true
 

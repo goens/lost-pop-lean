@@ -387,6 +387,11 @@ def SystemState.idsToReqs : SystemState → List RequestId → List Request
 def SystemState.isSatisfied : SystemState → RequestId → Bool
   | state, rid => !(state.satisfied.filter λ (srd,_) => srd == rid).isEmpty
 
+def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Bool
+  | state, rid, tid => match state.requests.val[rid] with
+    | none => false
+    | some req => req.propagatedTo tid
+
 -- private def maxThread : ThreadId → List ThreadId → ThreadId
 --   | curmax, n::rest => if curmax < n then maxThread n rest else maxThread curmax rest
 --   | max, [] => max

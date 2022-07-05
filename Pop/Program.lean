@@ -237,18 +237,22 @@ def SystemState.runDFS : SystemState → List Transition × List Transition → 
       [(inittransitions,state)]
 -/
 -- the unapologetically imperative version:
-def SystemState.runBFS (state : SystemState) (inittuple : List Transition × ProgramState)
- (condition : SystemState → Bool) (stopAtCondition : optParam Bool false) : List (List Transition × SystemState) :=
+def SystemState.runBFS (state : SystemState) (inittuple : List Transition × ProgramState) (condition : SystemState → Bool)
+  (stopAtCondition : optParam Bool false) (saveStates : optParam Bool true) (saveTraces : optParam Bool true)
+ : List (List Transition × SystemState) :=
 match inittuple with
   | (inittransitions, accepts) =>
   let stateinit := state.applyTrace inittransitions
   match stateinit with
     | .ok startState =>
-    Id.run do
+    if !saveStates && !saveTraces then
+      panic! "BFS can't run without saving states or traces."
+    else Id.run do
       let mut transitions := startState.possibleTransitions accepts
       -- either save the state (memory cost) or recompute it (computational cost)
       -- we choose the former so that we can also filter out states that we've seen before
-      let mut unexplored := transitions.map (λ tr => ([tr],accepts,startState))  |>.toArray
+      let opSt := if saveStates then some startState else none
+      let mut unexplored := transitions.map (λ tr => ([tr],accepts,opSt))  |>.toArray
       let mut found := []
       let mut partialTrace := [transitions.head!]
       let mut acceptsRemaining := #[]
@@ -259,25 +263,31 @@ match inittuple with
           --dbg_trace s!"{unexplored} unexplored"
           partialTrace := unexplored[unexplored.size - 1].1
           acceptsRemaining := unexplored[unexplored.size - 1].2.1
-          let st := unexplored[unexplored.size - 1].2.2
+          let st := if saveStates
+            then unexplored[unexplored.size - 1].2.2.get!
+            else startState.applyTrace! partialTrace
           transitions := st.possibleTransitions acceptsRemaining
           --acceptsRemaining := acceptsRemaining.map $ List.removeAll [transition]
           unexplored := unexplored.pop
           -- if unexplored.any (λ (_,a,s) => a == acceptsRemaining && s == st') then
           --   dbg_trace s!"this should not happen! {unexplored} contains {(partialTrace,acceptsRemaining)}"
           --dbg_trace s!"unexplored.pop {unexplored.size}"
-          found := if condition st then (partialTrace,st)::found else found
+          found := if condition st
+            then if saveTraces then (partialTrace,st)::found else ([],st)::found
+            else found
           unexplored := if stopAtCondition && condition st
           then Array.mk []
           else
-            let newPTs := transitions.map λ t => t::partialTrace
+            let newPTs := if saveTraces then transitions.map λ t => t::partialTrace else transitions.map λ t => [t]
             -- TODO: this could yield a bug if we have two identical requests in a litmus test
             let newACs := transitions.map λ t => ProgramState.removeTransition acceptsRemaining t
             let _ := transitions.any λ t => if st.canApplyTransition t
               then dbg_trace s!"applied invalid transition {t} at {st}"
               true
               else false
-            let newSTs := transitions.map λ t => st.applyTransition! t
+            let newSTs := if saveStates
+              then transitions.map λ t => some $ st.applyTransition! t
+              else List.replicate transitions.length none
             let newPairs := newACs.zip newSTs |>.filter λ pair => !unexplored.any λ (_,pair') => pair == pair'
             let newTriples := newPTs.zip newPairs
             unexplored.append newTriples.toArray
@@ -285,7 +295,6 @@ match inittuple with
             -- dbg_trace s!"state: {st}"
             -- dbg_trace s!"possible transitions: {transitions}"
             --unexplored := #[]
-
       return found
     | .error _ =>
     --dbg_trace s!"error: {e}"

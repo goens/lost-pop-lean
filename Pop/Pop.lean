@@ -81,7 +81,7 @@ def SystemState.freshId : SystemState → RequestId
     let ids : List Nat := removed ++ active
     let max := ids.maximum?
     match max with
-      | none => unreachable!
+      | none => 0
       | some id => (Nat.succ id)
 
 def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState

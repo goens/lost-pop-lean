@@ -58,8 +58,26 @@ def SystemState.initZeroes : SystemState → List Address → Except String Syst
     let unpropagated := state.initZeroesUnpropagated addresses
     Except.bind  unpropagated (λ st => st.initZeroesPropagate addresses)
 
+abbrev ProgramState := Array (Array Transition)
+
+def ProgramState.getAvailable (prog : ProgramState) : List Transition := Id.run do
+  let mut res := []
+  for thread in prog do
+    if thread.size > 0 then
+      res := thread[thread.size - 1] :: res
+  return res
+
+def ProgramState.removeTransition (prog : ProgramState) (transition : Transition)
+  : ProgramState := Id.run do
+  let mut res := #[]
+  let mut thread' := #[]
+  for thread in prog do
+    thread' := thread.erase transition
+    res := res.push thread'
+  return res
+
 -- create accepts in a per-thread basis
-def createAcceptList : List (List (String × String × Nat)) → List Transition × List (List Transition)
+def createAcceptList : List (List (String × String × Nat)) → List Transition × ProgramState
   | list =>
   let variablesRaw := list.map λ thread => thread.map (λ r => if r.2.1.length == 0 then none else some r.2.1)
   let variables := removeDuplicates $ filterNones $ List.join variablesRaw
@@ -70,10 +88,10 @@ def createAcceptList : List (List (String × String × Nat)) → List Transition
   let replacedVariables : List (List (String × Address × Value)) := replacedVariablesNat.map λ l => l.map (λ (str,addr,val) => (str,Address.ofNat addr, Value.ofNat val))
   let fullThreads := replacedVariables.zip (List.range replacedVariables.length)
   let mkThread := λ (reqs, thId) => filterNones $ reqs.map (λ r => mkRequest r thId)
-  let reqs := fullThreads.map mkThread
+  let reqs := fullThreads.map λ t => mkThread t |>.toArray
   let initWrites := initZeroesUnpropagatedTransitions (List.range variables.length)
   let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
-  (initWrites ++ initPropagates, reqs)
+  (initWrites ++ initPropagates, reqs.toArray)
 
 declare_syntax_cat request
 declare_syntax_cat request_seq
@@ -134,9 +152,9 @@ def SystemState.possibleSatisfyTransitions (state :  SystemState) : List Transit
   let unsatisfied_reads := requests.filter λ r => r.isRead && !(state.isSatisfied r.id)
   List.join $ unsatisfied_reads.map λ r => r.possibleSatisfyTransitions state
 
-def SystemState.possibleTransitions (state : SystemState) (unaccepted : List (List Transition)) :=
+def SystemState.possibleTransitions (state : SystemState) (unaccepted : ProgramState) :=
   let allaccepts := unaccepted.map λ th => th.filter Transition.isAccept
-  let accepts := filterNones $ allaccepts.map List.head?
+  let accepts := ProgramState.getAvailable allaccepts
   accepts ++ state.possibleSatisfyTransitions ++ state.possiblePropagateTransitions
 
 def SystemState.hasUnsatisfiedReads (state : SystemState) :=
@@ -146,12 +164,12 @@ def SystemState.hasUnsatisfiedReads (state : SystemState) :=
   let unsatisfied := readids.filter state.isSatisfied
   unsatisfied != []
 
-def SystemState.isDeadlocked (state : SystemState) (unaccepted : List (List Transition)) :=
+def SystemState.isDeadlocked (state : SystemState) (unaccepted : ProgramState) :=
   let transitions := state.possibleTransitions unaccepted
   transitions == [] && state.hasUnsatisfiedReads
 
 -- This should be a monad transformer or smth...
-def SystemState.takeNthStep (state : SystemState) (acceptRequests : List (List Transition)) (n : Nat) : Except String (Transition × SystemState) :=
+def SystemState.takeNthStep (state : SystemState) (acceptRequests : ProgramState) (n : Nat) : Except String (Transition × SystemState) :=
   let transitions := state.possibleTransitions acceptRequests
   --dbg_trace s!"possible transitions: {transitions}"
   if transitions.isEmpty then
@@ -162,7 +180,7 @@ def SystemState.takeNthStep (state : SystemState) (acceptRequests : List (List T
       | none => unreachable!
       | some trans => Except.map (λ st => (trans, st)) (state.applyTransition trans)
 
-def SystemState._runWithList  : SystemState →  List (List Transition) → List Nat → Except String SystemState
+def SystemState._runWithList  : SystemState →  ProgramState → List Nat → Except String SystemState
   | state, accepts, ns => match ns with
     | [] => throw "Empty transition number list"
     | n::ns =>
@@ -172,19 +190,20 @@ def SystemState._runWithList  : SystemState →  List (List Transition) → List
         | Except.ok (trans,state') =>
           -- dbg_trace trans.toString
           -- dbg_trace state'
-          state'._runWithList (accepts.map $ List.removeAll [trans]) ns
+          state'._runWithList (ProgramState.removeTransition accepts trans) ns
         | Except.error e => Except.error e
 
-def SystemState.runWithList  : SystemState →  List (List Transition) → List Nat → Except String SystemState
-  | state, accepts, ns => if !(List.join accepts |>.all Transition.isAccept)
+def SystemState.runWithList  : SystemState →  ProgramState → List Nat → Except String SystemState
+  | state, accepts, ns => if !(List.join (accepts.map Array.toList).toList |>.all Transition.isAccept)
   then throw "Running with non-accept transition inputs"
   else SystemState._runWithList state accepts ns
 
+
+/-
 private def appendTransitionStateAux : List (List Transition × SystemState) → Transition × SystemState  → List (List Transition × SystemState)
   | partialTrace, (trans,state) => partialTrace.map λ (transitions, _) => (trans::transitions, state)
 
-/-
-Sack overflow :
+Stack overflow :
 
 -- is this DFS or BFS?
 partial def SystemState.runDFSAux (state : SystemState) (accepts : List Transition) (condition : SystemState → Bool)
@@ -218,7 +237,7 @@ def SystemState.runDFS : SystemState → List Transition × List Transition → 
       [(inittransitions,state)]
 -/
 -- the unapologetically imperative version:
-def SystemState.runBFS (state : SystemState) (inittuple : List Transition × List (List Transition))
+def SystemState.runBFS (state : SystemState) (inittuple : List Transition × ProgramState)
  (condition : SystemState → Bool) (stopAtCondition : optParam Bool false) : List (List Transition × SystemState) :=
 match inittuple with
   | (inittransitions, accepts) =>
@@ -232,7 +251,7 @@ match inittuple with
       let mut unexplored := transitions.map (λ tr => ([tr],accepts,startState))  |>.toArray
       let mut found := []
       let mut partialTrace := [transitions.head!]
-      let mut acceptsRemaining := []
+      let mut acceptsRemaining := #[]
       dbg_trace s!"starting state {startState}"
       dbg_trace s!"litmus requests {accepts}"
       while unexplored.size != 0 do
@@ -253,7 +272,7 @@ match inittuple with
           else
             let newPTs := transitions.map λ t => t::partialTrace
             -- TODO: this could yield a bug if we have two identical requests in a litmus test
-            let newACs := transitions.map λ t => acceptsRemaining.map $ List.removeAll [t]
+            let newACs := transitions.map λ t => ProgramState.removeTransition acceptsRemaining t
             let _ := transitions.any λ t => if st.canApplyTransition t
               then dbg_trace s!"applied invalid transition {t} at {st}"
               true
@@ -273,7 +292,7 @@ match inittuple with
     [(inittransitions,state)]
 
 
-def SystemState.runBFSNoDeadlock : SystemState → List Transition × List (List Transition) → List (List Transition × SystemState)
+def SystemState.runBFSNoDeadlock : SystemState → List Transition × ProgramState → List (List Transition × SystemState)
   | state, litmus => state.runBFS litmus λ _ => false
 
 -- Doesn't work. Need to combine removed with requests

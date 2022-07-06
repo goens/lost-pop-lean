@@ -251,8 +251,8 @@ match inittuple with
       let mut transitions := startState.possibleTransitions accepts
       -- either save the state (memory cost) or recompute it (computational cost)
       -- we choose the former so that we can also filter out states that we've seen before
-      let opSt := if saveStates then some startState else none
-      let mut unexplored := transitions.map (λ tr => ([tr],accepts,opSt))  |>.toArray
+      let mut unexplored := transitions.map (λ tr => ([tr],accepts))  |>.toArray
+      let mut states := if saveStates then List.replicate transitions.length startState |>.toArray else #[]
       let mut found := []
       let mut partialTrace := [transitions.head!]
       let mut acceptsRemaining := #[]
@@ -262,12 +262,14 @@ match inittuple with
           --dbg_trace s!"{unexplored.size} unexplored"
           --dbg_trace s!"{unexplored} unexplored"
           partialTrace := unexplored[unexplored.size - 1].1
-          acceptsRemaining := unexplored[unexplored.size - 1].2.1
+          acceptsRemaining := unexplored[unexplored.size - 1].2
           let st := if saveStates
-            then unexplored[unexplored.size - 1].2.2.get!
+            then states[unexplored.size - 1]
             else startState.applyTrace! partialTrace
           transitions := st.possibleTransitions acceptsRemaining
           --acceptsRemaining := acceptsRemaining.map $ List.removeAll [transition]
+          unexplored := unexplored.pop
+          states := if saveStates then states.pop else states
           unexplored := unexplored.pop
           -- if unexplored.any (λ (_,a,s) => a == acceptsRemaining && s == st') then
           --   dbg_trace s!"this should not happen! {unexplored} contains {(partialTrace,acceptsRemaining)}"
@@ -281,16 +283,31 @@ match inittuple with
             let newPTs := if saveTraces then transitions.map λ t => t::partialTrace else transitions.map λ t => [t]
             -- TODO: this could yield a bug if we have two identical requests in a litmus test
             let newACs := transitions.map λ t => ProgramState.removeTransition acceptsRemaining t
-            let _ := transitions.any λ t => if st.canApplyTransition t
-              then dbg_trace s!"applied invalid transition {t} at {st}"
-              true
-              else false
+            -- let _ := transitions.any λ t => if st.canApplyTransition t
+            --   then dbg_trace s!"applied invalid transition {t} at {st}"
+            --   true
+            --   else false
             let newSTs := if saveStates
-              then transitions.map λ t => some $ st.applyTransition! t
-              else List.replicate transitions.length none
-            let newPairs := newACs.zip newSTs |>.filter λ pair => !unexplored.any λ (_,pair') => pair == pair'
-            let newTriples := newPTs.zip newPairs
-            unexplored.append newTriples.toArray
+              then transitions.map (λ t => st.applyTransition! t)
+              else []
+            /-
+            Here we filter program/system-state pairs that are equal, pruning a part of the search tree.
+            This can be improved, however, in particular as there's a bunch of inconsequential permutations
+            of the order in which requests are propagated, which could all be collapsed into one
+            If we can be *sure* that they are inconsequential, that is, which I'm not sure if we can know that
+            at this point in the computation...
+            -/
+            if saveStates then
+              let newPairs := newACs.zip newSTs
+              let triples : List (List Transition × ProgramState × SystemState) := newPTs.zip newPairs |>.filter
+                λ (_,pair) => !(unexplored.zip states).any λ ((_,ps'),ss') => pair == (ps',ss')
+              unexplored.append $ triples.map (λ (pt,(ac,_)) => (pt,ac)) |>.toArray
+            else
+              -- This is a very costly computation, as we have to apply the traces many times...
+              let newPairs := newPTs.zip newACs |>.filter
+                λ (pt,ac) => !unexplored.any
+                  λ (pt',ac') => ac == ac' && startState.applyTrace! pt == startState.applyTrace! pt'
+              unexplored.append newPairs.toArray
             --if unexplored.size > 11337 then
             -- dbg_trace s!"state: {st}"
             -- dbg_trace s!"possible transitions: {transitions}"

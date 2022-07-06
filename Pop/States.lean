@@ -162,7 +162,15 @@ theorem sameOrderConstraints {system₁ system₂ : System} :
   intros h
   rw [h]
 
--- this seems to be the worst performing part by far!
+/-
+ We have scoped order constraints, i.e. a different set of order constraints
+ for each scope. Order constraints specify a partial order on requests, and
+ we represent them with a Bool value for a pair of (r₁,r₂) : RequestId × RequestId,
+ which is true ↔ there is an order constraint r₁ →s r₂, for the scope s.
+
+ However, we have a property (by construction) that if s' ≤ s and r₁ →s r₂, then
+ also r₁ →s' r₂. Can we use this to find a more compact representation?
+-/
 structure OrderConstraints {V : ValidScopes} where
   val : Std.HashMap (List ThreadId) (Std.HashMap (RequestId × RequestId) Bool)
   default : Bool
@@ -370,9 +378,9 @@ theorem empty2Coherent (seen : List RequestId) :
   intros
   contradiction
 
-def SystemState.init (S : System) : SystemState :=
+def SystemState.init (S : System) (numReqs : optParam Nat 10): SystemState :=
   { requests := RequestArray.empty, seen := [], removed := [],
-    system := S, satisfied := [], orderConstraints := OrderConstraints.empty,
+    system := S, satisfied := [], orderConstraints := OrderConstraints.empty (numReqs := numReqs),
     seenCoherent := emptyCoherent RequestArray.empty,
     removedCoherent := emptyCoherent RequestArray.empty,
     satisfiedCoherent := empty2Coherent []

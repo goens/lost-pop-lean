@@ -21,7 +21,7 @@ def main : IO Unit := do
      println! "-------------"
   -/
   for lit in Litmus.x86_2 do
-      let res := Litmus.inittso_2.runBFS lit (λ st => st.satisfied.length == 2) (stopAtCondition := false) (saveTraces := false)
+      let res := Litmus.inittso_2.runBFS lit (λ st => st.satisfied.length == 2) (stopAtCondition := false) (saveStates := false)
       let reslitmus := Util.removeDuplicates $ res.map λ (_,st) => st.outcome
       let outcomes_clean := reslitmus.map λ outcome => outcome.map λ (thread,(addr,val)) => val
       println! s!" outcomes: {outcomes_clean}"

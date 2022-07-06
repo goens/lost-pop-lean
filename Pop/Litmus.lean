@@ -58,8 +58,8 @@ def tso_reorder : Request → Request → Bool
 def tso_2_sys : System := { scopes := valid_scopes_2, reorder_condition := tso_reorder}
 def tso_4_sys : System := { scopes := valid_scopes_4, reorder_condition := tso_reorder}
 
-def inittso_2 : SystemState := SystemState.init tso_2_sys
-def inittso_4 : SystemState := SystemState.init tso_4_sys
+def inittso_2 : SystemState := SystemState.init tso_2_sys (numReqs := 8)
+def inittso_4 : SystemState := SystemState.init tso_4_sys (numReqs := 10)
 -- #eval inittso_2.initZeroes [0,1,2]
 
 end Litmus

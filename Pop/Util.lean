@@ -3,6 +3,19 @@ open Std.HashMap
 
 namespace Util
 
+theorem n_minus_one_le_n {n : Nat} : n > 0 → n - 1 < n := by
+  cases n with
+  | zero => simp []
+  | succ n =>
+    intros
+    rw [Nat.succ_eq_add_one, Nat.add_sub_cancel]
+    apply Nat.le.refl
+
+def bindOptions {α : Type} : Option (Option α) → Option α
+  | none => none
+  | some none => none
+  | some (some a) => a
+
 def filterNones {α : Type} : List (Option α) → List α
   | none::rest => filterNones rest
   | (some val):: rest => val::(filterNones rest)

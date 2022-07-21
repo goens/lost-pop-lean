@@ -43,7 +43,7 @@ def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope s
     * req, req' not already ordered
     * req, req' can't be reoredered
     -/
-  match state.requests.val[reqId] with
+  match bindOptions state.requests.val[reqId.toNat]? with
     | none => state.orderConstraints
     | some req =>
       let conditions := λ req' : Request =>
@@ -104,7 +104,7 @@ def Request.isPropagated : Request → ThreadId → Bool
 
 def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | state, reqId, thId =>
-  match state.requests.val[reqId] with
+  match bindOptions state.requests.val[reqId.toNat]? with
   | none => false
   | some req =>
     let unpropagated := !req.isPropagated thId
@@ -128,8 +128,8 @@ def Request.propagate : Request → ThreadId → Request
 
 def SystemState.propagate : SystemState → RequestId → ThreadId → SystemState
   | state, reqId, thId =>
-  let reqOpt := state.requests.val[reqId]
-  match reqOpt with
+  let reqOpt := state.requests.val[reqId.toNat]?
+  match bindOptions reqOpt with
   | none => state
   | some req =>
     let requests' := state.requests.insert (req.propagate thId)
@@ -144,8 +144,8 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
 def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Bool
   | state, readId, writeId =>
   if (state.satisfied.map λ x => x.1).elem readId then false else
-  match state.requests.val[readId], state.requests.val[writeId] with
-    | some read, some write =>
+  match state.requests.val[readId.toNat]?, state.requests.val[writeId.toNat]? with
+    | some (some read), some (some write) =>
       if !read.isRead || !write.isWrite then false
       else if read.address? != write.address? then false
       else if (blesort read.propagated_to) != (blesort write.propagated_to) then false
@@ -162,8 +162,8 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
 
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState
  | state, readId, writeId =>
- let opRead := state.requests.val[readId]
- let opWrite := state.requests.val[writeId]
+ let opRead := bindOptions state.requests.val[readId.toNat]?
+ let opWrite := bindOptions state.requests.val[writeId.toNat]?
  match opRead, opWrite with
    | some read, some write =>
       let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexble |>.toList

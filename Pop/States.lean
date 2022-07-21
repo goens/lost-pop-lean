@@ -20,6 +20,7 @@ instance : OfNat ThreadId n where  ofNat := ThreadId.ofNat n
 instance : OfNat RequestId n where  ofNat := RequestId.ofNat n
 instance : OfNat Address n where ofNat := Address.ofNat n
 instance : OfNat Value n where ofNat := Value.ofNat n
+instance : Coe RequestId Nat where coe := RequestId.toNat
 
 structure ReadRequest where
  addr : Address
@@ -162,7 +163,15 @@ theorem sameOrderConstraints {system₁ system₂ : System} :
   intros h
   rw [h]
 
--- this seems to be the worst performing part by far!
+/-
+ We have scoped order constraints, i.e. a different set of order constraints
+ for each scope. Order constraints specify a partial order on requests, and
+ we represent them with a Bool value for a pair of (r₁,r₂) : RequestId × RequestId,
+ which is true ↔ there is an order constraint r₁ →s r₂, for the scope s.
+
+ However, we have a property (by construction) that if s' ≤ s and r₁ →s r₂, then
+ also r₁ →s' r₂. Can we use this to find a more compact representation?
+-/
 structure OrderConstraints {V : ValidScopes} where
   val : Std.HashMap (List ThreadId) (Std.HashMap (RequestId × RequestId) Bool)
   default : Bool
@@ -318,11 +327,11 @@ def RequestArray.insert : RequestArray → Request → RequestArray
 
 def RequestArray.remove : RequestArray → RequestId → RequestArray
   | arr, reqId =>
-    match arr.val[reqId] with
-      | none => arr
-      | some req =>
-        let i := req.id.toNat.toUSize
-        arr.insertAtPosition none i
+  match bindOptions arr.val[reqId.toNat]? with
+    | none => arr
+    | some req =>
+      let i := req.id.toNat.toUSize
+      arr.insertAtPosition none i
 
 structure SystemState where
   requests : RequestArray
@@ -382,13 +391,13 @@ def SystemState.default := SystemState.init System.default
 instance : Inhabited SystemState where default := SystemState.default
 
 def SystemState.idsToReqs : SystemState → List RequestId → List Request
-  | state, ids => filterNones $ ids.map (λ id => state.requests.val[id])
+  | state, ids => filterNones $ ids.map (λ id => bindOptions state.requests.val[id.toNat]?)
 
 def SystemState.isSatisfied : SystemState → RequestId → Bool
   | state, rid => !(state.satisfied.filter λ (srd,_) => srd == rid).isEmpty
 
 def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Bool
-  | state, rid, tid => match state.requests.val[rid] with
+  | state, rid, tid => match bindOptions state.requests.val[rid.toNat]? with
     | none => false
     | some req => req.propagatedTo tid
 

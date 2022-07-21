@@ -63,8 +63,8 @@ abbrev ProgramState := Array (Array Transition)
 def ProgramState.getAvailable (prog : ProgramState) : List Transition := Id.run do
   let mut res := []
   for thread in prog do
-    if thread.size > 0 then
-      res := thread[thread.size - 1] :: res
+    if h : thread.size > 0 then
+    res := thread[thread.size - 1]'(by apply n_minus_one_le_n h) :: res
   return res
 
 def ProgramState.removeTransition (prog : ProgramState) (transition : Transition)
@@ -87,7 +87,7 @@ def createAcceptList : List (List (String × String × Nat)) → List Transition
   let replacedVariablesNat : List (List (String × Nat × Nat)) := list.map λ thread => thread.map replaceVar
   let replacedVariables : List (List (String × Address × Value)) := replacedVariablesNat.map λ l => l.map (λ (str,addr,val) => (str,Address.ofNat addr, Value.ofNat val))
   let fullThreads := replacedVariables.zip (List.range replacedVariables.length)
-  let mkThread := λ (reqs, thId) => filterNones $ reqs.map (λ r => mkRequest r thId)
+  let mkThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkRequest r thId) reqs
   let reqs := fullThreads.map λ t => mkThread t |>.toArray
   let initWrites := initZeroesUnpropagatedTransitions (List.range variables.length)
   let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
@@ -106,6 +106,7 @@ syntax request_seq : request_set
 syntax "<|" request_set "|>" : term
 
 -- syntax sepBy(request_seq,  "||") : request_set
+open Lean.TSyntax.Compat
 
 macro_rules
  | `(request| R $x:ident) => `(("R", $(Lean.quote x.getId.toString), 0))
@@ -113,7 +114,7 @@ macro_rules
  | `(request| Fence     ) => `(("Fence", "", 0))
 
 macro_rules
-  | `(request_seq| $r:request ) => `([$r])
+  | `(request_seq| $r:request ) => do `([$(← Lean.expandMacros r)])
   | `(request_seq| $r:request ; $rs:request_seq) => `($r :: $rs)
 
 macro_rules
@@ -254,12 +255,13 @@ match inittuple with
       let mut acceptsRemaining := #[]
       dbg_trace s!"starting state {startState}"
       dbg_trace s!"litmus requests {accepts}"
-      while unexplored.size != 0 do
+      while  unexplored.size > 0 do
           --dbg_trace s!"{unexplored.size} unexplored"
           --dbg_trace s!"{unexplored} unexplored"
-          partialTrace := unexplored[unexplored.size - 1].1
-          acceptsRemaining := unexplored[unexplored.size - 1].2.1
-          let st := unexplored[unexplored.size - 1].2.2
+          -- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/Naming.20condition.20.28Prop.29.20in.20while.20notation
+          partialTrace := unexplored[unexplored.size - 1]!.1
+          acceptsRemaining := unexplored[unexplored.size - 1]!.2.1
+          let st := unexplored[unexplored.size - 1]!.2.2
           transitions := st.possibleTransitions acceptsRemaining
           --acceptsRemaining := acceptsRemaining.map $ List.removeAll [transition]
           unexplored := unexplored.pop

@@ -40,8 +40,8 @@ open ListTree in
 def scopes_4 : ListTree ThreadId (List.range 4) :=
   leaf#0# :#sublist04#: (leaf#1# :#sublist14#: (leaf#2# :#sublist24#: (leaf#3# :#sublist34#: parent # [0,1,2,3] #  )))
 
-def valid_scopes_2 : ValidScopes := { system_scope := List.range 2, scopes := scopes_2, threads_in := sorry}
-def valid_scopes_4 : ValidScopes := { system_scope := List.range 4, scopes := scopes_4, threads_in := sorry}
+def valid_scopes_2 : ValidScopes := { system_scope := List.range 2, scopes := ListTree.leaf (List.range 2)}
+def valid_scopes_4 : ValidScopes := { system_scope := List.range 4, scopes := ListTree.leaf (List.range 4)}
 
 
 def tso_reorder : Request → Request → Bool

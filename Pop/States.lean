@@ -69,12 +69,8 @@ def BasicRequest.value? : BasicRequest → Value
 structure ValidScopes where
   system_scope : List ThreadId
   scopes : ListTree ThreadId system_scope
-  threads_in : ∀ n : ThreadId, n ∈ system_scope → [n] ∈ scopes
 
-theorem empty_threads_in : ∀ n : ThreadId, n ∈ [] → [n] ∈ ListTree.leaf [] := by
-  intros
-  contradiction
-def ValidScopes.default : ValidScopes := { system_scope := [], scopes := ListTree.leaf [], threads_in := empty_threads_in}
+def ValidScopes.default : ValidScopes := { system_scope := [], scopes := ListTree.leaf []}
 instance : Inhabited ValidScopes where default := ValidScopes.default
 
 structure Scope {V : ValidScopes} where

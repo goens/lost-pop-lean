@@ -270,6 +270,13 @@ structure RequestArray where
   val : Array (Option Request)
   coherent : valConsistent val = true
 
+def RequestArray.getReq? : RequestArray → RequestId → Option Request
+  | arr, rId => match arr.val[rId.toNat]? with
+    | some (some req) => some req
+    | _ => none
+
+-- instance : GetElem RequestArray RequestId (Option Request) where getElem
+
 instance : BEq RequestArray where beq := λ r₁ r₂ => r₁.val == r₂.val
 
 theorem emptyArrayCoherent : valConsistent (Array.mk []) := by simp
@@ -323,7 +330,7 @@ def RequestArray.insert : RequestArray → Request → RequestArray
 
 def RequestArray.remove : RequestArray → RequestId → RequestArray
   | arr, reqId =>
-  match bindOptions arr.val[reqId.toNat]? with
+  match arr.getReq? reqId with
     | none => arr
     | some req =>
       let i := req.id.toNat.toUSize
@@ -349,7 +356,6 @@ def SystemState.beq (state₁ state₂ : SystemState)
   state₁.satisfied == state₂.satisfied &&
   -- this will be expensive!
   state₁.orderConstraints.compare state₂.orderConstraints (reqIds state₁.requests)
-
 
 instance : BEq SystemState where beq := SystemState.beq
 
@@ -387,13 +393,13 @@ def SystemState.default := SystemState.init System.default
 instance : Inhabited SystemState where default := SystemState.default
 
 def SystemState.idsToReqs : SystemState → List RequestId → List Request
-  | state, ids => filterNones $ ids.map (λ id => bindOptions state.requests.val[id.toNat]?)
+  | state, ids => filterNones $ ids.map (λ id => state.requests.getReq? id)
 
 def SystemState.isSatisfied : SystemState → RequestId → Bool
   | state, rid => !(state.satisfied.filter λ (srd,_) => srd == rid).isEmpty
 
 def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Bool
-  | state, rid, tid => match bindOptions state.requests.val[rid.toNat]? with
+  | state, rid, tid => match state.requests.getReq? rid with
     | none => false
     | some req => req.propagatedTo tid
 

@@ -43,7 +43,7 @@ def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope s
     * req, req' not already ordered
     * req, req' can't be reoredered
     -/
-  match bindOptions state.requests.val[reqId.toNat]? with
+  match state.requests.getReq? reqId with
     | none => state.orderConstraints
     | some req =>
       let conditions := λ req' : Request =>
@@ -99,12 +99,21 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
     satisfiedCoherent := sorry
   }
 
+-- def SystemState.canUnapplyRequest : SystemState → RequestId → Bool
+--   | state, rId =>
+--   let req := state.requests.val[rId]?
+
+ 
+
+-- def SystemState.unapplyAcceptRequest : SystemState → RequestId → SystemState
+--   | state, rId
+
 def Request.isPropagated : Request → ThreadId → Bool
   | req, thId => req.propagated_to.elem thId
 
 def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | state, reqId, thId =>
-  match bindOptions state.requests.val[reqId.toNat]? with
+  match state.requests.getReq? reqId with
   | none => false
   | some req =>
     let unpropagated := !req.isPropagated thId
@@ -128,8 +137,7 @@ def Request.propagate : Request → ThreadId → Request
 
 def SystemState.propagate : SystemState → RequestId → ThreadId → SystemState
   | state, reqId, thId =>
-  let reqOpt := state.requests.val[reqId.toNat]?
-  match bindOptions reqOpt with
+  match state.requests.getReq? reqId with
   | none => state
   | some req =>
     let requests' := state.requests.insert (req.propagate thId)
@@ -162,8 +170,8 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
 
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState
  | state, readId, writeId =>
- let opRead := bindOptions state.requests.val[readId.toNat]?
- let opWrite := bindOptions state.requests.val[writeId.toNat]?
+ let opRead := state.requests.getReq? readId
+ let opWrite := state.requests.getReq? writeId
  match opRead, opWrite with
    | some read, some write =>
       let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexble |>.toList

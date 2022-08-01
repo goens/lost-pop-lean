@@ -255,10 +255,9 @@ match inittuple with
       let mut acceptsRemaining := #[]
       dbg_trace s!"starting state {startState}"
       dbg_trace s!"litmus requests {accepts}"
-      while  unexplored.size > 0 do
+      while  h : unexplored.size > 0 do
           --dbg_trace s!"{unexplored.size} unexplored"
           --dbg_trace s!"{unexplored} unexplored"
-          -- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/Naming.20condition.20.28Prop.29.20in.20while.20notation
           partialTrace := unexplored[unexplored.size - 1]!.1
           acceptsRemaining := unexplored[unexplored.size - 1]!.2.1
           let st := unexplored[unexplored.size - 1]!.2.2

@@ -44,7 +44,7 @@ def valid_scopes_2 : ValidScopes := { system_scope := List.range 2, scopes := Li
 def valid_scopes_4 : ValidScopes := { system_scope := List.range 4, scopes := ListTree.leaf (List.range 4)}
 
 
-def tso_reorder : Request → Request → Bool
+def tso_reorder : @Request DefaultReqType → @Request DefaultReqType → Bool
 | r₁, r₂ => if r₁.isBarrier || r₂.isBarrier
   then false
   else
@@ -55,11 +55,11 @@ def tso_reorder : Request → Request → Bool
   if sc_per_loc then ppo else false
   -- TODO: satisfied but not deleted?
 
-def tso_2_sys : System := { scopes := valid_scopes_2, reorder_condition := tso_reorder}
-def tso_4_sys : System := { scopes := valid_scopes_4, reorder_condition := tso_reorder}
+def tso_2_sys : @System DefaultReqType := { scopes := valid_scopes_2, reorder_condition := tso_reorder}
+def tso_4_sys : @System DefaultReqType := { scopes := valid_scopes_4, reorder_condition := tso_reorder}
 
-def inittso_2 : SystemState := SystemState.init tso_2_sys
-def inittso_4 : SystemState := SystemState.init tso_4_sys
+def inittso_2 : @SystemState DefaultReqType := SystemState.init tso_2_sys
+def inittso_4 : @SystemState DefaultReqType := SystemState.init tso_4_sys
 -- #eval inittso_2.initZeroes [0,1,2]
 
 end Litmus

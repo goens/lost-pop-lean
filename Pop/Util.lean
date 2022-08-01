@@ -79,6 +79,22 @@ theorem List.sublist_trans [BEq α] (a b c : List α) : sublist a b → sublist 
   induction a <;> induction b <;> induction c <;> simp [List.sublist, List.all, List.foldr, List.elem] <;> try contradiction
   sorry  -- TODO
 
+structure Triple (α β γ : Type) where
+ fst : α
+ snd : β
+ trd : γ
+
+notation "(" a "," b "," c ")t" => Triple.mk a b c
+
+def TupleTuple2Triple {α β γ : Type} : (α × β) × γ → Triple α β γ
+ | ((a, b), c) => (a,b,c)t
+
+def TupleTuple'2Triple {α β γ : Type} : α × (β × γ) → Triple α β γ
+ | (a, (b, c)) => (a,b,c)t
+
+instance {α β γ : Type} : Coe ((α × β) × γ)  (Triple α β γ) where coe := TupleTuple2Triple
+instance {α β γ : Type} : Coe (α × (β × γ))  (Triple α β γ) where coe := TupleTuple'2Triple
+
 -- def ListTree.joinSub [BEq α] {l₁ l₂: List α} (h : List.sublist l₁ l₂) : ListTree α l₁ → ListTree α l₂ → ListTree α l₂
 --   | (leaf l₁), (parentNil l₂) => parentCons (leaf l₁) (parentNil l₂) h
 --   | (leaf l₁), (leaf l₂) => parentCons (leaf l₁) (parentNil l₂) h

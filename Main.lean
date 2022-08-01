@@ -1,7 +1,4 @@
-import Pop.Test
-import Pop.Program
-import Pop.Util
-import Pop.Litmus
+import Pop
 
 def main : IO Unit := do
   -- let res := Test.inittso12.runWithList Test.testprogram (List.replicate 100 1)

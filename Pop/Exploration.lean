@@ -189,7 +189,7 @@ match inittuple with
             let newPairs := newACs.zip newSTs |>.filter λ pair => !unexplored.any λ (_,progState,sysState)t => pair == (progState, sysState)
             -- why do I need to make this coe explicit?
             let newTriples : List (Triple (List Transition) ProgramState SystemState) := newPTs.zip newPairs |>.map Coe.coe
-            unexplored.append newTriples.toArray
+            Array.append newTriples.toArray unexplored
             --if unexplored.size > 11337 then
             -- dbg_trace s!"state: {st}"
             -- dbg_trace s!"possible transitions: {transitions}"

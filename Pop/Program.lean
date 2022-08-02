@@ -13,43 +13,48 @@ inductive DefaultReqType
   | mk : DefaultReqType
   deriving BEq, Inhabited
 
-def mkRead (addr : Address) : @BasicRequest DefaultReqType :=
+instance : ArchReq where
+  type := DefaultReqType
+  beq_inst := instBEqDefaultReqType
+  inhabited_inst := instInhabitedDefaultReqType
+
+def mkRead (addr : Address) : BasicRequest :=
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
   BasicRequest.read rr default
 
-def mkWrite (addr : Address) (val : Value) : @BasicRequest DefaultReqType :=
+def mkWrite (addr : Address) (val : Value) : BasicRequest :=
   let wr : WriteRequest := { addr := addr, val := val}
   BasicRequest.write wr default
 
-def mkBarrier : @BasicRequest DefaultReqType := BasicRequest.barrier default
+def mkBarrier : BasicRequest := BasicRequest.barrier default
 
 -- TODO: Add values to writes
-def mkRequest : String × Address × Value → ThreadId → Option (@Transition DefaultReqType)
+def mkRequest : String × Address × Value → ThreadId → Option (Transition)
   | ("R", addr, _), thId  => some $ Pop.Transition.acceptRequest (Pop.mkRead addr) thId
   | ("W", addr, val), thId  => some $ Pop.Transition.acceptRequest (Pop.mkWrite addr val) thId
   | ("Fence", _, _), thId => some $ Pop.Transition.acceptRequest (Pop.mkBarrier) thId
   | _, _ => none
 
-def initZeroesUnpropagatedTransitions : List Address → List (@Transition DefaultReqType)
+def initZeroesUnpropagatedTransitions : List Address → List (Transition)
   | addresses =>
   -- Does the threadId matter? For now, using 0
   addresses.map λ addr => Pop.Transition.acceptRequest (Pop.mkWrite addr 0) 0
 
-def SystemState.initZeroesUnpropagated! : @SystemState DefaultReqType → List Address → @SystemState DefaultReqType
+def SystemState.initZeroesUnpropagated! : SystemState → List Address → SystemState
   | state, addresses =>
     let writeReqs := initZeroesUnpropagatedTransitions addresses
     state.applyTrace! writeReqs
 
-def SystemState.initZeroesUnpropagated : @SystemState DefaultReqType → List Address → Except String (@SystemState DefaultReqType)
+def SystemState.initZeroesUnpropagated : SystemState → List Address → Except String (SystemState)
   | state, addresses =>
   let writeReqs := initZeroesUnpropagatedTransitions addresses
   state.applyTrace writeReqs
 
-def mkPropagateTransitions : List RequestId → List ThreadId → List (@Transition DefaultReqType)
+def mkPropagateTransitions : List RequestId → List ThreadId → List (Transition)
 | writeReqIds, threads =>
   List.join $ writeReqIds.map λ wr => threads.foldl (λ reqs thId => (Pop.Transition.propagateToThread wr thId) :: reqs) []
 
-def SystemState.initZeroesPropagateTransitions : @SystemState DefaultReqType → List Address → List (@Transition DefaultReqType)
+def SystemState.initZeroesPropagateTransitions : SystemState → List Address → List (Transition)
   | state, addresses =>
   let reqs := filterNones $ state.requests.val.toList
   -- this filter should be uneccessary if SystemState is empty
@@ -58,23 +63,23 @@ def SystemState.initZeroesPropagateTransitions : @SystemState DefaultReqType →
   let threads := state.system.threads.removeAll [0]
   mkPropagateTransitions writeReqIds threads
 
-def SystemState.initZeroesPropagate! : @SystemState DefaultReqType → List Address → @SystemState DefaultReqType
+def SystemState.initZeroesPropagate! : SystemState → List Address → SystemState
   | state, addresses => state.applyTrace! $ state.initZeroesPropagateTransitions addresses
-def SystemState.initZeroesPropagate : @SystemState DefaultReqType → List Address → Except String (@SystemState DefaultReqType)
+def SystemState.initZeroesPropagate : SystemState → List Address → Except String (SystemState)
   | state, addresses => state.applyTrace $ state.initZeroesPropagateTransitions addresses
 
-def SystemState.initZeroes! : @SystemState DefaultReqType → List Address → @SystemState DefaultReqType
+def SystemState.initZeroes! : SystemState → List Address → SystemState
   | state, addresses =>
     let unpropagated := state.initZeroesUnpropagated! addresses
     unpropagated.initZeroesPropagate! addresses
 
-def SystemState.initZeroes : @SystemState DefaultReqType → List Address → Except String (@SystemState DefaultReqType)
+def SystemState.initZeroes : SystemState → List Address → Except String (SystemState)
   | state, addresses =>
     let unpropagated := state.initZeroesUnpropagated addresses
     Except.bind  unpropagated (λ st => st.initZeroesPropagate addresses)
 
 -- create accepts in a per-thread basis
-def createAcceptList : List (List (String × String × Nat)) → List (@Transition DefaultReqType) × Array (Array (@Transition DefaultReqType))
+def createAcceptList : List (List (String × String × Nat)) → List (Transition) × Array (Array (Transition))
   | list =>
   let variablesRaw := list.map λ thread => thread.map (λ r => if r.2.1.length == 0 then none else some r.2.1)
   let variables := removeDuplicates $ filterNones $ List.join variablesRaw

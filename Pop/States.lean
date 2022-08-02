@@ -22,7 +22,12 @@ instance : OfNat Address n where ofNat := Address.ofNat n
 instance : OfNat Value n where ofNat := Value.ofNat n
 instance : Coe RequestId Nat where coe := RequestId.toNat
 
-variable {ArchReqType : Type 0} [BEq ArchReqType] [Inhabited ArchReqType]
+class ArchReq where
+(type : Type 0)
+(beq_inst : BEq type)
+(inhabited_inst : Inhabited type)
+
+variable [ArchReq]
 
 structure ReadRequest where
  addr : Address
@@ -35,32 +40,29 @@ structure WriteRequest where
  val : Value
  deriving BEq
 
+instance : BEq ArchReq.type where beq := ArchReq.beq_inst.beq
+instance : Inhabited ArchReq.type where default := ArchReq.inhabited_inst.default
+
 inductive BasicRequest
- | read : ReadRequest → ArchReqType → BasicRequest
- | write : WriteRequest → ArchReqType → BasicRequest
- | barrier : ArchReqType → BasicRequest
+ | read : ReadRequest → ArchReq.type → BasicRequest
+ | write : WriteRequest → ArchReq.type → BasicRequest
+ | barrier : ArchReq.type → BasicRequest
  deriving BEq
 
---instance : BEq (@BasicRequest ArchReqType) where beq := λ br₁ br₂ => match br₁, br₂ with
---  | .read rr₁ rt₁, .read rr₂ rt₂ => rr₁ == rr₂ && rt₁ == rt₂
---  | .write wr₁ rt₁, .write wr₂ rt₂ => wr₁ == wr₂ && rt₁ == rt₂
---  | .barrier rt₁, .barrier rt₂ => rt₁ == rt₂
---  | _, _ => false
+instance : Inhabited BasicRequest where default := BasicRequest.barrier default
 
-instance : Inhabited (@BasicRequest ArchReqType) where default := BasicRequest.barrier default
-
-def BasicRequest.toString : (@BasicRequest ArchReqType) → String
+def BasicRequest.toString : (BasicRequest) → String
   | BasicRequest.read  rr _ => s!"read (Addr{rr.addr}) : {rr.val}"
   | BasicRequest.write  wr _ => s!"write (Addr{wr.addr}) : {wr.val}"
   | BasicRequest.barrier _ => "barrier"
 
-instance : ToString (@BasicRequest ArchReqType) where toString := BasicRequest.toString
+instance : ToString (BasicRequest) where toString := BasicRequest.toString
 
-def BasicRequest.setValue : (@BasicRequest ArchReqType) → Value → (@BasicRequest ArchReqType)
+def BasicRequest.setValue : (BasicRequest) → Value → (BasicRequest)
   | BasicRequest.read rr rt, v => BasicRequest.read {rr with val := v} rt
   | br@_ , _ => br
 
-def BasicRequest.value? : @BasicRequest ArchReqType → Value
+def BasicRequest.value? : BasicRequest → Value
   | BasicRequest.read rr _ => rr.val
   | BasicRequest.write wr _ => wr.val
   | _ => none
@@ -81,35 +83,35 @@ structure Request where
   id : RequestId
   propagated_to : List ThreadId
   thread : ThreadId
-  basic_type : @BasicRequest ArchReqType
+  basic_type : BasicRequest
   -- scope : Scope
   -- type : α
   deriving BEq
 
-def Request.default : @Request ArchReqType := {id := 0, propagated_to := [], thread := 0, basic_type := BasicRequest.barrier Inhabited.default}
-instance : Inhabited (@Request ArchReqType) where default := Request.default
+def Request.default : Request := {id := 0, propagated_to := [], thread := 0, basic_type := BasicRequest.barrier Inhabited.default}
+instance : Inhabited (Request) where default := Request.default
 
-def Request.toString : @Request ArchReqType → String
+def Request.toString : Request → String
   | req => s!" Request {req.id} {req.basic_type} : [propagated to {req.propagated_to}, origin thread : {req.thread}]"
-instance : ToString (@Request ArchReqType) where toString := Request.toString
+instance : ToString (Request) where toString := Request.toString
 
-def BasicRequest.isRead    (r : @BasicRequest ArchReqType) : Bool := match r with | read  _ _ => true | _ => false
-def BasicRequest.isWrite   (r : @BasicRequest ArchReqType) : Bool := match r with | write _ _ => true | _ => false
-def BasicRequest.isBarrier (r : @BasicRequest ArchReqType) : Bool := match r with | barrier _ => true | _ => false
-def Request.isRead    (r : @Request ArchReqType) : Bool := r.basic_type.isRead
-def Request.isWrite   (r : @Request ArchReqType) : Bool := r.basic_type.isWrite
-def Request.isBarrier (r : @Request ArchReqType) : Bool := r.basic_type.isBarrier
-def Request.isMem     (r : @Request ArchReqType) : Bool := !r.basic_type.isBarrier
+def BasicRequest.isRead    (r : BasicRequest) : Bool := match r with | read  _ _ => true | _ => false
+def BasicRequest.isWrite   (r : BasicRequest) : Bool := match r with | write _ _ => true | _ => false
+def BasicRequest.isBarrier (r : BasicRequest) : Bool := match r with | barrier _ => true | _ => false
+def Request.isRead    (r : Request) : Bool := r.basic_type.isRead
+def Request.isWrite   (r : Request) : Bool := r.basic_type.isWrite
+def Request.isBarrier (r : Request) : Bool := r.basic_type.isBarrier
+def Request.isMem     (r : Request) : Bool := !r.basic_type.isBarrier
 
-def Request.value? (r : @Request ArchReqType) : Value := r.basic_type.value?
-def Request.setValue (r : @Request ArchReqType) (v : Value) : @Request ArchReqType := { r with basic_type := r.basic_type.setValue v}
+def Request.value? (r : Request) : Value := r.basic_type.value?
+def Request.setValue (r : Request) (v : Value) : Request := { r with basic_type := r.basic_type.setValue v}
 
-def BasicRequest.address? (r : @BasicRequest ArchReqType) : Option Address := match r with
+def BasicRequest.address? (r : BasicRequest) : Option Address := match r with
   | read  req _ => some req.addr
   | write req _ => some req.addr
   | _ => none
 
-def Request.address? (r : @Request ArchReqType) : Option Address := r.basic_type.address?
+def Request.address? (r : Request) : Option Address := r.basic_type.address?
 
 def SatisfiedRead := RequestId × RequestId deriving ToString, BEq
 
@@ -134,26 +136,26 @@ def ValidScopes.jointScope : (V : ValidScopes) → ThreadId → ThreadId → (@S
    | some scope => {threads := scope, valid := sorry}
    | none => unreachable! -- can we get rid of this case distinction?
 
-def Request.propagatedTo (r : @Request ArchReqType) (t : ThreadId) : Bool := r.propagated_to.elem t
+def Request.propagatedTo (r : Request) (t : ThreadId) : Bool := r.propagated_to.elem t
 
-def Request.fullyPropagated {V : ValidScopes}  (r : @Request ArchReqType) (s : optParam (@Scope V) V.systemScope) : Bool :=
+def Request.fullyPropagated {V : ValidScopes}  (r : Request) (s : optParam (@Scope V) V.systemScope) : Bool :=
   let propToList := s.threads.map (λ t => Request.propagatedTo r t)
   propToList.foldl (init:= true) (. && .)
 
 structure System where
   scopes : ValidScopes
-  reorder_condition : @Request ArchReqType → @Request ArchReqType → Bool
+  reorder_condition : Request → Request → Bool
 
-def System.default : @System ArchReqType := { scopes := ValidScopes.default, reorder_condition :=  (λ _ _ => false)}
-instance : Inhabited (@System ArchReqType) where default := System.default
+def System.default : System := { scopes := ValidScopes.default, reorder_condition :=  (λ _ _ => false)}
+instance : Inhabited (System) where default := System.default
 
-def System.threads : @System ArchReqType → List ThreadId
+def System.threads : System → List ThreadId
  | s => s.scopes.system_scope
 
-def System.requestScope (sys : @System ArchReqType) (req : @Request ArchReqType) : @Scope sys.scopes :=
+def System.requestScope (sys : System) (req : Request) : @Scope sys.scopes :=
   sys.scopes.systemScope -- TODO: change here for scoped version
 
-theorem sameOrderConstraints {system₁ system₂ : @System ArchReqType} :
+theorem sameOrderConstraints {system₁ system₂ : System} :
   system₁ = system₂ → system₁.scopes = system₂.scopes := by
   intros h
   rw [h]
@@ -260,9 +262,9 @@ def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints
    let reqTrue := reqPairs.filter $ λ (r₁,r₂) => constraints.lookup scope r₁ r₂
    reqTrue.toString
 
-private def opReqId? : Option (@Request ArchReqType) → Option RequestId := Option.map λ r => r.id
+private def opReqId? : Option (Request) → Option RequestId := Option.map λ r => r.id
 
-private def valConsistent (vals :  Array (Option (@Request ArchReqType))) : Bool :=
+private def valConsistent (vals :  Array (Option (Request))) : Bool :=
   let valOpIds := vals.map opReqId?
   let valConsistent := λ idx opVal => match opVal with
     | none => true
@@ -271,29 +273,29 @@ private def valConsistent (vals :  Array (Option (@Request ArchReqType))) : Bool
   consistentVals.foldl (. && .) true
 
 structure RequestArray where
-  val : Array (Option (@Request ArchReqType))
+  val : Array (Option (Request))
   coherent : valConsistent val = true
 
-instance : BEq (@RequestArray ArchReqType) where beq := λ arr₁ arr₂ => arr₁.val == arr₂.val
+instance : BEq (RequestArray) where beq := λ arr₁ arr₂ => arr₁.val == arr₂.val
 
-def RequestArray.getReq? : (@RequestArray ArchReqType) → RequestId → Option (@Request ArchReqType)
+def RequestArray.getReq? : (RequestArray) → RequestId → Option (Request)
   | arr, rId => match arr.val[rId.toNat]? with
     | some (some req) => some req
     | _ => none
 
 -- instance : GetElem RequestArray RequestId (Option Request) where getElem
 
-theorem emptyArrayCoherent : valConsistent (Array.mk ([] : List (Option (@Request ArchReqType)))) := by
+theorem emptyArrayCoherent : valConsistent (Array.mk ([] : List (Option (Request)))) := by
   sorry -- metavariable screws up simp
 
-def RequestArray.empty : @RequestArray ArchReqType :=
+def RequestArray.empty : RequestArray :=
   { val := Array.mk [], coherent := emptyArrayCoherent }
 
-def RequestArray.toString : @RequestArray ArchReqType → String
+def RequestArray.toString : RequestArray → String
   | arr => String.intercalate ",\n" $ List.map Request.toString $ filterNones arr.val.toList
-instance : ToString (@RequestArray ArchReqType) where toString := RequestArray.toString
+instance : ToString (RequestArray) where toString := RequestArray.toString
 
-def reqIds : (@RequestArray ArchReqType) → List RequestId
+def reqIds : (RequestArray) → List RequestId
  | arr =>
    let opIds :=  Array.toList $ arr.val.map (Option.map Request.id)
    filterNones opIds
@@ -302,7 +304,7 @@ def growArray {α : Type} (a : Array (Option α)) (n : Nat) : Array (Option α) 
   --dbg_trace s!"growing array of size {a.size} by {n}"
   a.append (Array.mkArray (a.size - n) none)
 
-private def RequestArray._insert : @RequestArray ArchReqType → @Request ArchReqType → Array (Option (@Request ArchReqType))
+private def RequestArray._insert : RequestArray → Request → Array (Option (Request))
   | arr, req =>
     --dbg_trace "growing [{arr}] of size {arr.val.size} to {req.id.toNat + 1} for Request {req}"
     let vals' := growArray arr.val (req.id.toNat + 1)
@@ -314,12 +316,12 @@ private def RequestArray._insert : @RequestArray ArchReqType → @Request ArchRe
     else unreachable! -- because of growArray before
 
 -- can't be proving these things right now
-theorem RequestArrayInsertConsistent (arr : @RequestArray ArchReqType) (req : @Request ArchReqType) :
+theorem RequestArrayInsertConsistent (arr : RequestArray) (req : Request) :
   valConsistent (arr._insert req) = true := by sorry
   -- unfold RequestArray._insert
   -- simp
 
-def RequestArray.insertAtPosition : @RequestArray ArchReqType → Option (@Request ArchReqType) → USize → @RequestArray ArchReqType
+def RequestArray.insertAtPosition : RequestArray → Option (Request) → USize → RequestArray
   | arr, opReq, i =>
     let val' := if h : i.toNat < arr.val.size
       then arr.val.uset i opReq h
@@ -329,12 +331,12 @@ def RequestArray.insertAtPosition : @RequestArray ArchReqType → Option (@Reque
       -- RequestArrayInsertConsistent arr req
     { val := val', coherent := sorry}
 
-def RequestArray.insert : @RequestArray ArchReqType → @Request ArchReqType → @RequestArray ArchReqType
+def RequestArray.insert : RequestArray → Request → RequestArray
   | arr, req =>
     let i := req.id.toNat.toUSize
     arr.insertAtPosition (some req) i
 
-def RequestArray.remove : @RequestArray ArchReqType → RequestId → @RequestArray ArchReqType
+def RequestArray.remove : RequestArray → RequestId → RequestArray
   | arr, reqId =>
   match arr.getReq? reqId with
     | none => arr
@@ -343,17 +345,17 @@ def RequestArray.remove : @RequestArray ArchReqType → RequestId → @RequestAr
       arr.insertAtPosition none i
 
 structure SystemState where
-  requests : @RequestArray ArchReqType
+  requests : RequestArray
   seen : List RequestId
-  removed : List (@Request ArchReqType)
-  system : @System ArchReqType
+  removed : List (Request)
+  system : System
   satisfied : List SatisfiedRead
   orderConstraints : @OrderConstraints system.scopes
   seenCoherent : ∀ id : RequestId, id ∈ seen → id ∈ reqIds requests
   removedCoherent : ∀ id : RequestId, id ∈ (removed.map Request.id) → id ∈ reqIds requests
   satisfiedCoherent : ∀ id₁ id₂ : RequestId, (id₁,id₂) ∈ satisfied → id₁ ∈ seen ∧ id₂ ∈ seen
 
-def SystemState.beq (state₁ state₂ : @SystemState ArchReqType)
+def SystemState.beq (state₁ state₂ : SystemState)
   -- (samesystem : state₁.system = state₂.system)
   : Bool :=
   state₁.requests == state₂.requests &&
@@ -363,22 +365,22 @@ def SystemState.beq (state₁ state₂ : @SystemState ArchReqType)
   -- this will be expensive!
   state₁.orderConstraints.compare state₂.orderConstraints (reqIds state₁.requests)
 
-instance : BEq (@SystemState ArchReqType) where beq := SystemState.beq
+instance : BEq (SystemState) where beq := SystemState.beq
 
-def SystemState.oderConstraintsString (state : @SystemState ArchReqType)
+def SystemState.oderConstraintsString (state : SystemState)
 (scope : optParam (@Scope state.system.scopes) state.system.scopes.systemScope) : String :=
   state.orderConstraints.toString scope $ filterNones $ state.requests.val.toList.map $ Option.map Request.id
 
-def SystemState.toString : @SystemState ArchReqType → String
+def SystemState.toString : SystemState → String
   | state => s!"requests:\n{state.requests.toString}\n"  ++
   s!"seen: {state.seen.toString}\n" ++
   s!"removed: {state.removed.toString}\n" ++
   s!"satisfied: {state.satisfied.toString}\n" ++
   s!"constraints: {state.oderConstraintsString}\n"
 
-instance : ToString (@SystemState ArchReqType) where toString := SystemState.toString
+instance : ToString (SystemState) where toString := SystemState.toString
 
-theorem emptyCoherent (requests : @RequestArray ArchReqType) :
+theorem emptyCoherent (requests : RequestArray) :
   ∀ id : RequestId, id ∈ [] → id ∈ reqIds requests := by
   intros id h
   contradiction
@@ -388,7 +390,7 @@ theorem empty2Coherent (seen : List RequestId) :
   intros
   contradiction
 
-def SystemState.init (S : @System ArchReqType) : @SystemState ArchReqType :=
+def SystemState.init (S : System) : SystemState :=
   { requests := RequestArray.empty, seen := [], removed := [],
     system := S, satisfied := [], orderConstraints := OrderConstraints.empty,
     seenCoherent := emptyCoherent RequestArray.empty,
@@ -396,16 +398,16 @@ def SystemState.init (S : @System ArchReqType) : @SystemState ArchReqType :=
     satisfiedCoherent := empty2Coherent []
   }
 
-def SystemState.default := @SystemState.init ArchReqType System.default
-instance : Inhabited (@SystemState ArchReqType) where default := SystemState.default
+def SystemState.default := SystemState.init System.default
+instance : Inhabited (SystemState) where default := SystemState.default
 
-def SystemState.idsToReqs : (@SystemState ArchReqType) → List RequestId → List (@Request ArchReqType)
+def SystemState.idsToReqs : (SystemState) → List RequestId → List (Request)
   | state, ids => filterNones $ ids.map (λ id => state.requests.getReq? id)
 
-def SystemState.isSatisfied : @SystemState ArchReqType → RequestId → Bool
+def SystemState.isSatisfied : SystemState → RequestId → Bool
   | state, rid => !(state.satisfied.filter λ (srd,_) => srd == rid).isEmpty
 
-def SystemState.reqPropagatedTo : @SystemState ArchReqType → RequestId → ThreadId → Bool
+def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Bool
   | state, rid, tid => match state.requests.getReq? rid with
     | none => false
     | some req => req.propagatedTo tid

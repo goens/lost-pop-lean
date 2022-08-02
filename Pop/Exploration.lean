@@ -8,19 +8,19 @@ open Util
 
 namespace Pop
 
-variable {ArchReqType : Type 0} [BEq ArchReqType] [Inhabited ArchReqType]
+variable [archReqInst : ArchReq]
 
-abbrev ProgramState := Array (Array (@Transition ArchReqType))
+abbrev ProgramState := Array (Array (Transition))
 
-def ProgramState.getAvailable (prog : @ProgramState ArchReqType) : List (@Transition ArchReqType) := Id.run do
+def ProgramState.getAvailable (prog : ProgramState) : List (Transition) := Id.run do
   let mut res := []
   for thread in prog do
     if h : thread.size > 0 then
     res := thread[thread.size - 1]'(by apply n_minus_one_le_n h) :: res
   return res
 
-def ProgramState.removeTransition (prog : @ProgramState ArchReqType) (transition : (@Transition ArchReqType))
-  : @ProgramState ArchReqType := Id.run do
+def ProgramState.removeTransition (prog : ProgramState) (transition : (Transition))
+  : ProgramState := Id.run do
   let mut res := #[]
   let mut thread' := #[]
   for thread in prog do
@@ -28,22 +28,22 @@ def ProgramState.removeTransition (prog : @ProgramState ArchReqType) (transition
     res := res.push thread'
   return res
 
-def Request.possiblePropagateTransitions (req : @Request ArchReqType) (state :  @SystemState ArchReqType) : List (@Transition ArchReqType) :=
+def Request.possiblePropagateTransitions (req : Request) (state :  SystemState) : List (Transition) :=
   let threads := state.system.threads.removeAll req.propagated_to
   --dbg_trace s!"Req {req.id} has not propagated to {threads}"
   let threads_valid := threads.filter (state.canPropagate req.id)
   --dbg_trace s!"Req {req.id} can propagate to {threads_valid}"
   threads_valid.map λ th => Transition.propagateToThread req.id th
 
-def SystemState.possiblePropagateTransitions (state :  @SystemState ArchReqType) : List (@Transition ArchReqType) :=
+def SystemState.possiblePropagateTransitions (state :  SystemState) : List (Transition) :=
   let requests := filterNones state.requests.val.toList
-  let requests_not_fully_propagated := requests.filter λ r => ! (@Request.fullyPropagated ArchReqType state.system.scopes r state.system.scopes.systemScope)
+  let requests_not_fully_propagated := requests.filter λ r => ! (@Request.fullyPropagated archReqInst state.system.scopes r state.system.scopes.systemScope)
   let removedIds := state.removed.map Request.id
   let requests_active := requests_not_fully_propagated.filter λ r => (state.seen.elem r.id) && (!removedIds.elem r.id)
   -- dbg_trace s!"active requests: {requests_active}"
   List.join $ requests_active.map λ r => r.possiblePropagateTransitions state
 
-def Request.possibleSatisfyTransitions (read : @Request ArchReqType) (state : @SystemState ArchReqType) : List (@Transition ArchReqType) :=
+def Request.possibleSatisfyTransitions (read : Request) (state : SystemState) : List (Transition) :=
   if !read.isRead then [] else
     let requests := filterNones state.requests.val.toList
     let writes_propagated_eq := requests.filter λ write => write.isWrite && write.propagated_to == read.propagated_to
@@ -53,30 +53,30 @@ def Request.possibleSatisfyTransitions (read : @Request ArchReqType) (state : @S
     --dbg_trace s!"valid writes for transition: {writes_valid}"
     writes_valid.map $ Transition.satisfyRead read.id
 
-def SystemState.possibleSatisfyTransitions (state :  @SystemState ArchReqType) : List (@Transition ArchReqType) :=
+def SystemState.possibleSatisfyTransitions (state :  SystemState) : List (Transition) :=
   let requests := filterNones state.requests.val.toList
   let unsatisfied_reads := requests.filter λ r => r.isRead && !(state.isSatisfied r.id)
   List.join $ unsatisfied_reads.map λ r => r.possibleSatisfyTransitions state
 
-def SystemState.possibleTransitions (state : @SystemState ArchReqType) (unaccepted : ProgramState) :=
+def SystemState.possibleTransitions (state : SystemState) (unaccepted : ProgramState) :=
   let allaccepts := unaccepted.map λ th => th.filter Transition.isAccept
   let accepts := ProgramState.getAvailable allaccepts
   accepts ++ state.possibleSatisfyTransitions ++ state.possiblePropagateTransitions
 
-def SystemState.hasUnsatisfiedReads (state : @SystemState ArchReqType) :=
+def SystemState.hasUnsatisfiedReads (state : SystemState) :=
   let requests := filterNones state.requests.val.toList
   let reads := requests.filter Request.isRead
   let readids := reads.map Request.id
   let unsatisfied := readids.filter state.isSatisfied
   unsatisfied != []
 
-def SystemState.isDeadlocked (state : SystemState) (unaccepted : @ProgramState ArchReqType) :=
+def SystemState.isDeadlocked (state : SystemState) (unaccepted : ProgramState) :=
   let transitions := state.possibleTransitions unaccepted
   transitions == [] && state.hasUnsatisfiedReads
 
 -- This should be a monad transformer or smth...
-def SystemState.takeNthStep (state : @SystemState ArchReqType) (acceptRequests : @ProgramState ArchReqType)
-(n : Nat) : Except String (@Transition ArchReqType × @SystemState ArchReqType) :=
+def SystemState.takeNthStep (state : SystemState) (acceptRequests : ProgramState)
+(n : Nat) : Except String (Transition × SystemState) :=
   let transitions := state.possibleTransitions acceptRequests
   --dbg_trace s!"possible transitions: {transitions}"
   if transitions.isEmpty then
@@ -87,7 +87,7 @@ def SystemState.takeNthStep (state : @SystemState ArchReqType) (acceptRequests :
       | none => unreachable!
       | some trans => Except.map (λ st => (trans, st)) (state.applyTransition trans)
 
-def SystemState._runWithList  : @SystemState ArchReqType →  @ProgramState ArchReqType → List Nat → Except String (@SystemState ArchReqType)
+def SystemState._runWithList  : SystemState →  ProgramState → List Nat → Except String (SystemState)
   | state, accepts, ns => match ns with
     | [] => throw "Empty transition number list"
     | n::ns =>
@@ -100,7 +100,7 @@ def SystemState._runWithList  : @SystemState ArchReqType →  @ProgramState Arch
           state'._runWithList (ProgramState.removeTransition accepts trans) ns
         | Except.error e => Except.error e
 
-def SystemState.runWithList  : @SystemState ArchReqType →  @ProgramState ArchReqType → List Nat → Except String (@SystemState ArchReqType)
+def SystemState.runWithList  : SystemState →  ProgramState → List Nat → Except String (SystemState)
   | state, accepts, ns => if !(List.join (accepts.map Array.toList).toList |>.all Transition.isAccept)
   then throw "Running with non-accept transition inputs"
   else SystemState._runWithList state accepts ns
@@ -144,9 +144,9 @@ def SystemState.runDFS : SystemState → List Transition × List Transition → 
       [(inittransitions,state)]
 -/
 -- the unapologetically imperative version:
-def SystemState.runBFS (state : @SystemState ArchReqType) (inittuple : List (@Transition ArchReqType) × @ProgramState ArchReqType)
- (condition : @SystemState ArchReqType → Bool) (stopAtCondition : optParam Bool false) (storePartialTraces : optParam Bool false):
- List (List (@Transition ArchReqType) × @SystemState ArchReqType) :=
+def SystemState.runBFS (state : SystemState) (inittuple : List (Transition) × ProgramState)
+ (condition : SystemState → Bool) (stopAtCondition : optParam Bool false) (storePartialTraces : optParam Bool false):
+ List (List (Transition) × SystemState) :=
 match inittuple with
   | (inittransitions, accepts) =>
   let stateinit := state.applyTrace inittransitions
@@ -201,8 +201,8 @@ match inittuple with
     [(inittransitions,state)]
 
 
-def SystemState.runBFSNoDeadlock : @SystemState ArchReqType → List (@Transition ArchReqType) × @ProgramState ArchReqType →
-List (List (@Transition ArchReqType) × @SystemState ArchReqType)
+def SystemState.runBFSNoDeadlock : SystemState → List (Transition) × ProgramState →
+List (List (Transition) × SystemState)
   | state, litmus => state.runBFS litmus λ _ => false
 
 -- Doesn't work. Need to combine removed with requests
@@ -214,7 +214,7 @@ List (List (@Transition ArchReqType) × @SystemState ArchReqType)
 --       | _ => none
 --     filterNones optPairs
 
-def SystemState.outcome : @SystemState ArchReqType → List (ThreadId × Address × Value)
+def SystemState.outcome : SystemState → List (ThreadId × Address × Value)
   | state =>
     -- TODO: this won't work for reads that stay there
     let triple := state.removed.map λ rd => (rd.thread, rd.address?.get!, rd.value?)

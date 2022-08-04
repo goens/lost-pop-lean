@@ -136,29 +136,14 @@ def ValidScopes.jointScope : (V : ValidScopes) → ThreadId → ThreadId → (@S
    | some scope => {threads := scope, valid := sorry}
    | none => unreachable! -- can we get rid of this case distinction?
 
+def ValidScopes.requestScope (valid : ValidScopes) (req : Request) : @Scope valid :=
+  valid.systemScope -- TODO: change here for scoped version
+
 def Request.propagatedTo (r : Request) (t : ThreadId) : Bool := r.propagated_to.elem t
 
 def Request.fullyPropagated {V : ValidScopes}  (r : Request) (s : optParam (@Scope V) V.systemScope) : Bool :=
   let propToList := s.threads.map (λ t => Request.propagatedTo r t)
   propToList.foldl (init:= true) (. && .)
-
-structure System where
-  scopes : ValidScopes
-  reorder_condition : Request → Request → Bool
-
-def System.default : System := { scopes := ValidScopes.default, reorder_condition :=  (λ _ _ => false)}
-instance : Inhabited (System) where default := System.default
-
-def System.threads : System → List ThreadId
- | s => s.scopes.system_scope
-
-def System.requestScope (sys : System) (req : Request) : @Scope sys.scopes :=
-  sys.scopes.systemScope -- TODO: change here for scoped version
-
-theorem sameOrderConstraints {system₁ system₂ : System} :
-  system₁ = system₂ → system₁.scopes = system₂.scopes := by
-  intros h
-  rw [h]
 
 /-
  We have scoped order constraints, i.e. a different set of order constraints
@@ -348,9 +333,9 @@ structure SystemState where
   requests : RequestArray
   seen : List RequestId
   removed : List (Request)
-  system : System
+  scopes : ValidScopes
   satisfied : List SatisfiedRead
-  orderConstraints : @OrderConstraints system.scopes
+  orderConstraints : @OrderConstraints scopes
   seenCoherent : ∀ id : RequestId, id ∈ seen → id ∈ reqIds requests
   removedCoherent : ∀ id : RequestId, id ∈ (removed.map Request.id) → id ∈ reqIds requests
   satisfiedCoherent : ∀ id₁ id₂ : RequestId, (id₁,id₂) ∈ satisfied → id₁ ∈ seen ∧ id₂ ∈ seen
@@ -368,7 +353,7 @@ def SystemState.beq (state₁ state₂ : SystemState)
 instance : BEq (SystemState) where beq := SystemState.beq
 
 def SystemState.oderConstraintsString (state : SystemState)
-(scope : optParam (@Scope state.system.scopes) state.system.scopes.systemScope) : String :=
+(scope : optParam (@Scope state.scopes) state.scopes.systemScope) : String :=
   state.orderConstraints.toString scope $ filterNones $ state.requests.val.toList.map $ Option.map Request.id
 
 def SystemState.toString : SystemState → String
@@ -390,16 +375,20 @@ theorem empty2Coherent (seen : List RequestId) :
   intros
   contradiction
 
-def SystemState.init (S : System) : SystemState :=
+def SystemState.init (S : ValidScopes) : SystemState :=
   { requests := RequestArray.empty, seen := [], removed := [],
-    system := S, satisfied := [], orderConstraints := OrderConstraints.empty,
+    scopes := S, satisfied := [], orderConstraints := OrderConstraints.empty,
     seenCoherent := emptyCoherent RequestArray.empty,
     removedCoherent := emptyCoherent RequestArray.empty,
     satisfiedCoherent := empty2Coherent []
   }
 
-def SystemState.default := SystemState.init System.default
+def SystemState.default := SystemState.init ValidScopes.default
 instance : Inhabited (SystemState) where default := SystemState.default
+
+
+def SystemState.threads : SystemState → List ThreadId
+ | s => s.scopes.system_scope
 
 def SystemState.idsToReqs : (SystemState) → List RequestId → List (Request)
   | state, ids => filterNones $ ids.map (λ id => state.requests.getReq? id)
@@ -411,6 +400,13 @@ def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Boo
   | state, rid, tid => match state.requests.getReq? rid with
     | none => false
     | some req => req.propagatedTo tid
+
+class Arch where
+  (req : ArchReq)
+  (acceptConstraints : SystemState → BasicRequest → ThreadId → Bool )
+  (propagateConstraints : SystemState → RequestId → ThreadId → Bool)
+  (satisfyReadConstraints : SystemState → RequestId → RequestId → Bool)
+  (reorderCondition : Request → Request → Bool)
 
 -- private def maxThread : ThreadId → List ThreadId → ThreadId
 --   | curmax, n::rest => if curmax < n then maxThread n rest else maxThread curmax rest

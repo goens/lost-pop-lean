@@ -4,19 +4,12 @@ import Pop.Pop
 import Pop.Util
 import Std.Data
 import Pop.Exploration
+import Pop.TSO -- TODO: make this arch parametric too
+
 open Std.HashMap
 open Util
 
 namespace Pop
-
-inductive DefaultReqType
-  | mk : DefaultReqType
-  deriving BEq, Inhabited
-
-instance : ArchReq where
-  type := DefaultReqType
-  beq_inst := instBEqDefaultReqType
-  inhabited_inst := instInhabitedDefaultReqType
 
 def mkRead (addr : Address) : BasicRequest :=
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
@@ -60,7 +53,7 @@ def SystemState.initZeroesPropagateTransitions : SystemState → List Address �
   -- this filter should be uneccessary if SystemState is empty
   let writeReqs := reqs.filter (λ req => req.isWrite && addresses.elem req.address?.get! && req.value? == some 0)
   let writeReqIds := writeReqs.map Request.id
-  let threads := state.system.threads.removeAll [0]
+  let threads := state.threads.removeAll [0]
   mkPropagateTransitions writeReqIds threads
 
 def SystemState.initZeroesPropagate! : SystemState → List Address → SystemState
@@ -108,6 +101,7 @@ syntax request_seq : request_set
 syntax "<|" request_set "|>" : term
 
 -- syntax sepBy(request_seq,  "||") : request_set
+-- TODO: should not require Compat!
 open Lean.TSyntax.Compat
 
 macro_rules

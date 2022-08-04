@@ -38,6 +38,12 @@ inductive ListTree (α : Type) [BEq α] : List α → Type
   | parentCons (_ : ListTree α child) (_ : ListTree α sibling)
   (_ : List.sublist child sibling) : ListTree α sibling
 
+def Array.pmap : (α → β) → Array α → Array β
+  | f, as =>
+    let ts := as.map λ a => Task.spawn (λ _ => f a);
+    let rs := ts.map Task.get;
+    rs
+
 open ListTree
 
 def ListTree.elem [BEq α] {l : List α} :  List α → ListTree α l → Bool

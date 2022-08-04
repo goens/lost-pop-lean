@@ -43,23 +43,8 @@ def scopes_4 : ListTree ThreadId (List.range 4) :=
 def valid_scopes_2 : ValidScopes := { system_scope := List.range 2, scopes := ListTree.leaf (List.range 2)}
 def valid_scopes_4 : ValidScopes := { system_scope := List.range 4, scopes := ListTree.leaf (List.range 4)}
 
-
-def tso_reorder : Request → Request → Bool
-| r₁, r₂ => if r₁.isBarrier || r₂.isBarrier
-  then false
-  else
-  let sc_per_loc := r₁.address? != r₂.address?
-  --dbg_trace s!"sc_per_loc: {sc_per_loc}"
-  let ppo := (r₁.thread != r₂.thread) || !(r₂.isWrite && r₁.isRead)
-  --dbg_trace s!"ppo: {sc_per_loc}"
-  if sc_per_loc then ppo else false
-  -- TODO: satisfied but not deleted?
-
-def tso_2_sys : System := { scopes := valid_scopes_2, reorder_condition := tso_reorder}
-def tso_4_sys : System := { scopes := valid_scopes_4, reorder_condition := tso_reorder}
-
-def inittso_2 : SystemState := SystemState.init tso_2_sys
-def inittso_4 : SystemState := SystemState.init tso_4_sys
+def inittso_2 : SystemState := SystemState.init valid_scopes_2
+def inittso_4 : SystemState := SystemState.init valid_scopes_4
 -- #eval inittso_2.initZeroes [0,1,2]
 
 end Litmus

@@ -8,7 +8,8 @@ open Util
 
 namespace Pop
 
-variable [archReqInst : ArchReq]
+variable [Arch]
+instance : ArchReq := Arch.req
 
 abbrev ProgramState := Array (Array (Transition))
 
@@ -29,7 +30,7 @@ def ProgramState.removeTransition (prog : ProgramState) (transition : (Transitio
   return res
 
 def Request.possiblePropagateTransitions (req : Request) (state :  SystemState) : List (Transition) :=
-  let threads := state.system.threads.removeAll req.propagated_to
+  let threads := state.threads.removeAll req.propagated_to
   --dbg_trace s!"Req {req.id} has not propagated to {threads}"
   let threads_valid := threads.filter (state.canPropagate req.id)
   --dbg_trace s!"Req {req.id} can propagate to {threads_valid}"
@@ -37,7 +38,7 @@ def Request.possiblePropagateTransitions (req : Request) (state :  SystemState) 
 
 def SystemState.possiblePropagateTransitions (state :  SystemState) : List (Transition) :=
   let requests := filterNones state.requests.val.toList
-  let requests_not_fully_propagated := requests.filter λ r => ! (@Request.fullyPropagated archReqInst state.system.scopes r state.system.scopes.systemScope)
+  let requests_not_fully_propagated := requests.filter λ r => ! (@Request.fullyPropagated instArchReq state.scopes r state.scopes.systemScope)
   let removedIds := state.removed.map Request.id
   let requests_active := requests_not_fully_propagated.filter λ r => (state.seen.elem r.id) && (!removedIds.elem r.id)
   -- dbg_trace s!"active requests: {requests_active}"

@@ -5,7 +5,8 @@ open Util
 
 namespace Pop
 
-variable [ArchReq]
+variable [Arch]
+instance : ArchReq := Arch.req
 
 inductive Transition
   | acceptRequest : BasicRequest → ThreadId → Transition
@@ -33,11 +34,10 @@ def Transition.isSatisfy : Transition → Bool
   | satisfyRead _ _ => true
   | _ => false
 
-def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool
- | _, _, _ => true
+def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool := Arch.acceptConstraints
 
-def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope state.system.scopes →
-RequestId → ThreadId → @OrderConstraints state.system.scopes
+def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope state.scopes →
+RequestId → ThreadId → @OrderConstraints state.scopes
   | scope, reqId, thId =>
   /-
     add a constraint req, req' iff:
@@ -55,12 +55,12 @@ RequestId → ThreadId → @OrderConstraints state.system.scopes
         --dbg_trace s!"{!(req'.propagatedTo req.thread)}"
         --dbg_trace s!"{!(state.orderConstraints.lookup scope req.id req'.id)}"
         --dbg_trace s!"{!(state.orderConstraints.lookup scope req'.id req.id)}"
-        --dbg_trace s!"{!(state.system.reorder_condition req req')}"
+        --dbg_trace s!"{!(Arch.reorderCondition req req')}"
         req'.propagatedTo thId &&
         !(req'.propagatedTo req.thread) &&
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id) &&
-        !(state.system.reorder_condition req req')
+        !(Arch.reorderCondition req req')
       let seen := state.idsToReqs $ state.seen
       --dbg_trace s!"seen: {seen}"
       let newReqs := seen.filter conditions
@@ -68,11 +68,11 @@ RequestId → ThreadId → @OrderConstraints state.system.scopes
       --dbg_trace s!"new constraints: {newConstraints}"
       state.orderConstraints.add_subscopes scope newConstraints
 
-def SystemState.updateOrderConstraintsAccept (state : SystemState) : Request → @OrderConstraints state.system.scopes
+def SystemState.updateOrderConstraintsAccept (state : SystemState) : Request → @OrderConstraints state.scopes
   | req =>
     let seen := state.idsToReqs state.seen |>.filter (Request.propagatedTo . req.thread)
-    let scope := state.system.requestScope req
-    let newReqs := seen.filter λ req'  => !(state.system.reorder_condition req' req)
+    let scope := state.scopes.requestScope req
+    let newReqs := seen.filter λ req'  => !(Arch.reorderCondition req' req)
     let newConstraints := newReqs.map λ req' => (req'.id, req.id)
     --dbg_trace s!"seen: {seen}, new: {newReqs}"
     state.orderConstraints.add_subscopes scope newConstraints
@@ -94,7 +94,7 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
   let requests' := state.requests.insert req
   let seen' := blesort $ state.seen ++ [req.id]
   let orderConstraints' := state.updateOrderConstraintsAccept req
-  { requests := requests', system := state.system, seen := seen',
+  { requests := requests', scopes := state.scopes, seen := seen',
     orderConstraints := orderConstraints',
     removed := state.removed, satisfied := state.satisfied,
     seenCoherent := sorry
@@ -107,7 +107,7 @@ def SystemState.canUnapplyRequest : SystemState → RequestId → Bool
   match state.requests.getReq? rId with
    | none => false
    | some req =>
-     let scope := state.system.scopes.jointScope req.thread req.thread
+     let scope := state.scopes.jointScope req.thread req.thread
      let succ := state.orderConstraints.successors scope rId (reqIds state.requests) == []
      let prop := req.propagated_to == [req.thread]
      succ && prop
@@ -116,7 +116,7 @@ def SystemState.unapplyAcceptRequest : SystemState → RequestId → SystemState
 -- TODO: PR for multiple updates?
   | state, rId => {requests := state.requests.remove rId,
                    seen := state.seen, removed := state.removed, orderConstraints := state.orderConstraints,
-                   system := state.system, satisfied := state.satisfied,
+                   scopes := state.scopes, satisfied := state.satisfied,
                    seenCoherent := sorry, removedCoherent :=sorry, satisfiedCoherent := sorry}
 
 -- def SystemState.canUnapplyPropagate : SystemState → RequestId → ThreadId → Bool
@@ -132,11 +132,12 @@ def Request.isPropagated : Request → ThreadId → Bool
 
 def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | state, reqId, thId =>
+  let arch := Arch.propagateConstraints state reqId thId
   match state.requests.getReq? reqId with
   | none => false
   | some req =>
     let unpropagated := !req.isPropagated thId
-    let scope := state.system.scopes.jointScope thId req.thread
+    let scope := state.scopes.jointScope thId req.thread
     let pred := state.orderConstraints.predecessors scope reqId (reqIds state.requests)
     let properPred := pred.removeAll [req.id]
     --dbg_trace s!"R{req.id}.pred = {properPred}"
@@ -146,7 +147,7 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
     --let predPropagated := reqs.map (λ r => r.fullyPropagated scope)
     let predPropagated := reqs.map (λ r => r.propagatedTo thId)
     --dbg_trace s!"R{req.id} unpropagated (T{thId}): {unpropagated}, predPropagated: {predPropagated}"
-    unpropagated && predPropagated.foldl (. && .) true
+    arch && unpropagated && predPropagated.foldl (. && .) true
 
 def Request.propagate : Request → ThreadId → Request
   | req, thId =>
@@ -160,7 +161,7 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
   | none => state
   | some req =>
     let requests' := state.requests.insert (req.propagate thId)
-    let scope := state.system.scopes.jointScope thId req.thread
+    let scope := state.scopes.jointScope thId req.thread
     let orderConstraints' := state.updateOrderConstraintsPropagate scope reqId thId
     { requests := requests', orderConstraints := orderConstraints',
       seen := state.seen, removed := state.removed, satisfied := state.satisfied,
@@ -170,6 +171,7 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
 
 def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Bool
   | state, readId, writeId =>
+  let arch := Arch.satisfyReadConstraints state readId writeId
   if (state.satisfied.map λ x => x.1).elem readId then false else
   match state.requests.val[readId.toNat]?, state.requests.val[writeId.toNat]? with
     | some (some read), some (some write) =>
@@ -177,14 +179,14 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
       else if read.address? != write.address? then false
       else if (blesort read.propagated_to) != (blesort write.propagated_to) then false
       else
-        let scope := state.system.scopes.jointScope read.thread write.thread
+        let scope := state.scopes.jointScope read.thread write.thread
         --dbg_trace "can {writeId} satisfy {readId}?"
         let oc := state.orderConstraints.lookup scope writeId readId
         let betweenIds := state.orderConstraints.between scope write.id read.id (reqIds state.requests)
         --dbg_trace s!"between {readId} and {writeId}: {betweenIds}"
         let between := state.idsToReqs betweenIds
         let writesToAddrBetween := between.filter (λ r => r.isWrite && r.address? == write.address?)
-        oc && writesToAddrBetween.length == 0
+        arch && oc && writesToAddrBetween.length == 0
     | _, _ => false
 
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState

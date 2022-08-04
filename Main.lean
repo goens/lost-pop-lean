@@ -9,19 +9,19 @@ def main : IO Unit := do
   -- println! s!"running litmus on {Litmus.x86}"
   --let resRaw := Litmus.x86.map $ Litmus.inittso_2.runBFSNoDeadlock
   --println! s!"resRaw : {resRaw}"
-  for lit in Litmus.x86_4 do
-     let res := Litmus.inittso_4.runBFS lit (λ st => st.satisfied.length == 4) (stopAtCondition := false)
-     let reslitmus := Util.removeDuplicates $ res.map λ (_,st) => st.outcome
-     let outcomes_clean := reslitmus.map λ outcome => outcome.map λ (thread,(addr,val)) => val
-     println! s!" outcomes: {outcomes_clean}"
-     println! "-------------"
+ for lit in Litmus.x86_4 do
+   let res := Litmus.inittso_4.runBFS lit (λ st => st.satisfied.length == 4) (stopAtCondition := false)
+   let reslitmus := Util.removeDuplicates $ res.map λ (_,st) => st.outcome
+   let outcomes_clean := reslitmus.map λ outcome => outcome.map λ (_,(_,val)) => val
+   println! s!" outcomes: {outcomes_clean}"
+   println! "-------------"
 
   for lit in Litmus.x86_2 do
-      let res := Litmus.inittso_2.runBFS lit (λ st => st.satisfied.length == 2) (stopAtCondition := false)
-      let reslitmus := Util.removeDuplicates $ res.map λ (_,st) => st.outcome
-      let outcomes_clean := reslitmus.map λ outcome => outcome.map λ (thread,(addr,val)) => val
-      println! s!" outcomes: {outcomes_clean}"
-      println! "-------------"
+    let res := Litmus.inittso_2.runBFS lit (λ st => st.satisfied.length == 2) (stopAtCondition := false)
+    let reslitmus := Util.removeDuplicates $ res.map λ (_,st) => st.outcome
+    let outcomes_clean := reslitmus.map λ outcome => outcome.map λ (_,(_,val)) => val
+    println! s!" outcomes: {outcomes_clean}"
+    println! "-------------"
   --    println! "------"
   --println! s!"{Test.test_iriw_prop_wr}"
   --println! s!"{Test.test_iriw_prop_wr.orderConstraints.lookup Test.test_iriw_prop_wr.system.scopes.systemScope 1 7}"

@@ -150,10 +150,6 @@ private def BFSAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool) (con
 (st : SystemState) (acceptsRemaining : ProgramState) (partialTrace : List Transition)
 : Option (List Transition × SystemState) × BFSState :=
   let transitions := st.possibleTransitions acceptsRemaining
-  --acceptsRemaining := acceptsRemaining.map $ List.removeAll [transition]
-  -- if unexplored.any (λ (_,a,s) => a == acceptsRemaining && s == st') then
-  --   dbg_trace s!"this should not happen! {unexplored} contains {(partialTrace,acceptsRemaining)}"
-  --dbg_trace s!"unexplored.pop {unexplored.size}"
   let found := if condition st then some (partialTrace,st) else none
   let newTriples := if stopAtCondition && condition st
   then Array.mk []
@@ -180,7 +176,8 @@ private def BFSAuxUpdateUnexplored (unexplored newtriples : BFSState) : BFSState
 
 -- the unapologetically imperative version:
 def SystemState.runBFS (state : SystemState) (inittuple : List (Transition) × ProgramState)
- (condition : SystemState → Bool) (stopAtCondition : optParam Bool false) (storePartialTraces : optParam Bool false):
+ (condition : SystemState → Bool) (stopAtCondition : optParam Bool false)
+ (storePartialTraces : optParam Bool false) (numWorkers : optParam Nat 7):
  List (List (Transition) × SystemState) :=
 match inittuple with
   | (inittransitions, accepts) =>
@@ -195,26 +192,25 @@ match inittuple with
       let mut found := []
       dbg_trace s!"starting state {startState}"
       dbg_trace s!"litmus requests {accepts}"
+      let mut workers : Array (Task (Option (List Transition × SystemState) × BFSState)) := #[]
       while  h : unexplored.size > 0 do
           --dbg_trace s!"{unexplored.size} unexplored"
-          --dbg_trace s!"{unexplored} unexplored"
-          let unexplored_cur := unexplored[unexplored.size - 1]'(by apply n_minus_one_le_n h)
-          let partialTrace := unexplored_cur.1
-          let acceptsRemaining := unexplored_cur.2
-          let st := unexplored_cur.3
-          let (opFound,newTriples) := stepFun st acceptsRemaining partialTrace
-          if let some found' := opFound then
-            found := found'::found
-          unexplored := unexplored.pop
-          unexplored := BFSAuxUpdateUnexplored unexplored newTriples
-            --if unexplored.size > 11337 then
-            -- dbg_trace s!"state: {st}"
-            -- dbg_trace s!"possible transitions: {transitions}"
-            --unexplored := #[]
-
+          let n := min unexplored.size (max numWorkers 1) -- at least 1
+          for i in [0:n] do
+            -- FIXME: Change cur!
+            let some unexplored_cur := unexplored[i]?
+              | panic! "index error, this shouldn't happen" -- TODO: prove i is fine
+            let (partialTrace,acceptsRemaining,st)t := unexplored_cur
+            let task := Task.spawn λ _ => stepFun st acceptsRemaining partialTrace
+            workers := workers.push task
+          for worker in workers do
+            let (opFound,newTriples) := worker.get
+            if let some foundNew := opFound then
+              found := foundNew::found
+            unexplored := BFSAuxUpdateUnexplored unexplored newTriples
+            unexplored := unexplored.pop
       return found
-    | .error _ =>
-    --dbg_trace s!"error: {e}"
+    | .error _ => -- TODO: make this function also an Except value
     [(inittransitions,state)]
 
 

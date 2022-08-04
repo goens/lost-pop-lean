@@ -144,11 +144,11 @@ def SystemState.runDFS : SystemState → List Transition × List Transition → 
       [(inittransitions,state)]
 -/
 
-abbrev BFSState := Array (Triple (List Transition) ProgramState SystemState)
+abbrev BFSState := Triple (List Transition) ProgramState SystemState
 
 private def BFSAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool) (condition : SystemState → Bool)
-(st : SystemState) (acceptsRemaining : ProgramState) (partialTrace : List Transition)
-: Option (List Transition × SystemState) × BFSState :=
+(partialTrace : List Transition) (acceptsRemaining : ProgramState) (st : SystemState)
+: Option (List Transition × SystemState) × Array BFSState :=
   let transitions := st.possibleTransitions acceptsRemaining
   let found := if condition st then some (partialTrace,st) else none
   let newTriples := if stopAtCondition && condition st
@@ -169,20 +169,39 @@ private def BFSAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool) (con
     newPTs.zip newPairs |>.map Coe.coe |>.toArray
   (found,newTriples)
 
-private def BFSAuxUpdateUnexplored (unexplored newtriples : BFSState) : BFSState :=
+private def BFSAuxUpdateUnexplored (unexplored newtriples : Array BFSState) : Array BFSState :=
   let filterFun := λ (_,newProgState,newSysState)t => !unexplored.any
     λ (_,progState,sysState)t => newProgState == progState && newSysState == sysState
   Array.append (newtriples.filter filterFun) unexplored
 
+private def BFSAuxNSteps (stopAtCondition : Bool) (storePartialTraces : Bool) (condition : SystemState → Bool)
+ (n : Nat) (inputStates : Array BFSState)
+ : List (List Transition × SystemState) × Array BFSState := Id.run do
+ let mut unexplored := inputStates
+ let mut stepsRemaining := n
+ let mut found := []
+ let stepFun := BFSAuxStep stopAtCondition storePartialTraces condition
+ while h : unexplored.size > 0 do
+   let (partialTrace,acceptsRemaining,st)t := unexplored[unexplored.size - 1]'(by apply n_minus_one_le_n h)
+   let (opFound,newTriples) := stepFun partialTrace acceptsRemaining st
+   if let some foundNew := opFound then
+     found := foundNew::found
+   unexplored := BFSAuxUpdateUnexplored unexplored newTriples
+   stepsRemaining := stepsRemaining - 1
+   if stepsRemaining ==  0 then
+     break
+ (found,unexplored)
+
 -- the unapologetically imperative version:
 def SystemState.runBFS (state : SystemState) (inittuple : List (Transition) × ProgramState)
  (condition : SystemState → Bool) (stopAtCondition : optParam Bool false)
- (storePartialTraces : optParam Bool false) (numWorkers : optParam Nat 7):
+ (storePartialTraces : optParam Bool false) (numWorkers : optParam Nat 7)
+ (batchSize : optParam Nat 15):
  List (List (Transition) × SystemState) :=
 match inittuple with
   | (inittransitions, accepts) =>
   let stateinit := state.applyTrace inittransitions
-  let stepFun := BFSAuxStep stopAtCondition storePartialTraces condition
+  let stepFun := BFSAuxNSteps stopAtCondition storePartialTraces condition batchSize
   match stateinit with
     | .ok startState =>
     Id.run do
@@ -192,21 +211,19 @@ match inittuple with
       let mut found := []
       dbg_trace s!"starting state {startState}"
       dbg_trace s!"litmus requests {accepts}"
-      let mut workers : Array (Task (Option (List Transition × SystemState) × BFSState)) := #[]
-      while  h : unexplored.size > 0 do
+      let mut workers : Array (Task (List (List Transition × SystemState) × Array BFSState)) := #[]
+      while unexplored.size > 0 do
           --dbg_trace s!"{unexplored.size} unexplored"
           let n := min unexplored.size (max numWorkers 1) -- at least 1
           for i in [0:n] do
             -- FIXME: Change cur!
             let some unexplored_cur := unexplored[i]?
               | panic! "index error, this shouldn't happen" -- TODO: prove i is fine
-            let (partialTrace,acceptsRemaining,st)t := unexplored_cur
-            let task := Task.spawn λ _ => stepFun st acceptsRemaining partialTrace
+            let task := Task.spawn λ _ => stepFun #[unexplored_cur]
             workers := workers.push task
           for worker in workers do
-            let (opFound,newTriples) := worker.get
-            if let some foundNew := opFound then
-              found := foundNew::found
+            let (newFound,newTriples) := worker.get
+            found := newFound ++ found
             unexplored := BFSAuxUpdateUnexplored unexplored newTriples
             unexplored := unexplored.pop
       return found

@@ -363,6 +363,10 @@ def SystemState.toString : SystemState → String
   s!"satisfied: {state.satisfied.toString}\n" ++
   s!"constraints: {state.oderConstraintsString}\n"
 
+def SystemState.orderPredecessors (state : SystemState) (scope : @Scope state.scopes)
+  (reqId : RequestId) : List RequestId :=
+  state.orderConstraints.predecessors scope reqId (reqIds state.requests)
+
 instance : ToString (SystemState) where toString := SystemState.toString
 
 theorem emptyCoherent (requests : RequestArray) :

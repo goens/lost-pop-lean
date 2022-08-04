@@ -22,9 +22,15 @@ def tso_reorder : Request → Request → Bool
   if sc_per_loc then ppo else false
   -- TODO: satisfied but not deleted?
 
+def tso_propagate : SystemState → RequestId → ThreadId → Bool
+  | st, reqId, _ =>
+    let sscope := st.scopes.systemScope
+    let pred := st.orderPredecessors sscope reqId
+    st.idsToReqs pred |>.all λ req => req.fullyPropagated sscope
+
 instance : Arch where
   req := instArchReq
   acceptConstraints := λ _ _ _ => true
-  propagateConstraints := λ _ _ _ => true
+  propagateConstraints := tso_propagate
   satisfyReadConstraints := λ _ _ _ => true
   reorderCondition :=  tso_reorder

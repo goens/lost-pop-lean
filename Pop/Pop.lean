@@ -138,7 +138,7 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | some req =>
     let unpropagated := !req.isPropagated thId
     let scope := state.scopes.jointScope thId req.thread
-    let pred := state.orderConstraints.predecessors scope reqId (reqIds state.requests)
+    let pred := state.orderPredecessors scope reqId
     let properPred := pred.removeAll [req.id]
     --dbg_trace s!"R{req.id}.pred = {properPred}"
     let reqOps := state.requests.val.filter (λ req => match req with | none => false | some r => properPred.elem r.id)

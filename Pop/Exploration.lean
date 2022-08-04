@@ -143,6 +143,41 @@ def SystemState.runDFS : SystemState → List Transition × List Transition → 
       --dbg_trace s!"error: {e}"
       [(inittransitions,state)]
 -/
+
+abbrev BFSState := Array (Triple (List Transition) ProgramState SystemState)
+
+private def BFSAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool) (condition : SystemState → Bool)
+(st : SystemState) (acceptsRemaining : ProgramState) (partialTrace : List Transition)
+: Option (List Transition × SystemState) × BFSState :=
+  let transitions := st.possibleTransitions acceptsRemaining
+  --acceptsRemaining := acceptsRemaining.map $ List.removeAll [transition]
+  -- if unexplored.any (λ (_,a,s) => a == acceptsRemaining && s == st') then
+  --   dbg_trace s!"this should not happen! {unexplored} contains {(partialTrace,acceptsRemaining)}"
+  --dbg_trace s!"unexplored.pop {unexplored.size}"
+  let found := if condition st then some (partialTrace,st) else none
+  let newTriples := if stopAtCondition && condition st
+  then Array.mk []
+  else
+    let newPTs := transitions.map (if storePartialTraces
+                                   then λ t => t::partialTrace
+                                   else λ _ => [])
+    -- TODO: this could yield a bug if we have two identical requests in a litmus test
+    let newACs := transitions.map λ t => ProgramState.removeTransition acceptsRemaining t
+    -- let _ := transitions.any λ t => if st.canApplyTransition t
+    --   then dbg_trace s!"applied invalid transition {t} at {st}"
+    --   true
+    --   else false
+    let newSTs := transitions.map λ t => st.applyTransition! t
+    let newPairs := newACs.zip newSTs
+    -- why do I need to make this coe explicit?
+    newPTs.zip newPairs |>.map Coe.coe |>.toArray
+  (found,newTriples)
+
+private def BFSAuxUpdateUnexplored (unexplored newtriples : BFSState) : BFSState :=
+  let filterFun := λ (_,newProgState,newSysState)t => !unexplored.any
+    λ (_,progState,sysState)t => newProgState == progState && newSysState == sysState
+  Array.append (newtriples.filter filterFun) unexplored
+
 -- the unapologetically imperative version:
 def SystemState.runBFS (state : SystemState) (inittuple : List (Transition) × ProgramState)
  (condition : SystemState → Bool) (stopAtCondition : optParam Bool false) (storePartialTraces : optParam Bool false):
@@ -150,6 +185,7 @@ def SystemState.runBFS (state : SystemState) (inittuple : List (Transition) × P
 match inittuple with
   | (inittransitions, accepts) =>
   let stateinit := state.applyTrace inittransitions
+  let stepFun := BFSAuxStep stopAtCondition storePartialTraces condition
   match stateinit with
     | .ok startState =>
     Id.run do
@@ -166,30 +202,11 @@ match inittuple with
           let partialTrace := unexplored_cur.1
           let acceptsRemaining := unexplored_cur.2
           let st := unexplored_cur.3
-          let transitions := st.possibleTransitions acceptsRemaining
-          --acceptsRemaining := acceptsRemaining.map $ List.removeAll [transition]
+          let (opFound,newTriples) := stepFun st acceptsRemaining partialTrace
+          if let some found' := opFound then
+            found := found'::found
           unexplored := unexplored.pop
-          -- if unexplored.any (λ (_,a,s) => a == acceptsRemaining && s == st') then
-          --   dbg_trace s!"this should not happen! {unexplored} contains {(partialTrace,acceptsRemaining)}"
-          --dbg_trace s!"unexplored.pop {unexplored.size}"
-          found := if condition st then (partialTrace,st)::found else found
-          unexplored := if stopAtCondition && condition st
-          then Array.mk []
-          else
-            let newPTs := transitions.map (if storePartialTraces
-                                           then λ t => t::partialTrace
-                                           else λ _ => [])
-            -- TODO: this could yield a bug if we have two identical requests in a litmus test
-            let newACs := transitions.map λ t => ProgramState.removeTransition acceptsRemaining t
-            -- let _ := transitions.any λ t => if st.canApplyTransition t
-            --   then dbg_trace s!"applied invalid transition {t} at {st}"
-            --   true
-            --   else false
-            let newSTs := transitions.map λ t => st.applyTransition! t
-            let newPairs := newACs.zip newSTs |>.filter λ pair => !unexplored.any λ (_,progState,sysState)t => pair == (progState, sysState)
-            -- why do I need to make this coe explicit?
-            let newTriples : List (Triple (List Transition) ProgramState SystemState) := newPTs.zip newPairs |>.map Coe.coe
-            Array.append newTriples.toArray unexplored
+          unexplored := BFSAuxUpdateUnexplored unexplored newTriples
             --if unexplored.size > 11337 then
             -- dbg_trace s!"state: {st}"
             -- dbg_trace s!"possible transitions: {transitions}"

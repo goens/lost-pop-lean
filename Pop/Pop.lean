@@ -22,6 +22,10 @@ def Transition.toString : Transition → String
  | satisfyRead readid writeid => s!"Satisify Read Request {readid} with Write Request {writeid}"
 instance : ToString (Transition) where toString := Transition.toString
 
+def Transition.prettyPrintReq : Transition → Option String
+ | acceptRequest req _ => some req.prettyPrint
+ | _ => none
+
 def Transition.isAccept : Transition → Bool
  | acceptRequest _ _ => true
  | _ => false
@@ -32,6 +36,10 @@ def Transition.isPropagate : Transition → Bool
 
 def Transition.isSatisfy : Transition → Bool
   | satisfyRead _ _ => true
+  | _ => false
+
+def Transition.isReadAccept : Transition → Bool
+  | .acceptRequest br _ => br.isRead
   | _ => false
 
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool := Arch.acceptConstraints
@@ -195,7 +203,7 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
  let opWrite := state.requests.getReq? writeId
  match opRead, opWrite with
    | some read, some write =>
-      let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexble |>.toList
+      let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexBLe |>.toList
       let read' := read.setValue write.value?
       let removed' :=  (read'::state.removed).toArray.qsort (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
       let requests' := state.requests.remove readId

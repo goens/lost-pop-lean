@@ -13,11 +13,18 @@ instance : ArchReq := Arch.req
 
 abbrev ProgramState := Array (Array (Transition))
 
+def ProgramState.prettyPrint : ProgramState → String
+  | stArr => String.intercalate " || " <| Array.toList <|
+     stArr.map λ thread =>
+       String.intercalate "; " $ filterNones $ Array.toList <|
+         thread.map Transition.prettyPrintReq
+
 def ProgramState.getAvailable (prog : ProgramState) : List (Transition) := Id.run do
   let mut res := []
   for thread in prog do
     if h : thread.size > 0 then
-    res := thread[thread.size - 1]'(by apply n_minus_one_le_n h) :: res
+    res := thread[0] :: res
+  --dbg_trace "{prog.map λ tr => tr.map Transition.prettyPrintReq}.available = {res.map Transition.prettyPrintReq}"
   return res
 
 def ProgramState.removeTransition (prog : ProgramState) (transition : (Transition))
@@ -147,19 +154,26 @@ def SystemState.runDFS : SystemState → List Transition × List Transition → 
 
 abbrev BFSState := Triple (List Transition) ProgramState SystemState
 
-private def BFSAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool) (condition : SystemState → Bool)
+private def BFSAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool)
+(condition : SystemState → ProgramState → Bool)
 (partialTrace : List Transition) (acceptsRemaining : ProgramState) (st : SystemState)
-: Option (List Transition × SystemState) × Array BFSState :=
+: Array BFSState :=
   let transitions := st.possibleTransitions acceptsRemaining
-  let found := if condition st then some (partialTrace,st) else none
-  let newTriples := if stopAtCondition && condition st
+  -- let debug := if transitions.length == 0
+  --   then s!"state:\n{st}remaining:\n{acceptsRemaining}\n------"
+  --   else ""
+  -- dbg_trace debug
+  let newTriples := if stopAtCondition && condition st acceptsRemaining
   then Array.mk []
   else
     let newPTs := transitions.map (if storePartialTraces
                                    then λ t => t::partialTrace
                                    else λ _ => [])
     -- TODO: this could yield a bug if we have two identical requests in a litmus test
-    let newACs := transitions.map λ t => ProgramState.removeTransition acceptsRemaining t
+    let newACs := transitions.map λ t =>
+      -- let res := ProgramState.removeTransition acceptsRemaining t
+      -- dbg_trace "{acceptsRemaining.map λ tr => tr.map Transition.prettyPrintReq}, removing {t.prettyPrintReq}, yields: {res.map λ tr => tr.map Transition.prettyPrintReq}"
+      ProgramState.removeTransition acceptsRemaining t
     -- let _ := transitions.any λ t => if st.canApplyTransition t
     --   then dbg_trace s!"applied invalid transition {t} at {st}"
     --   true
@@ -168,34 +182,40 @@ private def BFSAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool) (con
     let newPairs := newACs.zip newSTs
     -- why do I need to make this coe explicit?
     newPTs.zip newPairs |>.map Coe.coe |>.toArray
-  (found,newTriples)
+  newTriples
 
 private def BFSAuxUpdateUnexplored (unexplored newtriples : Array BFSState) : Array BFSState :=
   let filterFun := λ (_,newProgState,newSysState)t => !unexplored.any
     λ (_,progState,sysState)t => newProgState == progState && newSysState == sysState
   Array.append (newtriples.filter filterFun) unexplored
 
-private def BFSAuxNSteps (stopAtCondition : Bool) (storePartialTraces : Bool) (condition : SystemState → Bool)
- (n : Nat) (inputStates : Array BFSState)
+private def BFSAuxCheckCondition
+(condition : SystemState → ProgramState → Bool) (newTriples : Array BFSState)
+: List (List Transition × SystemState) :=
+  filterNones $ newTriples.toList.map λ triple =>
+    if condition triple.3 triple.2
+      then some (triple.1,triple.3)
+      else none
+
+private def BFSAuxNSteps (stopAtCondition : Bool) (storePartialTraces : Bool)
+  (condition : SystemState → ProgramState → Bool) (n : Nat) (inputStates : Array BFSState)
  : List (List Transition × SystemState) × Array BFSState := Id.run do
  let mut unexplored := inputStates
  let mut stepsRemaining := n
- let mut found := []
  let stepFun := BFSAuxStep stopAtCondition storePartialTraces condition
  while h : unexplored.size > 0 do
    let (partialTrace,acceptsRemaining,st)t := unexplored[unexplored.size - 1]'(by apply n_minus_one_le_n h)
-   let (opFound,newTriples) := stepFun partialTrace acceptsRemaining st
-   if let some foundNew := opFound then
-     found := foundNew::found
+   let newTriples := stepFun partialTrace acceptsRemaining st
    unexplored := BFSAuxUpdateUnexplored unexplored newTriples
    stepsRemaining := stepsRemaining - 1
    if stepsRemaining ==  0 then
      break
+ let found := BFSAuxCheckCondition condition unexplored
  (found,unexplored)
 
 -- the unapologetically imperative version:
 def SystemState.runBFS (state : SystemState) (inittuple : List (Transition) × ProgramState)
- (condition : SystemState → Bool) (stopAtCondition : optParam Bool false)
+ (condition : SystemState → ProgramState → Bool) (stopAtCondition : optParam Bool false)
  (storePartialTraces : optParam Bool false) (numWorkers : optParam Nat 7)
  (batchSize : optParam Nat 15):
  List (List (Transition) × SystemState) :=
@@ -210,8 +230,8 @@ match inittuple with
       -- we choose the former so that we can also filter out states that we've seen before
       let mut unexplored := #[([],accepts,startState)t]
       let mut found := []
-      dbg_trace s!"starting state {startState}"
-      dbg_trace s!"litmus requests {accepts}"
+      dbg_trace s!"litmus: {accepts.prettyPrint}"
+      dbg_trace s!"starting state:\n{startState}"
       let mut workers : Array (Task (List (List Transition × SystemState) × Array BFSState)) := #[]
       while unexplored.size > 0 do
           --dbg_trace s!"{unexplored.size} unexplored"
@@ -231,10 +251,25 @@ match inittuple with
     | .error _ => -- TODO: make this function also an Except value
     [(inittransitions,state)]
 
+def finishedNoDeadlock (state : SystemState) (unaccepted : ProgramState) : Bool :=
+  let transitions := state.possibleTransitions unaccepted
+  transitions == [] && !state.hasUnsatisfiedReads
 
-def SystemState.runBFSNoDeadlock : SystemState → List (Transition) × ProgramState →
-List (List (Transition) × SystemState)
-  | state, litmus => state.runBFS litmus λ _ => false
+def SystemState.runBFSNoDeadlock
+  (state : SystemState) (litmus : List (Transition) × ProgramState)
+  (stopAtCondition : optParam Bool false)
+  (storePartialTraces : optParam Bool false) (numWorkers : optParam Nat 7)
+  (batchSize : optParam Nat 15) :
+  List (List (Transition) × SystemState) :=
+    let reads : Array (Array Nat) := litmus.2.map
+      λ thread => thread.map
+        λ tr => if tr.isReadAccept then 1 else 0
+    let numReads : Nat := Array.sum $ reads.map λ th => Array.sum th
+    let finishedFun := λ sysSt prSt =>
+       let transitions := sysSt.possibleTransitions prSt
+       --dbg_trace "{sysSt.satisfied.length}/{numReads}"
+       transitions == [] && sysSt.satisfied.length == numReads
+    state.runBFS litmus finishedFun stopAtCondition storePartialTraces numWorkers batchSize
 
 -- Doesn't work. Need to combine removed with requests
 -- def SystemState.satisfiedRequestPairs : SystemState → List (Request × Request)
@@ -245,12 +280,41 @@ List (List (Transition) × SystemState)
 --       | _ => none
 --     filterNones optPairs
 
-def SystemState.outcome : SystemState → List (ThreadId × Address × Value)
+abbrev Outcome := List $ ThreadId × Address × Value
+
+def SystemState.outcome : SystemState → Outcome
   | state =>
     -- TODO: this won't work for reads that stay there
     let triple := state.removed.map λ rd => (rd.thread, rd.address?.get!, rd.value?)
-    triple.toArray.qsort (λ (th,ad,_) (th',ad',_) => lexble (th,ad) (th',ad')) |>.toList
+    triple.toArray.qsort (λ (th,ad,_) (th',ad',_) => lexBLe (th,ad) (th',ad')) |>.toList
 
+def addressValuePretty : Address × Value → String
+  | (_, none) => "invalid outcome!"
+  | (addr, some val) => s!"{addr.prettyPrint} = {val}"
+
+def Outcome.prettyPrint : Outcome → String
+  | outcome =>
+  let threads : List Outcome := outcome.groupBy (·.1 == ·.1)
+  let threadStrings := threads.map
+    λ th => String.intercalate "; " $ th.map (addressValuePretty $ Prod.snd ·)
+  String.intercalate " || " threadStrings
+
+/-
+  Id.run do
+    let mut res := ""
+    let mut curThread : ThreadId := 0
+    for (thread, addr, opval) in outcome do
+      while (ThreadId.toNat curThread ) < (ThreadId.toNat thread) do
+        -- assumes lexBLe, won't add multiple ||'s
+        res := res ++ "|| "
+        curThread := (ThreadId.toNat curThread) + 1
+      if let some val := opval then
+        res := res ++ s!"x{addr} := {val}; "
+      else
+        res := "invalid outcome!"
+        break
+    return res
+    -/
 -- | state, accepts => state.runDFS accepts λ _ => false
 
     -- let runStep := λ (acceptsRemaining, state) n => state.takeNthStep acceptsRemaining n

@@ -16,14 +16,20 @@ def filterNones {α : Type} : List (Option α) → List α
   | (some val):: rest => val::(filterNones rest)
   | [] => []
 
+def Array.sum : Array Nat → Nat
+  | arr => arr.foldl (init := 0) (· + ·)
+
+def filterNonesArr {α : Type} : Array (Option α) → Array α
+  | arr => arr.toList |> filterNones |>.toArray
+
 def blesort : List Nat → List Nat
   | as => Array.toList $ Array.qsort as.toArray (λ x y => Nat.ble x y)
 
-def lexblt : Nat × Nat → Nat × Nat → Bool
+def lexBLt : Nat × Nat → Nat × Nat → Bool
   | (n₁,n₂), (m₁,m₂) => Nat.blt n₁ m₁ || ((n₁ == m₁) && Nat.blt n₂ m₂)
 
-def lexble : Nat × Nat → Nat × Nat → Bool
-| n, m => lexblt n m || n == m
+def lexBLe : Nat × Nat → Nat × Nat → Bool
+| n, m => lexBLt n m || n == m
 
 partial def removeDuplicates [BEq α] : List α → List α
   | [] => []

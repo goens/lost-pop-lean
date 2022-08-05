@@ -22,6 +22,13 @@ instance : OfNat Address n where ofNat := Address.ofNat n
 instance : OfNat Value n where ofNat := Value.ofNat n
 instance : Coe RequestId Nat where coe := RequestId.toNat
 
+def Address.prettyPrint (addr : Address) : String :=
+  match (OfNat.ofNat addr) with
+    | 0 => s!"x"
+    | 1 => s!"y"
+    | 2 => s!"z"
+    | addr => s!"v{addr}"
+
 class ArchReq where
 (type : Type 0)
 (beq_inst : BEq type)
@@ -51,10 +58,23 @@ inductive BasicRequest
 
 instance : Inhabited BasicRequest where default := BasicRequest.barrier default
 
-def BasicRequest.toString : (BasicRequest) → String
+def BasicRequest.toString : BasicRequest → String
   | BasicRequest.read  rr _ => s!"read (Addr{rr.addr}) : {rr.val}"
   | BasicRequest.write  wr _ => s!"write (Addr{wr.addr}) : {wr.val}"
   | BasicRequest.barrier _ => "barrier"
+
+def BasicRequest.prettyPrint : BasicRequest → String
+  | BasicRequest.read rr _ =>
+    let valStr := match rr.val with
+      | none => ""
+      | some val => s!"({val})"
+    s!"R{rr.addr.prettyPrint}{valStr}"
+  | BasicRequest.write  wr _ =>
+    let valStr := match wr.val with
+     | none => ""
+     | some val => s!"({val})"
+    s!"W{wr.addr.prettyPrint}{valStr}"
+  | BasicRequest.barrier _ => "Fence"
 
 instance : ToString (BasicRequest) where toString := BasicRequest.toString
 
@@ -268,6 +288,8 @@ def RequestArray.getReq? : (RequestArray) → RequestId → Option (Request)
     | some (some req) => some req
     | _ => none
 
+def RequestArray.map {β : Type} : RequestArray → (Request → β) → Array β
+ | rarr, f => filterNonesArr $ rarr.val.map λ opreq => Option.map f opreq
 -- instance : GetElem RequestArray RequestId (Option Request) where getElem
 
 theorem emptyArrayCoherent : valConsistent (Array.mk ([] : List (Option (Request)))) := by

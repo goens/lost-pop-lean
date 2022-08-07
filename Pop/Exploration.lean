@@ -159,34 +159,29 @@ private def BFSAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool)
 (partialTrace : List Transition) (acceptsRemaining : ProgramState) (st : SystemState)
 : Array BFSState :=
   let transitions := st.possibleTransitions acceptsRemaining
-  -- let debug := if transitions.length == 0
-  --   then s!"state:\n{st}remaining:\n{acceptsRemaining}\n------"
-  --   else ""
-  -- dbg_trace debug
-  let newTriples := if stopAtCondition && condition st acceptsRemaining
+  --let debug := if true--transitions.length == 0
+  --  then s!"requests:\n{st.requests}\n available:\n{transitions}\n------"
+  --  else ""
+  --dbg_trace debug
+  if stopAtCondition && condition st acceptsRemaining
   then Array.mk []
   else
-    let newPTs := transitions.map (if storePartialTraces
-                                   then λ t => t::partialTrace
-                                   else λ _ => [])
+    transitions.toArray.map λ t =>
+      let newPT := (if storePartialTraces
+                    then partialTrace ++ [t]
+                    else [])
     -- TODO: this could yield a bug if we have two identical requests in a litmus test
-    let newACs := transitions.map λ t =>
-      -- let res := ProgramState.removeTransition acceptsRemaining t
-      -- dbg_trace "{acceptsRemaining.map λ tr => tr.map Transition.prettyPrintReq}, removing {t.prettyPrintReq}, yields: {res.map λ tr => tr.map Transition.prettyPrintReq}"
-      ProgramState.removeTransition acceptsRemaining t
-    -- let _ := transitions.any λ t => if st.canApplyTransition t
-    --   then dbg_trace s!"applied invalid transition {t} at {st}"
-    --   true
-    --   else false
-    let newSTs := transitions.map λ t => st.applyTransition! t
-    let newPairs := newACs.zip newSTs
-    -- why do I need to make this coe explicit?
-    newPTs.zip newPairs |>.map Coe.coe |>.toArray
-  newTriples
+      let newAC :=       ProgramState.removeTransition acceptsRemaining t
+      -- dbg_trace "{acceptsRemaining.prettyPrint}, removing {t.prettyPrintReq}, yields: {newAC.prettyPrint}"
+      -- TODO: add potential to sanity check
+      let newST := st.applyTransition! t
+      (newPT,newAC,newST)t
 
-private def BFSAuxUpdateUnexplored (unexplored newtriples : Array BFSState) : Array BFSState :=
-  let filterFun := λ (_,newProgState,newSysState)t => !unexplored.any
-    λ (_,progState,sysState)t => newProgState == progState && newSysState == sysState
+private def BFSAuxUpdateUnexplored (explored unexplored newtriples : Array BFSState) : Array BFSState :=
+  let filterFun := λ (_,newProgState,newSysState)t =>
+    let checkFun := λ (_,progState,sysState)t =>
+      newProgState != progState || newSysState != sysState
+    (unexplored.all checkFun && explored.all checkFun)
   Array.append (newtriples.filter filterFun) unexplored
 
 private def BFSAuxCheckCondition
@@ -203,21 +198,25 @@ private def BFSAuxNSteps (stopAtCondition : Bool) (storePartialTraces : Bool)
  let mut unexplored := inputStates
  let mut stepsRemaining := n
  let stepFun := BFSAuxStep stopAtCondition storePartialTraces condition
- while h : unexplored.size > 0 do
-   let (partialTrace,acceptsRemaining,st)t := unexplored[unexplored.size - 1]'(by apply n_minus_one_le_n h)
+ while h : unexplored.size > 0 && stepsRemaining > 0 do
+   let (partialTrace,acceptsRemaining,st)t := unexplored[unexplored.size - 1]'
+     (by rw [Bool.and_eq_true] at h
+         let h' := of_decide_eq_true $ And.left h
+         exact n_minus_one_le_n h')
    let newTriples := stepFun partialTrace acceptsRemaining st
-   unexplored := BFSAuxUpdateUnexplored unexplored newTriples
+   unexplored := unexplored.pop
+   unexplored := BFSAuxUpdateUnexplored #[] unexplored newTriples
+   --dbg_trace "popped {partialTrace}, remaining unexplored{unexplored.map λ (pt,_,_)t => pt} "
    stepsRemaining := stepsRemaining - 1
-   if stepsRemaining ==  0 then
-     break
  let found := BFSAuxCheckCondition condition unexplored
+ --dbg_trace "returning unexplored: {unexplored.map λ triple => triple.1}"
  (found,unexplored)
 
 -- the unapologetically imperative version:
-def SystemState.runBFS (state : SystemState) (inittuple : List (Transition) × ProgramState)
+def SystemState.runSearch (state : SystemState) (inittuple : List (Transition) × ProgramState)
  (condition : SystemState → ProgramState → Bool) (stopAtCondition : optParam Bool false)
  (storePartialTraces : optParam Bool false) (numWorkers : optParam Nat 7)
- (batchSize : optParam Nat 15):
+ (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false) :
  List (List (Transition) × SystemState) :=
 match inittuple with
   | (inittransitions, accepts) =>
@@ -229,24 +228,44 @@ match inittuple with
       -- either save the state (memory cost) or recompute it (computational cost)
       -- we choose the former so that we can also filter out states that we've seen before
       let mut unexplored := #[([],accepts,startState)t]
+      let mut explored := #[]
       let mut found := []
-      dbg_trace s!"litmus: {accepts.prettyPrint}"
-      dbg_trace s!"starting state:\n{startState}"
+      /-
+      let mut cur_size := 0
+      let mut thousands_explored : UInt32 := 0
+      -/
+      --dbg_trace s!"litmus: {accepts.prettyPrint}"
+      --dbg_trace s!"starting state:\n{startState}"
       let mut workers : Array (Task (List (List Transition × SystemState) × Array BFSState)) := #[]
       while unexplored.size > 0 do
           --dbg_trace s!"{unexplored.size} unexplored"
           let n := min unexplored.size (max numWorkers 1) -- at least 1
           for i in [0:n] do
-            -- FIXME: Change cur!
-            let some unexplored_cur := unexplored[i]?
+            -- FIXME: Change cur! (??)
+            -- BFS : first
+            --let some unexplored_cur := unexplored[i]?
+            let idx := if breadthFirst then i else unexplored.size - 1
+            let some unexplored_cur := unexplored[idx]?
               | panic! "index error, this shouldn't happen" -- TODO: prove i is fine
+            unexplored := unexplored.eraseIdx idx
+            explored := explored.push unexplored_cur
             let task := Task.spawn λ _ => stepFun #[unexplored_cur]
             workers := workers.push task
           for worker in workers do
             let (newFound,newTriples) := worker.get
             found := newFound ++ found
-            unexplored := BFSAuxUpdateUnexplored unexplored newTriples
-            unexplored := unexplored.pop
+            /-
+            if newTriples.any λ (pt,_,_)t => pt.length > cur_size then
+              cur_size := cur_size + 1
+              dbg_trace "progress: partial traces of size {cur_size}"
+            if explored.size.toUInt32 > thousands_explored  * 1000 then
+              thousands_explored := thousands_explored + 1
+              dbg_trace "progress: explored {thousands_explored}k"
+             -/ 
+
+            unexplored := BFSAuxUpdateUnexplored explored unexplored newTriples
+            --dbg_trace "total unexplored: {unexplored.size}"
+          workers := #[]
       return found
     | .error _ => -- TODO: make this function also an Except value
     [(inittransitions,state)]
@@ -255,21 +274,21 @@ def finishedNoDeadlock (state : SystemState) (unaccepted : ProgramState) : Bool 
   let transitions := state.possibleTransitions unaccepted
   transitions == [] && !state.hasUnsatisfiedReads
 
-def SystemState.runBFSNoDeadlock
+def SystemState.runSearchNoDeadlock
   (state : SystemState) (litmus : List (Transition) × ProgramState)
   (stopAtCondition : optParam Bool false)
-  (storePartialTraces : optParam Bool false) (numWorkers : optParam Nat 7)
-  (batchSize : optParam Nat 15) :
+  (storePartialTraces : optParam Bool true) (numWorkers : optParam Nat 7)
+  (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false):
   List (List (Transition) × SystemState) :=
     let reads : Array (Array Nat) := litmus.2.map
       λ thread => thread.map
         λ tr => if tr.isReadAccept then 1 else 0
     let numReads : Nat := Array.sum $ reads.map λ th => Array.sum th
-    let finishedFun := λ sysSt prSt =>
-       let transitions := sysSt.possibleTransitions prSt
-       --dbg_trace "{sysSt.satisfied.length}/{numReads}"
-       transitions == [] && sysSt.satisfied.length == numReads
-    state.runBFS litmus finishedFun stopAtCondition storePartialTraces numWorkers batchSize
+      let finishedFun := λ sysSt prSt =>
+        let transitions := sysSt.possibleTransitions prSt
+        -- dbg_trace "{sysSt.satisfied.length}/{numReads}"
+        transitions == [] && sysSt.satisfied.length == numReads
+    state.runSearch litmus finishedFun stopAtCondition storePartialTraces numWorkers batchSize breadthFirst
 
 -- Doesn't work. Need to combine removed with requests
 -- def SystemState.satisfiedRequestPairs : SystemState → List (Request × Request)
@@ -308,7 +327,7 @@ def Outcome.prettyPrint : Outcome → String
         -- assumes lexBLe, won't add multiple ||'s
         res := res ++ "|| "
         curThread := (ThreadId.toNat curThread) + 1
-      if let some val := opval then
+      let some val := opval then
         res := res ++ s!"x{addr} := {val}; "
       else
         res := "invalid outcome!"

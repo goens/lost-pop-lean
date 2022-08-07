@@ -72,7 +72,7 @@ def SystemState.initZeroes : SystemState → List Address → Except String (Sys
     Except.bind  unpropagated (λ st => st.initZeroesPropagate addresses)
 
 -- create accepts in a per-thread basis
-def createAcceptList : List (List (String × String × Nat)) → List (Transition) × Array (Array (Transition))
+def createAcceptList : List (List (String × String × Nat)) → List (Transition) × ProgramState
   | list =>
   let variablesRaw := list.map λ thread => thread.map (λ r => if r.2.1.length == 0 then none else some r.2.1)
   let variables := removeDuplicates $ filterNones $ List.join variablesRaw

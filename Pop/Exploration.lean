@@ -152,12 +152,12 @@ def SystemState.runDFS : SystemState → List Transition × List Transition → 
       [(inittransitions,state)]
 -/
 
-abbrev BFSState := Triple (List Transition) ProgramState SystemState
+abbrev SearchState := Triple (List Transition) ProgramState SystemState
 
-private def BFSAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool)
+private def searchAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool)
 (condition : SystemState → ProgramState → Bool)
 (partialTrace : List Transition) (acceptsRemaining : ProgramState) (st : SystemState)
-: Array BFSState :=
+: Array SearchState :=
   let transitions := st.possibleTransitions acceptsRemaining
   --let debug := if true--transitions.length == 0
   --  then s!"requests:\n{st.requests}\n available:\n{transitions}\n------"
@@ -177,27 +177,27 @@ private def BFSAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool)
       let newST := st.applyTransition! t
       (newPT,newAC,newST)t
 
-private def BFSAuxUpdateUnexplored (explored unexplored newtriples : Array BFSState) : Array BFSState :=
+private def searchAuxUpdateUnexplored (explored unexplored newtriples : Array SearchState) : Array SearchState :=
   let filterFun := λ (_,newProgState,newSysState)t =>
     let checkFun := λ (_,progState,sysState)t =>
       newProgState != progState || newSysState != sysState
     (unexplored.all checkFun && explored.all checkFun)
   Array.append (newtriples.filter filterFun) unexplored
 
-private def BFSAuxCheckCondition
-(condition : SystemState → ProgramState → Bool) (newTriples : Array BFSState)
+private def searchAuxCheckCondition
+(condition : SystemState → ProgramState → Bool) (newTriples : Array SearchState)
 : List (List Transition × SystemState) :=
   filterNones $ newTriples.toList.map λ triple =>
     if condition triple.3 triple.2
       then some (triple.1,triple.3)
       else none
 
-private def BFSAuxNSteps (stopAtCondition : Bool) (storePartialTraces : Bool)
-  (condition : SystemState → ProgramState → Bool) (n : Nat) (inputStates : Array BFSState)
- : List (List Transition × SystemState) × Array BFSState := Id.run do
+private def searchAuxNSteps (stopAtCondition : Bool) (storePartialTraces : Bool)
+  (condition : SystemState → ProgramState → Bool) (n : Nat) (inputStates : Array SearchState)
+ : List (List Transition × SystemState) × Array SearchState := Id.run do
  let mut unexplored := inputStates
  let mut stepsRemaining := n
- let stepFun := BFSAuxStep stopAtCondition storePartialTraces condition
+ let stepFun := searchAuxStep stopAtCondition storePartialTraces condition
  while h : unexplored.size > 0 && stepsRemaining > 0 do
    let (partialTrace,acceptsRemaining,st)t := unexplored[unexplored.size - 1]'
      (by rw [Bool.and_eq_true] at h
@@ -205,10 +205,10 @@ private def BFSAuxNSteps (stopAtCondition : Bool) (storePartialTraces : Bool)
          exact n_minus_one_le_n h')
    let newTriples := stepFun partialTrace acceptsRemaining st
    unexplored := unexplored.pop
-   unexplored := BFSAuxUpdateUnexplored #[] unexplored newTriples
+   unexplored := searchAuxUpdateUnexplored #[] unexplored newTriples
    --dbg_trace "popped {partialTrace}, remaining unexplored{unexplored.map λ (pt,_,_)t => pt} "
    stepsRemaining := stepsRemaining - 1
- let found := BFSAuxCheckCondition condition unexplored
+ let found := searchAuxCheckCondition condition unexplored
  --dbg_trace "returning unexplored: {unexplored.map λ triple => triple.1}"
  (found,unexplored)
 
@@ -216,12 +216,13 @@ private def BFSAuxNSteps (stopAtCondition : Bool) (storePartialTraces : Bool)
 def SystemState.runSearch (state : SystemState) (inittuple : List (Transition) × ProgramState)
  (condition : SystemState → ProgramState → Bool) (stopAtCondition : optParam Bool false)
  (storePartialTraces : optParam Bool false) (numWorkers : optParam Nat 7)
- (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false) :
+ (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false)
+ (logProgress : optParam Bool false) :
  List (List (Transition) × SystemState) :=
 match inittuple with
   | (inittransitions, accepts) =>
   let stateinit := state.applyTrace inittransitions
-  let stepFun := BFSAuxNSteps stopAtCondition storePartialTraces condition batchSize
+  let stepFun := searchAuxNSteps stopAtCondition storePartialTraces condition batchSize
   match stateinit with
     | .ok startState =>
     Id.run do
@@ -230,13 +231,11 @@ match inittuple with
       let mut unexplored := #[([],accepts,startState)t]
       let mut explored := #[]
       let mut found := []
-      /-
       let mut cur_size := 0
-      let mut thousands_explored : UInt32 := 0
-      -/
+      let mut thousands_explored : UInt32 := 1
       --dbg_trace s!"litmus: {accepts.prettyPrint}"
       --dbg_trace s!"starting state:\n{startState}"
-      let mut workers : Array (Task (List (List Transition × SystemState) × Array BFSState)) := #[]
+      let mut workers : Array (Task (List (List Transition × SystemState) × Array SearchState)) := #[]
       while unexplored.size > 0 do
           --dbg_trace s!"{unexplored.size} unexplored"
           let n := min unexplored.size (max numWorkers 1) -- at least 1
@@ -244,26 +243,26 @@ match inittuple with
             -- FIXME: Change cur! (??)
             -- BFS : first
             --let some unexplored_cur := unexplored[i]?
-            let idx := if breadthFirst then i else unexplored.size - 1
+            let idx := if breadthFirst then unexplored.size - 1 else i
             let some unexplored_cur := unexplored[idx]?
               | panic! "index error, this shouldn't happen" -- TODO: prove i is fine
             unexplored := unexplored.eraseIdx idx
-            explored := explored.push unexplored_cur
+            if !breadthFirst then
+              explored := explored.push unexplored_cur
             let task := Task.spawn λ _ => stepFun #[unexplored_cur]
             workers := workers.push task
           for worker in workers do
             let (newFound,newTriples) := worker.get
             found := newFound ++ found
-            /-
-            if newTriples.any λ (pt,_,_)t => pt.length > cur_size then
-              cur_size := cur_size + 1
-              dbg_trace "progress: partial traces of size {cur_size}"
-            if explored.size.toUInt32 > thousands_explored  * 1000 then
-              thousands_explored := thousands_explored + 1
-              dbg_trace "progress: explored {thousands_explored}k"
-             -/ 
+            if logProgress then
+              if newTriples.any λ (pt,_,_)t => pt.length > cur_size then
+                cur_size := cur_size + 1
+                dbg_trace "progress: partial traces of size {cur_size}"
+              if explored.size.toUInt32 > thousands_explored  * 1000 then
+                dbg_trace "progress: explored ≥{thousands_explored}k"
+                thousands_explored := thousands_explored + 1
 
-            unexplored := BFSAuxUpdateUnexplored explored unexplored newTriples
+            unexplored := searchAuxUpdateUnexplored explored unexplored newTriples
             --dbg_trace "total unexplored: {unexplored.size}"
           workers := #[]
       return found
@@ -278,7 +277,8 @@ def SystemState.runSearchNoDeadlock
   (state : SystemState) (litmus : List (Transition) × ProgramState)
   (stopAtCondition : optParam Bool false)
   (storePartialTraces : optParam Bool true) (numWorkers : optParam Nat 7)
-  (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false):
+  (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false)
+  (logProgress : optParam Bool false):
   List (List (Transition) × SystemState) :=
     let reads : Array (Array Nat) := litmus.2.map
       λ thread => thread.map
@@ -288,7 +288,8 @@ def SystemState.runSearchNoDeadlock
         let transitions := sysSt.possibleTransitions prSt
         -- dbg_trace "{sysSt.satisfied.length}/{numReads}"
         transitions == [] && sysSt.satisfied.length == numReads
-    state.runSearch litmus finishedFun stopAtCondition storePartialTraces numWorkers batchSize breadthFirst
+    state.runSearch litmus finishedFun stopAtCondition storePartialTraces numWorkers
+      batchSize breadthFirst logProgress
 
 -- Doesn't work. Need to combine removed with requests
 -- def SystemState.satisfiedRequestPairs : SystemState → List (Request × Request)

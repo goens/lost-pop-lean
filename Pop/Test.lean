@@ -14,7 +14,7 @@ def trace2 := [acceptRequest (mkRead 0) 0, acceptRequest (mkWrite 0 0) 1, propag
 -- def res2 := printResult $ inittso12.applyTrace trace2
 
 
-def testprogram := <| R x || W y=1; W x=2 |>
+def testprogram := {| R x || W y=1; W x=2 |}
 
 
 def testaccept := inittso_2.applyAcceptRequest (mkRead 0) 0

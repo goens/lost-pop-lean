@@ -14,6 +14,8 @@ inductive Transition
   | satisfyRead : RequestId → RequestId → Transition
  deriving BEq
 
+abbrev ProgramState := Array (Array (Transition))
+
 instance : Inhabited (Transition) where default := Transition.acceptRequest default 0
 
 def Transition.toString : Transition → String

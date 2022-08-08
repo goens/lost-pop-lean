@@ -3,7 +3,6 @@ import Lean
 import Pop.Pop
 import Pop.Util
 import Std.Data
-import Pop.Exploration
 import Pop.TSO -- TODO: make this arch parametric too
 
 open Std.HashMap
@@ -98,7 +97,7 @@ syntax request ";" request_seq : request_seq
 syntax request : request_seq
 syntax request_seq "||" request_set : request_set
 syntax request_seq : request_set
-syntax "<|" request_set "|>" : term
+syntax "{|" request_set "|}" : term
 
 -- syntax sepBy(request_seq,  "||") : request_set
 -- TODO: should not require Compat!
@@ -117,4 +116,4 @@ macro_rules
   | `(request_set| $r:request_seq ) => `([$r])
   | `(request_set| $r:request_seq || $rs:request_set) => `($r :: $rs)
 macro_rules
-  | `(<| $r |>) => `( createAcceptList $r)
+  | `({| $r |}) => `( createAcceptList $r)

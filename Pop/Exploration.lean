@@ -3,15 +3,11 @@ import Lean
 import Pop.Pop
 import Pop.Util
 import Std.Data
+import Pop.Litmus
 open Std.HashMap
 open Util
 
 namespace Pop
-
-variable [Arch]
-instance : ArchReq := Arch.req
-
-abbrev ProgramState := Array (Array (Transition))
 
 def ProgramState.prettyPrint : ProgramState → String
   | stArr => String.intercalate " || " <| Array.toList <|
@@ -319,6 +315,24 @@ def Outcome.prettyPrint : Outcome → String
     λ th => String.intercalate "; " $ th.map (addressValuePretty $ Prod.snd ·)
   String.intercalate " || " threadStrings
 
+def runMultipleLitmus : List Litmus.Test → List (List Outcome)
+  | tests =>
+  Id.run do
+    let mut tasks : Array (Task (List Outcome)) := #[]
+    for test in tests do
+      let task := Task.spawn λ _ =>
+        let resExpl := test.2.runSearchNoDeadlock test.1
+        let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.outcome
+        resLitmus
+      tasks := tasks.push task
+    return tasks.map Task.get  |>.toList
+
+def prettyPrintLitmusResult : Litmus.Test → List Outcome → String
+  | test, reslit =>
+     let outcomes_pretty := String.intercalate "\n" $
+       reslit.map λ outcome => outcome.prettyPrint
+     let litStr := ProgramState.prettyPrint test.1.2
+     s!"litmus:{litStr}\n" ++ s!"outcomes:\n{outcomes_pretty}"
 /-
   Id.run do
     let mut res := ""

@@ -127,6 +127,13 @@ instance {α β γ : Type} : Coe (α × (β × γ))  (Triple α β γ) where coe
 --       | [] => leaf []
 --       | head :: rest => parentNil head
 
+def exceptIO  {α : Type} [Inhabited α] : Except String α → IO α
+  | exAlpha => match exAlpha with
+    | Except.ok a => return a
+    | Except.error msg => do
+      IO.println msg
+      return default
+
 structure ScopedBinaryRelation (α β : Type) [Hashable α] [BEq α] [Hashable β] [BEq β] where
   val : Std.HashMap (α × β × β) Bool
   defaultRes : Bool

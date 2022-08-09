@@ -81,6 +81,8 @@ def selectLitmus :  List Litmus.Test → String → Except String Litmus.Test
   let some n := input.trim.toNat?
     | Except.error $ s!"Invalid input (must be a number from 1 to {tests.length})"
       ++ s!"Received:{input}"
+  if n == 0 then
+    Except.error s!"Invalid index ({n}), must be between 1 and {tests.length}"
   let some test := tests[n - 1]?
     | Except.error s!"Invalid index ({n}), must be between 1 and {tests.length}"
   Except.ok test

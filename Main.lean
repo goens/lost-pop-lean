@@ -2,8 +2,9 @@ import Pop
 open Pop
 
 def main : IO Unit := do
-  let outcome <- Pop.interactiveExecution (Litmus.IRIW, Litmus.inittso_4) (← IO.getStdin)
-  println! "Outcome: {outcome.prettyPrint}"
+  let (trace,_,systemState)t <- Pop.interactiveExecution (Litmus.x86_2 ++ Litmus.x86_4) (← IO.getStdin)
+  let outcome := systemState.outcome
+  println! s!"Trace: {trace}" ++ s!"Outcome: {outcome.prettyPrint}"
   /-
   println! "running TSO MP tests"
   let mp_litmus := runMultipleLitmus Litmus.x86_2

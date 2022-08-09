@@ -23,7 +23,7 @@ def ProgramState.getAvailable (prog : ProgramState) : List (Transition) := Id.ru
   --dbg_trace "{prog.map λ tr => tr.map Transition.prettyPrintReq}.available = {res.map Transition.prettyPrintReq}"
   return res
 
-def ProgramState.removeTransition (prog : ProgramState) (transition : (Transition))
+def ProgramState.removeTransition (prog : ProgramState) (transition : Transition)
   : ProgramState := Id.run do
   let mut res := #[]
   let mut thread' := #[]
@@ -31,6 +31,20 @@ def ProgramState.removeTransition (prog : ProgramState) (transition : (Transitio
     thread' := thread.erase transition
     res := res.push thread'
   return res
+
+-- Should hold: remove · append = id
+def ProgramState.appendTransition : ProgramState → Transition → ProgramState
+  | prog, trans@(.acceptRequest _ thId) => Id.run do
+  let mut res := #[]
+  let mut thread' := #[]
+  for idx in [:prog.size] do
+    thread' := prog[idx]!
+    if idx == thId then
+      thread' := #[trans] ++ thread'
+    res := res.push thread'
+  return res
+  | prog, _ => prog
+
 
 def Request.possiblePropagateTransitions (req : Request) (state :  SystemState) : List (Transition) :=
   let threads := state.threads.removeAll req.propagated_to

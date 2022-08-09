@@ -74,7 +74,8 @@ def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO SearchState
           programState := programState.appendTransition transition
           partialTrace := partialTrace.dropLast
     let finalState <- Util.exceptIO $ start.applyTrace partialTrace
-    return (partialTrace,programState,finalState)t
+    -- return initial program state (litmus) instead of finished
+    return (partialTrace,initProgSt,finalState)t
 
 def selectLitmus :  List Litmus.Test → String → Except String Litmus.Test
 | tests, input => do

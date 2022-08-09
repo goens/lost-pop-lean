@@ -11,8 +11,9 @@ def MP := {|  W x=1; W y=1 ||  R y; R x |}
 def MP_fence1 := {| W x=1; Fence; W y=1 ||  R y; R x |}
 def MP_fence2 := {| W x=1; W y=1 ||  R y; Fence; R x |}
 def MP_fence := {| W x=1; Fence; W y=1 ||  R y; Fence; R x |}
+def N7 := {| W x=1; R x; R y || W y=1; R y; R x |}
 
-def x86_2_inst := [MP,MP_fence1,MP_fence2,MP_fence]
+def x86_2_inst := [MP,MP_fence1,MP_fence2,MP_fence, N7]
 def x86_4_inst := [IRIW, IRIW_fences]
 --def x86 := [MP] -- ,MP_fence1,MP_fence2,MP_fence]
 

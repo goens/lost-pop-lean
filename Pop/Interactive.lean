@@ -5,18 +5,9 @@ import Pop.Exploration
 import Pop.Litmus
 import Pop.Util
 
-/-
-def examplemain : IO Unit := do
-  let stdin ← IO.getStdin
-  let inputLine ← stdin.getLine
-  let kilos := inputLine.toNat!
-  if kilos % 2 == 0 then
-  IO.println "Yes"
-  else
-  IO.println "No"
--/
-
 namespace Pop
+
+variable [Arch]
 
 def requestTransitionMessage : SystemState → ProgramState → Except String String
   | sysSt, progSt =>

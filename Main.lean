@@ -2,7 +2,7 @@ import Pop
 open Pop
 
 def main : IO Unit := do
-  let (trace,litmus,systemState)t <- Pop.interactiveExecution (Litmus.x86_2 ++ Litmus.x86_4) (← IO.getStdin)
+  let (trace,litmus,systemState)t <- Pop.interactiveExecution (Litmus.allTso) (← IO.getStdin)
   let outcome := systemState.outcome
   println! "========================="
   println! "=======  SUMMARY  ======="

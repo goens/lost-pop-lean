@@ -2,13 +2,14 @@ import Pop.Util
 import Pop.States
 import Pop.Program
 import Pop.Litmus
+import Pop.TSO
 
 namespace Test
 
 open Util Pop Litmus Transition
 
-def trace := [acceptRequest (mkRead 0) 0, acceptRequest (mkWrite 0 0) 0]
-def trace2 := [acceptRequest (mkRead 0) 0, acceptRequest (mkWrite 0 0) 1, propagateToThread 0 1, propagateToThread 1 0, satisfyRead 0 1]
+def trace := [acceptRequest (mkRead "" 0) 0, acceptRequest (mkWrite "" 0 0) 0]
+def trace2 := [acceptRequest (mkRead "" 0) 0, acceptRequest (mkWrite "" 0 0) 1, propagateToThread 0 1, propagateToThread 1 0, satisfyRead 0 1]
 
 -- def res := printResult $ inittso12.applyTrace trace
 -- def res2 := printResult $ inittso12.applyTrace trace2
@@ -17,7 +18,7 @@ def trace2 := [acceptRequest (mkRead 0) 0, acceptRequest (mkWrite 0 0) 1, propag
 def testprogram := {| R x || W y=1; W x=2 |}
 
 
-def testaccept := inittso_2.applyAcceptRequest (mkRead 0) 0
+def testaccept := inittso_2.applyAcceptRequest (mkRead "" 0) 0
     -- let scope := testaccept.system.scopes.jointScope 0 req.thread
     -- let pred := testaccept.orderConstraints.predecessors scope 0 (reqIds testaccept.requests)
     -- let reqOps := testaccept.requests.val.filter (λ req => match req with | none => false | some r => pred.elem r.id)

@@ -8,6 +8,7 @@ open Std.HashMap
 open Util
 
 namespace Pop
+variable [Arch]
 
 def ProgramState.prettyPrint : ProgramState → String
   | stArr => String.intercalate " || " <| Array.toList <|

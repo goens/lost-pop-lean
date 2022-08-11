@@ -22,7 +22,7 @@ def requestTransitionMessage : SystemState → ProgramState → Except String St
 def getTransition : SystemState → ProgramState → String → Except String (Option Transition)
   | sysState, progState, input => do
   let available := sysState.possibleTransitions progState
-  let some n := input.toNat?
+  let some n := input.trim.toNat?
     | Except.error $ s!"Invalid input (must be a number from 0 to {available.length})"
      ++ s!"Received:{input}"
   if n == 0 then
@@ -31,10 +31,10 @@ def getTransition : SystemState → ProgramState → String → Except String (O
     | Except.error s!"Invalid index ({n}), must be between 1 and {available.length}"
   Except.ok $ some trans
 
-def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO SearchState
+def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
   | ((initTrans,initProgSt),initSysSt), stdin => do
     let Except.ok start := initSysSt.applyTrace initTrans
-      |  do IO.println s!"error initalizing litmus"; return ([],initProgSt,initSysSt)t
+      |  do return Except.error "error initalizing litmus"
     let mut partialTrace := []
     let mut programState := initProgSt
     let mut finished := false
@@ -43,30 +43,27 @@ def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO SearchState
       if finishedNoDeadlock systemState programState then
         finished := true
         break
-      IO.println $ "------------------\n" ++ s!"Current state:\n{systemState}\n"
-        ++ "Possible transitions:\n" ++ "0: Undo (last transition)"
       let exceptTransMsg  := requestTransitionMessage systemState programState
-      if !exceptTransMsg.isOk then
-        finished := true
-      let msg := match exceptTransMsg with
-        | Except.ok m => m
-        | Except.error m => m
-      IO.println msg
-      let mut step := Except.error "Unknown transition"
-      while !step.isOk do
-        let input <- stdin.getLine
-        step := getTransition systemState programState input.trim
-      let opTransition := step.toOption.get!
-      if let some transition := opTransition then
-        partialTrace := partialTrace ++ [transition]
-        programState := programState.removeTransition transition
-      else
-        if let some transition := partialTrace[partialTrace.length - 1]? then
-          programState := programState.appendTransition transition
-          partialTrace := partialTrace.dropLast
+      if let .error msg := exceptTransMsg  then
+        return .error msg
+      else if let .ok m := exceptTransMsg then
+        let msg := "---------------\n" ++ s!"Current state:\n{systemState}\n"
+        ++ "Possible transitions:\n" ++ "0: Undo (last transition)\n" ++ m
+        let opStep ← Util.selectLoop msg (getTransition systemState programState) stdin
+        if let some opTransition := opStep then
+          if let some transition := opTransition then
+            partialTrace := partialTrace ++ [transition]
+            programState := programState.removeTransition transition
+          else
+            if let some transition := partialTrace[partialTrace.length - 1]? then
+              programState := programState.appendTransition transition
+              partialTrace := partialTrace.dropLast
+        else
+          finished := true
+          return Except.error "^D"
     let finalState <- Util.exceptIO $ start.applyTrace partialTrace
     -- return initial program state (litmus) instead of finished
-    return (partialTrace,initProgSt,finalState)t
+    return Except.ok (partialTrace,initProgSt,finalState)t
 
 def selectLitmus :  List Litmus.Test → String → Except String Litmus.Test
 | tests, input => do
@@ -79,20 +76,17 @@ def selectLitmus :  List Litmus.Test → String → Except String Litmus.Test
     | Except.error s!"Invalid index ({n}), must be between 1 and {tests.length}"
   Except.ok test
 
-def interactiveExecution : List Litmus.Test → IO.FS.Stream → IO SearchState
+def interactiveExecution : List Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
   | tests, stdin => do
-    let mut selected := Except.error "No litmus test selected"
     let litmusStrings :=  tests.map λ ((_,progState),_) => progState.prettyPrint
     let indices := List.range (litmusStrings.length) |>.map (· +1)
     let fullStrings := indices.zip litmusStrings |>.map λ (idx, lit) => s!"{idx}: {lit}"
     let availableString := String.intercalate "\n" fullStrings
-    while !selected.isOk do
-      IO.println s!"Select litmus test. Available:\n{availableString}"
-      let input <- stdin.getLine
-      selected := selectLitmus tests input
-      if let Except.error msg := selected then
-        IO.println s!"Error: {msg}"
-    let litmus := selected.toOption.get!
-    interactiveExecutionSingle litmus stdin
+    let opLitmus ← Util.selectLoop
+      s!"Select litmus test. Available:\n{availableString}" (selectLitmus tests) stdin
+    if let some litmus := opLitmus then
+      interactiveExecutionSingle litmus stdin
+    else
+      return Except.error "^D"
 
 end Pop

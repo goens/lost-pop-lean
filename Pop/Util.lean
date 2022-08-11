@@ -134,6 +134,22 @@ def exceptIO  {α : Type} [Inhabited α] : Except String α → IO α
       IO.println msg
       return default
 
+
+def selectLoop {α : Type} : String → (String → Except String α) → IO.FS.Stream → IO (Option α)
+  | selectionString, selectFun, inputStream => do
+  let mut selected := Except.error "unread"
+  while !selected.isOk do
+    IO.println selectionString
+    let input <- inputStream.getLine
+    if input.length == 0 then
+      return none
+    selected := selectFun input
+    if let Except.error msg := selected then
+      IO.println s!"Error: {msg}"
+  match selected with
+    | .ok a => return (some a)
+    | _ => return none
+
 structure ScopedBinaryRelation (α β : Type) [Hashable α] [BEq α] [Hashable β] [BEq β] where
   val : Std.HashMap (α × β × β) Bool
   defaultRes : Bool

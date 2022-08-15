@@ -15,6 +15,7 @@ def RequestId.ofNat : Nat → RequestId := λ x => x
 def ThreadId.ofNat : Nat → RequestId := λ x => x
 def Address.ofNat : Nat → Address := λ x => x
 def Value.ofNat : Nat → Value := λ x => some x
+def Value.ofOptionNat : Option Nat → Value := λ x => x
 
 instance : OfNat ThreadId n where  ofNat := ThreadId.ofNat n
 instance : OfNat RequestId n where  ofNat := RequestId.ofNat n

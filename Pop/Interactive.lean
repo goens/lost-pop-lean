@@ -32,7 +32,7 @@ def getTransition : SystemState → ProgramState → String → Except String (O
   Except.ok $ some trans
 
 def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
-  | ((initTrans,initProgSt),initSysSt), stdin => do
+  | ((initTrans,initProgSt),_,initSysSt), stdin => do
     let Except.ok start := initSysSt.applyTrace initTrans
       |  do return Except.error "error initalizing litmus"
     let mut partialTrace := []
@@ -40,7 +40,7 @@ def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except Str
     let mut finished := false
     while !finished do
       let systemState <- Util.exceptIO $ start.applyTrace partialTrace
-      if finishedNoDeadlock systemState programState then
+      if systemState.finishedNoDeadlock programState then
         finished := true
         break
       let exceptTransMsg  := requestTransitionMessage systemState programState

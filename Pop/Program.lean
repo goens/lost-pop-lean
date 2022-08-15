@@ -2,6 +2,7 @@ import Pop.States
 import Lean
 import Pop.Pop
 import Pop.Util
+import Pop.Litmus
 import Std.Data
 --import Pop.TSO -- TODO: make this arch parametric too
 
@@ -16,6 +17,7 @@ class LitmusSyntax where
   mkRead : String → Address → BasicRequest
   mkWrite : String → Address → Value → BasicRequest
   mkBarrier : String → BasicRequest
+  mkInitState : Nat → SystemState
 
 variable [LitmusSyntax]
 open LitmusSyntax
@@ -25,6 +27,12 @@ def mkRequest : String × String × Address × Value → ThreadId → Option (Tr
   | ("W",typeStr , addr, val), thId  => some $ Pop.Transition.acceptRequest (mkWrite typeStr addr val) thId
   | ("Fence", typeStr, _, _), thId => some $ Pop.Transition.acceptRequest (mkBarrier typeStr) thId
   | _, _ => none
+
+def mkOutcome : String × String × Address × Value → ThreadId → Litmus.Outcome
+  | ("R", _, addr, val@(some _)), thId  => [(thId,addr,val)]
+  | _, _ => []
+
+
 
 def initZeroesUnpropagatedTransitions : List Address → List (Transition)
   | addresses =>
@@ -73,30 +81,33 @@ structure RequestSyntax where
   (reqKind : String)
   (reqType : String)
   (varName : String)
-  (value : Nat)
+  (value : Option Nat)
 
 -- create accepts in a per-thread basis
-def createAcceptList : List (List RequestSyntax) → List (Transition) × ProgramState
+def createLitmus : List (List RequestSyntax) → Litmus.Test
   | list =>
   let variablesRaw := list.map λ thread => thread.map (λ r => if r.varName.length == 0 then none else some r.varName)
   let variables := removeDuplicates $ filterNones $ List.join variablesRaw
   let variableNums := variables.zip (List.range variables.length)
   let variableMap := Std.mkHashMap (capacity := variableNums.length) |> variableNums.foldl λ acc (k, v) => acc.insert k v
   let replaceVar := λ r => (r.reqKind, r.reqType, (Option.get! $ variableMap.find? r.varName),r.value)
-  let replacedVariablesNat : List (List (String × String × Nat × Nat)) := list.map λ thread => thread.map replaceVar
-  let replacedVariables : List (List (String × String × Address × Value)) := replacedVariablesNat.map λ l => l.map (λ (str,rtype,addr,val) => (str,rtype,Address.ofNat addr, Value.ofNat val))
+  let replacedVariablesNat : List (List (String × String × Nat × Option Nat)) := list.map λ thread => thread.map replaceVar
+  let replacedVariables : List (List (String × String × Address × Value)) := replacedVariablesNat.map λ l => l.map (λ (str,rtype,addr,val) => (str,rtype,Address.ofNat addr, val))
   let fullThreads := replacedVariables.zip (List.range replacedVariables.length)
   let mkThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkRequest r thId) reqs
+  let mkOutcomeThread := λ (reqs, thId) => List.join $ List.map (λ r => mkOutcome r thId) reqs
   let reqs := fullThreads.map λ t => mkThread t |>.toArray
+  let outcomes := List.join $ fullThreads.map λ t => mkOutcomeThread t
   let initWrites := initZeroesUnpropagatedTransitions (List.range variables.length)
   let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
-  (initWrites ++ initPropagates, reqs.toArray)
+  let initState := mkInitState fullThreads.length
+  ((initWrites ++ initPropagates, reqs.toArray), (outcomes, initState))
 
 declare_syntax_cat request
 declare_syntax_cat request_seq
 declare_syntax_cat request_set
-syntax "R" ident : request
-syntax "R." ident ident : request
+syntax "R" ident ("//" num)? : request
+syntax "R." ident ident  ("//" num)? : request
 syntax "W" ident "=" num : request
 syntax "W." ident ident "=" num : request
 syntax "Fence"   : request
@@ -119,18 +130,18 @@ macro_rules
 -- TODO: should not require Compat!
 
 macro_rules
- | `(request| R $x:ident) =>
- `(RequestSyntax.mk "R" ""  $(Lean.quote x.getId.toString)  0)
- | `(request| R. $t:ident $x:ident) =>
- `(RequestSyntax.mk "R" $(Lean.quote t.getId.toString) $(Lean.quote x.getId.toString) 0)
+ | `(request| R $x:ident $[// $v]?) =>
+ `(RequestSyntax.mk "R" ""  $(Lean.quote x.getId.toString)  $(Lean.quote $ v.map λ s => s.getNat))
+ | `(request| R. $t:ident $x:ident $[// $v]?) =>
+ `(RequestSyntax.mk "R" $(Lean.quote t.getId.toString) $(Lean.quote x.getId.toString) $(Lean.quote $ v.map λ s => s.getNat))
  | `(request| W $x:ident = $y:num) =>
- `(RequestSyntax.mk "W" "" $(Lean.quote x.getId.toString) $y)
+ `(RequestSyntax.mk "W" "" $(Lean.quote x.getId.toString) (some $y))
  | `(request| W. $t:ident $x:ident = $y:num) =>
- `(RequestSyntax.mk "W" $(Lean.quote t.getId.toString) $(Lean.quote x.getId.toString) $y)
+ `(RequestSyntax.mk "W" $(Lean.quote t.getId.toString) $(Lean.quote x.getId.toString) (some $y))
  | `(request| Fence     ) =>
- `(RequestSyntax.mk "Fence" "" "" 0)
+ `(RequestSyntax.mk "Fence" "" "" none)
  | `(request| Fence. $t    ) =>
- `(RequestSyntax.mk "Fence" $(Lean.quote t.getId.toString) "" 0)
+ `(RequestSyntax.mk "Fence" $(Lean.quote t.getId.toString) "" none)
 
 macro_rules
   | `(request_seq| $r:request ) => do `([ `[req| $r] ])
@@ -141,4 +152,4 @@ macro_rules
   | `(request_set| $r:request_seq || $rs:request_set) => `(`[req_seq| $r] :: `[req_set| $rs])
 
 macro_rules
-  | `({| $r |}) => `( createAcceptList `[req_set| $r])
+  | `({| $r |}) => `( createLitmus `[req_set| $r])

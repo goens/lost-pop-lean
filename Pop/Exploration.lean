@@ -8,6 +8,7 @@ open Std.HashMap
 open Util
 
 namespace Pop
+
 variable [Arch]
 
 def ProgramState.prettyPrint : ProgramState → String
@@ -93,6 +94,22 @@ def SystemState.isDeadlocked (state : SystemState) (unaccepted : ProgramState) :
   let transitions := state.possibleTransitions unaccepted
   transitions == [] && state.hasUnsatisfiedReads
 
+def SystemState.outcome : SystemState → Litmus.Outcome
+| state =>
+-- TODO: this won't work for reads that stay there
+let triple := state.removed.map λ rd => (rd.thread, rd.address?.get!, rd.value?)
+triple.toArray.qsort (λ (th,ad,_) (th',ad',_) => lexBLe (th,ad) (th',ad')) |>.toList
+
+def outcomeSubset : Litmus.Outcome → Litmus.Outcome → Bool
+  | out₁, out₂ =>
+  out₁.all λ triple => out₂.contains triple
+
+def outcomeEqiv : Litmus.Outcome → Litmus.Outcome → Bool
+  | out₁, out₂ => outcomeSubset out₁ out₂ && outcomeSubset out₂ out₁
+
+def SystemState.outcomePossible : SystemState → Litmus.Outcome → Bool
+ | state, expectedOutcome => outcomeSubset state.outcome expectedOutcome
+
 -- This should be a monad transformer or smth...
 def SystemState.takeNthStep (state : SystemState) (acceptRequests : ProgramState)
 (n : Nat) : Except String (Transition × SystemState) :=
@@ -124,57 +141,20 @@ def SystemState.runWithList  : SystemState →  ProgramState → List Nat → Ex
   then throw "Running with non-accept transition inputs"
   else SystemState._runWithList state accepts ns
 
+def SystemState.finishedNoDeadlock (state : SystemState) (unaccepted : ProgramState) : Bool :=
+  let transitions := state.possibleTransitions unaccepted
+  transitions == [] && !state.hasUnsatisfiedReads
 
-/-
-private def appendTransitionStateAux : List (List Transition × SystemState) → Transition × SystemState  → List (List Transition × SystemState)
-  | partialTrace, (trans,state) => partialTrace.map λ (transitions, _) => (trans::transitions, state)
-
-Stack overflow :
-
--- is this DFS or BFS?
-partial def SystemState.runDFSAux (state : SystemState) (accepts : List Transition) (condition : SystemState → Bool)
-  (partialTrace : List (List Transition × SystemState)) (transition : Transition): List (List Transition × SystemState) :=
-  --dbg_trace s!"partialTrace {partialTrace.map fun (t,_) => t}"
-  --dbg_trace s!"executing {transition}"
-  let accepts' := accepts.removeAll [transition]
-  let stepExcept := state.applyTransition transition
-  match stepExcept with
-    | Except.error _ => []
-    | Except.ok state' =>
-      let partialTrace' := appendTransitionStateAux partialTrace (transition,state')
-      if condition state'
-      then partialTrace'
-      else if state'.isDeadlocked accepts'
-      then []
-      else
-        let transitions' := state'.possibleTransitions accepts'
-        List.join $ transitions'.map (state'.runDFSAux accepts' condition partialTrace')
-
-def SystemState.runDFS : SystemState → List Transition × List Transition → (SystemState → Bool) →
-  List (List Transition × SystemState)
-  | state, (inittransitions, accepts), condition =>
-  let stateinit := state.applyTrace inittransitions
-  match stateinit with
-    | .ok st =>
-      let transitions := st.possibleTransitions accepts
-      List.join $ transitions.map (st.runDFSAux accepts condition [([],state)])
-    | .error _ =>
-      --dbg_trace s!"error: {e}"
-      [(inittransitions,state)]
--/
 
 abbrev SearchState := Triple (List Transition) ProgramState SystemState
 
-private def searchAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool)
-(condition : SystemState → ProgramState → Bool)
+private def searchAuxStep (stopAfterFirst : Bool) (storePartialTraces : Bool)
+(pruneCondition : SystemState → ProgramState → Bool)
 (partialTrace : List Transition) (acceptsRemaining : ProgramState) (st : SystemState)
 : Array SearchState :=
   let transitions := st.possibleTransitions acceptsRemaining
-  --let debug := if true--transitions.length == 0
-  --  then s!"requests:\n{st.requests}\n available:\n{transitions}\n------"
-  --  else ""
-  --dbg_trace debug
-  if stopAtCondition && condition st acceptsRemaining
+  let condition := λ ss ps => pruneCondition ss ps && !ss.finishedNoDeadlock acceptsRemaining
+  if stopAfterFirst && condition st acceptsRemaining
   then Array.mk []
   else
     transitions.toArray.map λ t =>
@@ -183,7 +163,6 @@ private def searchAuxStep (stopAtCondition : Bool) (storePartialTraces : Bool)
                     else [])
     -- TODO: this could yield a bug if we have two identical requests in a litmus test
       let newAC :=       ProgramState.removeTransition acceptsRemaining t
-      -- dbg_trace "{acceptsRemaining.prettyPrint}, removing {t.prettyPrintReq}, yields: {newAC.prettyPrint}"
       -- TODO: add potential to sanity check
       let newST := st.applyTransition! t
       (newPT,newAC,newST)t
@@ -203,37 +182,39 @@ private def searchAuxCheckCondition
       then some (triple.1,triple.3)
       else none
 
-private def searchAuxNSteps (stopAtCondition : Bool) (storePartialTraces : Bool)
-  (condition : SystemState → ProgramState → Bool) (n : Nat) (inputStates : Array SearchState)
+private def searchAuxNSteps (stopAfterFirst : Bool) (storePartialTraces : Bool)
+  (pruneCondition : SystemState → ProgramState → Bool) (n : Nat) (inputStates : Array SearchState)
  : List (List Transition × SystemState) × Array SearchState := Id.run do
  let mut unexplored := inputStates
  let mut stepsRemaining := n
- let stepFun := searchAuxStep stopAtCondition storePartialTraces condition
+ let stepFun := searchAuxStep stopAfterFirst storePartialTraces pruneCondition
  while h : unexplored.size > 0 && stepsRemaining > 0 do
    let (partialTrace,acceptsRemaining,st)t := unexplored[unexplored.size - 1]'
      (by rw [Bool.and_eq_true] at h
          let h' := of_decide_eq_true $ And.left h
          exact n_minus_one_le_n h')
    let newTriples := stepFun partialTrace acceptsRemaining st
+     |>.filter λ (_,ps,ss)t => pruneCondition ss ps
    unexplored := unexplored.pop
    unexplored := searchAuxUpdateUnexplored #[] unexplored newTriples
    --dbg_trace "popped {partialTrace}, remaining unexplored{unexplored.map λ (pt,_,_)t => pt} "
    stepsRemaining := stepsRemaining - 1
- let found := searchAuxCheckCondition condition unexplored
+ let foundCondition := λ ss ps => pruneCondition ss ps && ss.finishedNoDeadlock ps
+ let found := searchAuxCheckCondition foundCondition unexplored
  --dbg_trace "returning unexplored: {unexplored.map λ triple => triple.1}"
  (found,unexplored)
 
 -- the unapologetically imperative version:
-def SystemState.runSearch (state : SystemState) (inittuple : List (Transition) × ProgramState)
- (condition : SystemState → ProgramState → Bool) (stopAtCondition : optParam Bool false)
- (storePartialTraces : optParam Bool false) (numWorkers : optParam Nat 7)
- (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false)
- (logProgress : optParam Bool false) :
+def SystemState.exhaustiveSearch (state : SystemState) (inittuple : List (Transition) × ProgramState)
+ (pruneCondition : optParam (SystemState → ProgramState → Bool) (λ _ _ => true))
+ (stopAfterFirst : optParam Bool false) (storePartialTraces : optParam Bool false)
+ (numWorkers : optParam Nat 7) (batchSize : optParam Nat 15)
+ (breadthFirst : optParam Bool false) (logProgress : optParam Bool false) :
  List (List (Transition) × SystemState) :=
 match inittuple with
   | (inittransitions, accepts) =>
   let stateinit := state.applyTrace inittransitions
-  let stepFun := searchAuxNSteps stopAtCondition storePartialTraces condition batchSize
+  let stepFun := searchAuxNSteps stopAfterFirst storePartialTraces pruneCondition batchSize
   match stateinit with
     | .ok startState =>
     Id.run do
@@ -280,26 +261,16 @@ match inittuple with
     | .error _ => -- TODO: make this function also an Except value
     [(inittransitions,state)]
 
-def finishedNoDeadlock (state : SystemState) (unaccepted : ProgramState) : Bool :=
-  let transitions := state.possibleTransitions unaccepted
-  transitions == [] && !state.hasUnsatisfiedReads
-
-def SystemState.runSearchNoDeadlock
-  (state : SystemState) (litmus : List (Transition) × ProgramState)
-  (stopAtCondition : optParam Bool false)
+def SystemState.exhaustiveSearchLitmus
+  (state : SystemState) (litmus : List (Transition) × ProgramState × Litmus.Outcome)
+  (stopAfterFirst : optParam Bool false)
   (storePartialTraces : optParam Bool true) (numWorkers : optParam Nat 7)
   (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false)
-  (logProgress : optParam Bool false):
+  (logProgress : optParam Bool false) :
   List (List (Transition) × SystemState) :=
-    let reads : Array (Array Nat) := litmus.2.map
-      λ thread => thread.map
-        λ tr => if tr.isReadAccept then 1 else 0
-    let numReads : Nat := Array.sum $ reads.map λ th => Array.sum th
-      let finishedFun := λ sysSt prSt =>
-        let transitions := sysSt.possibleTransitions prSt
-        -- dbg_trace "{sysSt.satisfied.length}/{numReads}"
-        transitions == [] && sysSt.satisfied.length == numReads
-    state.runSearch litmus finishedFun stopAtCondition storePartialTraces numWorkers
+    let (inittrans,progstate,expectedOutcome) := litmus
+    let pruneFun := λ ss _ => ss.outcomePossible expectedOutcome
+    state.exhaustiveSearch (inittrans,progstate) pruneFun stopAfterFirst storePartialTraces numWorkers
       batchSize breadthFirst logProgress
 
 -- Doesn't work. Need to combine removed with requests
@@ -311,43 +282,27 @@ def SystemState.runSearchNoDeadlock
 --       | _ => none
 --     filterNones optPairs
 
-abbrev Outcome := List $ ThreadId × Address × Value
-
-def SystemState.outcome : SystemState → Outcome
-  | state =>
-    -- TODO: this won't work for reads that stay there
-    let triple := state.removed.map λ rd => (rd.thread, rd.address?.get!, rd.value?)
-    triple.toArray.qsort (λ (th,ad,_) (th',ad',_) => lexBLe (th,ad) (th',ad')) |>.toList
-
-def addressValuePretty : Address × Value → String
-  | (_, none) => "invalid outcome!"
-  | (addr, some val) => s!"{addr.prettyPrint} = {val}"
-
-def Outcome.prettyPrint : Outcome → String
-  | outcome =>
-  let threads : List Outcome := outcome.groupBy (·.1 == ·.1)
-  let threadStrings := threads.map
-    λ th => String.intercalate "; " $ th.map (addressValuePretty $ Prod.snd ·)
-  String.intercalate " || " threadStrings
-
-def runMultipleLitmus : List Litmus.Test → List (List Outcome)
+def runMultipleLitmus : List Litmus.Test → List (List Litmus.Outcome)
   | tests =>
   Id.run do
-    let mut tasks : Array (Task (List Outcome)) := #[]
+    let mut tasks : Array (Task (List Litmus.Outcome)) := #[]
     for test in tests do
       let task := Task.spawn λ _ =>
-        let resExpl := test.2.runSearchNoDeadlock test.1
+        let resExpl := test.2.2.exhaustiveSearch test.1
         let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.outcome
         resLitmus
       tasks := tasks.push task
     return tasks.map Task.get  |>.toList
 
-def prettyPrintLitmusResult : Litmus.Test → List Outcome → String
+def prettyPrintLitmusResult : Litmus.Test → List Litmus.Outcome → String
   | test, reslit =>
-     let outcomes_pretty := String.intercalate "\n" $
-       reslit.map λ outcome => outcome.prettyPrint
-     let litStr := ProgramState.prettyPrint test.1.2
-     s!"litmus:{litStr}\n" ++ s!"outcomes:\n{outcomes_pretty}"
+     let expected := test.2.1
+     let prog := test.1.2
+     let outcome_res := if reslit.any λ out => outcomeEqiv out expected
+       then "✓"
+       else "×"
+     let litStr := ProgramState.prettyPrint prog ++ s!". Expected: {expected.prettyPrint}"
+     s!"litmus: {litStr}. Allowed?: {outcome_res}"
 /-
   Id.run do
     let mut res := ""

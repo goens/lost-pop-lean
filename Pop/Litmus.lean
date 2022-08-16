@@ -1,14 +1,12 @@
 import Pop.Util
 import Pop.Pop
 
-
 namespace Litmus
 open Util Pop
 
 variable [Arch]
 abbrev Outcome := List $ ThreadId × Address × Value
 abbrev Test := (List Transition × ProgramState) × Outcome  × SystemState
-
 
 def addressValuePretty : Address × Value → String
   | (_, none) => "invalid outcome!"
@@ -20,6 +18,5 @@ def Outcome.prettyPrint : Litmus.Outcome → String
   let threadStrings := threads.map
     λ th => String.intercalate "; " $ th.map (addressValuePretty $ Prod.snd ·)
   String.intercalate " || " threadStrings
-
 
 end Litmus

@@ -47,7 +47,6 @@ def ProgramState.appendTransition : ProgramState → Transition → ProgramState
   return res
   | prog, _ => prog
 
-
 def Request.possiblePropagateTransitions (req : Request) (state :  SystemState) : List (Transition) :=
   let threads := state.threads.removeAll req.propagated_to
   --dbg_trace s!"Req {req.id} has not propagated to {threads}"
@@ -148,24 +147,18 @@ def SystemState.finishedNoDeadlock (state : SystemState) (unaccepted : ProgramSt
 
 abbrev SearchState := Triple (List Transition) ProgramState SystemState
 
-private def searchAuxStep (stopAfterFirst : Bool) (storePartialTraces : Bool)
-(pruneCondition : SystemState → ProgramState → Bool)
-(partialTrace : List Transition) (acceptsRemaining : ProgramState) (st : SystemState)
-: Array SearchState :=
+private def searchAuxStep (storePartialTraces : Bool) (partialTrace : List Transition)
+(acceptsRemaining : ProgramState) (st : SystemState) : Array SearchState :=
   let transitions := st.possibleTransitions acceptsRemaining
-  let condition := λ ss ps => pruneCondition ss ps && !ss.finishedNoDeadlock acceptsRemaining
-  if stopAfterFirst && condition st acceptsRemaining
-  then Array.mk []
-  else
-    transitions.toArray.map λ t =>
-      let newPT := (if storePartialTraces
-                    then partialTrace ++ [t]
-                    else [])
-    -- TODO: this could yield a bug if we have two identical requests in a litmus test
-      let newAC :=       ProgramState.removeTransition acceptsRemaining t
-      -- TODO: add potential to sanity check
-      let newST := st.applyTransition! t
-      (newPT,newAC,newST)t
+  transitions.toArray.map λ t =>
+    let newPT := (if storePartialTraces
+                  then partialTrace ++ [t]
+                  else [])
+  -- TODO: this could yield a bug if we have two identical requests in a litmus test
+    let newAC :=       ProgramState.removeTransition acceptsRemaining t
+    -- TODO: add potential to sanity check
+    let newST := st.applyTransition! t
+    (newPT,newAC,newST)t
 
 private def searchAuxUpdateUnexplored (explored unexplored newtriples : Array SearchState) : Array SearchState :=
   let filterFun := λ (_,newProgState,newSysState)t =>
@@ -174,39 +167,37 @@ private def searchAuxUpdateUnexplored (explored unexplored newtriples : Array Se
     (unexplored.all checkFun && explored.all checkFun)
   Array.append (newtriples.filter filterFun) unexplored
 
-private def searchAuxCheckCondition
-(condition : SystemState → ProgramState → Bool) (newTriples : Array SearchState)
-: List (List Transition × SystemState) :=
-  filterNones $ newTriples.toList.map λ triple =>
-    if condition triple.3 triple.2
-      then some (triple.1,triple.3)
-      else none
-
 private def searchAuxNSteps (stopAfterFirst : Bool) (storePartialTraces : Bool)
-  (pruneCondition : SystemState → ProgramState → Bool) (n : Nat) (inputStates : Array SearchState)
+  (dontPruneCondition : SystemState → ProgramState → Bool) (n : Nat) (inputStates : Array SearchState)
  : List (List Transition × SystemState) × Array SearchState := Id.run do
  let mut unexplored := inputStates
  let mut stepsRemaining := n
- let stepFun := searchAuxStep stopAfterFirst storePartialTraces pruneCondition
+ let mut found := []
+ let stepFun := searchAuxStep storePartialTraces
  while h : unexplored.size > 0 && stepsRemaining > 0 do
    let (partialTrace,acceptsRemaining,st)t := unexplored[unexplored.size - 1]'
      (by rw [Bool.and_eq_true] at h
          let h' := of_decide_eq_true $ And.left h
          exact n_minus_one_le_n h')
-   let newTriples := stepFun partialTrace acceptsRemaining st
-     |>.filter λ (_,ps,ss)t => pruneCondition ss ps
+   let newTriplesRaw := stepFun partialTrace acceptsRemaining st
+   let newTriples := newTriplesRaw.filter λ (_,ps,ss)t =>
+     dontPruneCondition ss ps
    unexplored := unexplored.pop
    unexplored := searchAuxUpdateUnexplored #[] unexplored newTriples
    --dbg_trace "popped {partialTrace}, remaining unexplored{unexplored.map λ (pt,_,_)t => pt} "
    stepsRemaining := stepsRemaining - 1
- let foundCondition := λ ss ps => pruneCondition ss ps && ss.finishedNoDeadlock ps
- let found := searchAuxCheckCondition foundCondition unexplored
- --dbg_trace "returning unexplored: {unexplored.map λ triple => triple.1}"
+   found := List.append found $ filterNones $ unexplored.toList.map λ (pt,ps,ss)t =>
+     if ss.finishedNoDeadlock ps
+     then some (pt,ss)
+     else none
+   if stopAfterFirst && found.length > 0
+     then return (found,unexplored)
+   --dbg_trace "returning unexplored: {unexplored.map λ triple => triple.1}"
  (found,unexplored)
 
 -- the unapologetically imperative version:
 def SystemState.exhaustiveSearch (state : SystemState) (inittuple : List (Transition) × ProgramState)
- (pruneCondition : optParam (SystemState → ProgramState → Bool) (λ _ _ => true))
+ (dontPruneCondition : optParam (SystemState → ProgramState → Bool) (λ _ _ => true))
  (stopAfterFirst : optParam Bool false) (storePartialTraces : optParam Bool false)
  (numWorkers : optParam Nat 7) (batchSize : optParam Nat 15)
  (breadthFirst : optParam Bool false) (logProgress : optParam Bool false) :
@@ -214,7 +205,7 @@ def SystemState.exhaustiveSearch (state : SystemState) (inittuple : List (Transi
 match inittuple with
   | (inittransitions, accepts) =>
   let stateinit := state.applyTrace inittransitions
-  let stepFun := searchAuxNSteps stopAfterFirst storePartialTraces pruneCondition batchSize
+  let stepFun := searchAuxNSteps stopAfterFirst storePartialTraces dontPruneCondition batchSize
   match stateinit with
     | .ok startState =>
     Id.run do
@@ -246,6 +237,9 @@ match inittuple with
           for worker in workers do
             let (newFound,newTriples) := worker.get
             found := newFound ++ found
+            if stopAfterFirst && found.length > 0 then
+              unexplored := #[]
+              break
             if logProgress then
               if newTriples.any λ (pt,_,_)t => pt.length > cur_size then
                 cur_size := cur_size + 1
@@ -255,6 +249,8 @@ match inittuple with
                 thousands_explored := thousands_explored + 1
 
             unexplored := searchAuxUpdateUnexplored explored unexplored newTriples
+            if stopAfterFirst && found.length > 0 then
+              break
             --dbg_trace "total unexplored: {unexplored.size}"
           workers := #[]
       return found
@@ -286,9 +282,9 @@ def runMultipleLitmus : List Litmus.Test → List (List Litmus.Outcome)
   | tests =>
   Id.run do
     let mut tasks : Array (Task (List Litmus.Outcome)) := #[]
-    for test in tests do
+    for ((initTrans,initProg),(outcome,startingState)) in tests do
       let task := Task.spawn λ _ =>
-        let resExpl := test.2.2.exhaustiveSearch test.1
+        let resExpl := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome) (stopAfterFirst := true)
         let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.outcome
         resLitmus
       tasks := tasks.push task
@@ -303,6 +299,7 @@ def prettyPrintLitmusResult : Litmus.Test → List Litmus.Outcome → String
        else "×"
      let litStr := ProgramState.prettyPrint prog ++ s!". Expected: {expected.prettyPrint}"
      s!"litmus: {litStr}. Allowed?: {outcome_res}"
+
 /-
   Id.run do
     let mut res := ""

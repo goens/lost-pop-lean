@@ -11,5 +11,9 @@ lean_lib Pop {
 
 @[defaultTarget]
 lean_exe pop {
-  root := `Main
+  root := `Interactive
+}
+
+lean_exe pop_explore {
+  root := `Exploration
 }

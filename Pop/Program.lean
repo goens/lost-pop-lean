@@ -4,7 +4,6 @@ import Pop.Pop
 import Pop.Util
 import Pop.Litmus
 import Std.Data
---import Pop.TSO -- TODO: make this arch parametric too
 
 open Std.HashMap
 open Util

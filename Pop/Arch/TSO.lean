@@ -5,14 +5,15 @@ import Pop.Util
 
 open Pop Util
 
-inductive DefaultReqType
-  | mk : DefaultReqType
+inductive x86Req
+  | mk : x86Req
   deriving BEq, Inhabited
 
 instance : ArchReq where
-  type := DefaultReqType
-  beq_inst := instBEqDefaultReqType
-  inhabited_inst := instInhabitedDefaultReqType
+  type := x86Req
+  instBEq := instBEqX86Req
+  instInhabited := instInhabitedX86Req
+  isPermanentRead := λ _ => false
 
 def tso_reorder : Request → Request → Bool
   | r₁, r₂ => if r₁.isBarrier || r₂.isBarrier
@@ -69,9 +70,11 @@ def MP_fence1 := {| W x=1; Fence; W y=1 ||  R y // 1; R x // 0 |}
 def MP_fence2 := {| W x=1; W y=1 ||  R y //1; Fence; R x // 0 |}
 def MP_fence := {| W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0|}
 def N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |}
+def dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}
+def dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |}
 --def causality := {| W x = 1 || R x; Fence; W x = 2 || R x; W|}
 
-def x86_2 := [MP,MP_fence1,MP_fence2,MP_fence, N7]
+def x86_2 := [MP,MP_fence1,MP_fence2,MP_fence, N7, dekkers, dekkers_fence]
 def x86_4 := [IRIW, IRIW_fences]
 
 def allTso : List Litmus.Test := x86_2 ++ x86_4

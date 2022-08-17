@@ -1,5 +1,5 @@
 import Pop
-import Pop.TSO
+import Pop.Arch.TSO
 
 open Pop
 

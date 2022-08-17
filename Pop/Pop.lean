@@ -207,8 +207,12 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
    | some read, some write =>
       let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexBLe |>.toList
       let read' := read.setValue write.value?
-      let removed' :=  (read'::state.removed).toArray.qsort (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
-      let requests' := state.requests.remove readId
+      let removed' := if read.isPermanentRead
+        then state.removed
+        else (read'::state.removed).toArray.qsort (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
+      let requests' := if read.isPermanentRead
+        then state.requests
+        else state.requests.remove readId
       let orderConstraints' := state.orderConstraints --.purge readId
       { requests := requests', orderConstraints := orderConstraints',
         removed := removed', satisfied := satisfied',

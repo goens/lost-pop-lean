@@ -32,8 +32,9 @@ def Address.prettyPrint (addr : Address) : String :=
 
 class ArchReq where
 (type : Type 0)
-(beq_inst : BEq type)
-(inhabited_inst : Inhabited type)
+(instBEq : BEq type)
+(instInhabited : Inhabited type)
+(isPermanentRead : type → Bool)
 
 variable [ArchReq]
 
@@ -48,8 +49,8 @@ structure WriteRequest where
  val : Value
  deriving BEq
 
-instance : BEq ArchReq.type where beq := ArchReq.beq_inst.beq
-instance : Inhabited ArchReq.type where default := ArchReq.inhabited_inst.default
+instance : BEq ArchReq.type := ArchReq.instBEq
+instance : Inhabited ArchReq.type := ArchReq.instInhabited
 
 inductive BasicRequest
  | read : ReadRequest → ArchReq.type → BasicRequest
@@ -78,6 +79,11 @@ def BasicRequest.prettyPrint : BasicRequest → String
   | BasicRequest.barrier _ => "Fence"
 
 instance : ToString (BasicRequest) where toString := BasicRequest.toString
+
+def BasicRequest.type : BasicRequest → ArchReq.type
+  | BasicRequest.read  _ t => t
+  | BasicRequest.write  _ t => t
+  | BasicRequest.barrier t => t
 
 def BasicRequest.setValue : (BasicRequest) → Value → (BasicRequest)
   | BasicRequest.read rr rt, v => BasicRequest.read {rr with val := v} rt
@@ -123,6 +129,7 @@ def Request.isRead    (r : Request) : Bool := r.basic_type.isRead
 def Request.isWrite   (r : Request) : Bool := r.basic_type.isWrite
 def Request.isBarrier (r : Request) : Bool := r.basic_type.isBarrier
 def Request.isMem     (r : Request) : Bool := !r.basic_type.isBarrier
+def Request.isPermanentRead (r : Request) : Bool := r.isRead && ArchReq.isPermanentRead r.basic_type.type
 
 def Request.value? (r : Request) : Value := r.basic_type.value?
 def Request.setValue (r : Request) (v : Value) : Request := { r with basic_type := r.basic_type.setValue v}

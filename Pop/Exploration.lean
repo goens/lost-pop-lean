@@ -284,7 +284,7 @@ def runMultipleLitmus : List Litmus.Test → List (List Litmus.Outcome)
     let mut tasks : Array (Task (List Litmus.Outcome)) := #[]
     for ((initTrans,initProg),(outcome,startingState)) in tests do
       let task := Task.spawn λ _ =>
-        let resExpl := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome) (stopAfterFirst := true)
+        let resExpl := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome) (stopAfterFirst := true) (logProgress := true)
         let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.outcome
         resLitmus
       tasks := tasks.push task

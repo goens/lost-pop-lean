@@ -1,7 +1,7 @@
 import Pop
 import Pop.Arch.TSO
 
-open Pop
+open Pop x86
 
 def main : IO Unit := do
 let res ← Pop.interactiveExecution (Litmus.allTso) (← IO.getStdin)

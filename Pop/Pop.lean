@@ -76,16 +76,16 @@ RequestId → ThreadId → @OrderConstraints state.scopes
       let newReqs := seen.filter conditions
       let newConstraints := newReqs.map λ req' => (req.id, req'.id) -- incoming req. goes before others
       --dbg_trace s!"new constraints: {newConstraints}"
-      state.orderConstraints.add_subscopes scope newConstraints
+      state.orderConstraints.addSubscopes scope newConstraints
 
 def SystemState.updateOrderConstraintsAccept (state : SystemState) : Request → @OrderConstraints state.scopes
   | req =>
     let seen := state.idsToReqs state.seen |>.filter (Request.propagatedTo . req.thread)
-    let scope := state.scopes.requestScope req
+    let scope := Arch.requestScope state.scopes req
     let newReqs := seen.filter λ req'  => !(Arch.reorderCondition req' req)
     let newConstraints := newReqs.map λ req' => (req'.id, req.id)
     --dbg_trace s!"seen: {seen}, new: {newReqs}"
-    state.orderConstraints.add_subscopes scope newConstraints
+    state.orderConstraints.addSubscopes scope newConstraints
 
 def SystemState.freshId : SystemState → RequestId
   | state =>
@@ -99,7 +99,9 @@ def SystemState.freshId : SystemState → RequestId
 
 def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState
   | state, reqType, tId =>
-  let req : Request := { propagated_to := [tId], thread := tId, basic_type := reqType, id := state.freshId}
+  let req : Request :=
+    {propagated_to := [tId], thread := tId,
+     basic_type := reqType, id := state.freshId}
   --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
   let requests' := state.requests.insert req
   let seen' := blesort $ state.seen ++ [req.id]
@@ -182,7 +184,7 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
 def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Bool
   | state, readId, writeId =>
   let arch := Arch.satisfyReadConstraints state readId writeId
-  if (state.satisfied.map λ x => x.1).elem readId then false else
+  if state.isSatisfied readId then false else
   match state.requests.val[readId.toNat]?, state.requests.val[writeId.toNat]? with
     | some (some read), some (some write) =>
       if !read.isRead || !write.isWrite then false
@@ -195,7 +197,8 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
         let betweenIds := state.orderConstraints.between scope write.id read.id (reqIds state.requests)
         --dbg_trace s!"between {readId} and {writeId}: {betweenIds}"
         let between := state.idsToReqs betweenIds
-        let writesToAddrBetween := between.filter (λ r => r.isWrite && r.address? == write.address?)
+        let writesToAddrBetween := between.filter λ r =>
+          r.isWrite && r.address? == write.address? && !(state.isSatisfied r.id)
         arch && oc && writesToAddrBetween.length == 0
     | _, _ => false
 
@@ -205,20 +208,29 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
  let opWrite := state.requests.getReq? writeId
  match opRead, opWrite with
    | some read, some write =>
-      let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexBLe |>.toList
-      let read' := read.setValue write.value?
-      let removed' := if read.isPermanentRead
-        then state.removed
-        else (read'::state.removed).toArray.qsort (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
-      let requests' := if read.isPermanentRead
-        then state.requests
-        else state.requests.remove readId
-      let orderConstraints' := state.orderConstraints --.purge readId
-      { requests := requests', orderConstraints := orderConstraints',
-        removed := removed', satisfied := satisfied',
-        seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,
-        satisfiedCoherent := sorry
-      }
+     let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexBLe |>.toList
+     let read' := read.setValue write.value?
+     match read.isPermanentRead with
+       | true =>
+       let jointScope := state.scopes.jointScope read.thread write.thread -- TODO: are we sure?
+       let betweenIds := state.orderConstraints.between jointScope write.id read.id (reqIds state.requests)
+       let orderConstraints' := if betweenIds.length > 0
+         then state.orderConstraints
+         else state.orderConstraints.swap jointScope read.id write.id
+       { requests := state.requests, orderConstraints := orderConstraints',
+         removed := state.removed, satisfied := satisfied',
+         seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,
+         satisfiedCoherent := sorry
+       }
+       | false =>
+       let removed' := (read'::state.removed).toArray.qsort
+         (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
+       let requests' := state.requests.remove readId
+       { requests := requests', orderConstraints := state.orderConstraints,
+         removed := removed', satisfied := satisfied',
+         seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,
+         satisfiedCoherent := sorry
+       }
    | _, _ => unreachable!
 
 open Transition in

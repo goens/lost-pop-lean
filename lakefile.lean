@@ -10,10 +10,18 @@ lean_lib Pop {
 }
 
 @[defaultTarget]
-lean_exe pop {
-  root := `Interact
+lean_exe pop_arm {
+  root := `InteractARM
 }
 
-lean_exe pop_explore {
-  root := `Explore
+lean_exe pop_x86 {
+  root := `InteractTSO
+}
+
+lean_exe pop_explore_x86 {
+  root := `ExploreTSO
+}
+
+lean_exe pop_explore_arm {
+  root := `ExploreARM
 }

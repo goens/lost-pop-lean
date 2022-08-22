@@ -278,13 +278,13 @@ def SystemState.exhaustiveSearchLitmus
 --       | _ => none
 --     filterNones optPairs
 
-def runMultipleLitmus : List Litmus.Test → List (List Litmus.Outcome)
-  | tests =>
-  Id.run do
+def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false)
+: List (List Litmus.Outcome) := Id.run do
     let mut tasks : Array (Task (List Litmus.Outcome)) := #[]
     for ((initTrans,initProg),(outcome,startingState)) in tests do
       let task := Task.spawn λ _ =>
-        let resExpl := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome) (stopAfterFirst := true) (logProgress := true)
+        let resExpl := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome)
+                       (stopAfterFirst := true) (logProgress := logProgress)
         let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.outcome
         resLitmus
       tasks := tasks.push task

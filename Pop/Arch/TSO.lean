@@ -5,17 +5,21 @@ import Pop.Util
 
 open Pop Util
 
-inductive x86Req
-  | mk : x86Req
+namespace x86
+inductive Req
+  | mk : Req
   deriving BEq, Inhabited
 
-instance : ArchReq where
-  type := x86Req
-  instBEq := instBEqX86Req
-  instInhabited := instInhabitedX86Req
-  isPermanentRead := λ _ => false
+instance : ToString Req where toString := λ _ => ""
 
-def tso_reorder : Request → Request → Bool
+instance : ArchReq where
+  type := x86.Req
+  instBEq := x86.instBEqReq
+  instInhabited := x86.instInhabitedReq
+  instToString := x86.instToStringReq
+  isPermanentRead := λ _ => true
+
+def reorder : Request → Request → Bool
   | r₁, r₂ => if r₁.isBarrier || r₂.isBarrier
   then false
   else
@@ -26,18 +30,22 @@ def tso_reorder : Request → Request → Bool
   if sc_per_loc then ppo else false
   -- TODO: satisfied but not deleted?
 
-def tso_propagate : SystemState → RequestId → ThreadId → Bool
+def propagate : SystemState → RequestId → ThreadId → Bool
   | st, reqId, _ =>
     let sscope := st.scopes.systemScope
     let pred := st.orderPredecessors sscope reqId
     st.idsToReqs pred |>.all λ req => req.fullyPropagated sscope
 
+def requestScope (valid : ValidScopes) (_ : Request) : @Scope valid :=
+  valid.systemScope
+
 instance : Arch where
   req := instArchReq
   acceptConstraints := λ _ _ _ => true
-  propagateConstraints := tso_propagate
+  propagateConstraints := x86.propagate
   satisfyReadConstraints := λ _ _ _ => true
-  reorderCondition :=  tso_reorder
+  reorderCondition :=  x86.reorder
+  requestScope := x86.requestScope
 
 namespace Litmus
 
@@ -80,3 +88,5 @@ def x86_4 := [IRIW, IRIW_fences]
 def allTso : List Litmus.Test := x86_2 ++ x86_4
 
 end Litmus
+
+end x86

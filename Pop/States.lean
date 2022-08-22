@@ -34,6 +34,7 @@ class ArchReq where
 (type : Type 0)
 (instBEq : BEq type)
 (instInhabited : Inhabited type)
+(instToString : ToString type)
 (isPermanentRead : type → Bool)
 
 variable [ArchReq]
@@ -51,6 +52,7 @@ structure WriteRequest where
 
 instance : BEq ArchReq.type := ArchReq.instBEq
 instance : Inhabited ArchReq.type := ArchReq.instInhabited
+instance : ToString ArchReq.type := ArchReq.instToString
 
 inductive BasicRequest
  | read : ReadRequest → ArchReq.type → BasicRequest
@@ -66,16 +68,16 @@ def BasicRequest.toString : BasicRequest → String
   | BasicRequest.barrier _ => "barrier"
 
 def BasicRequest.prettyPrint : BasicRequest → String
-  | BasicRequest.read rr _ =>
+  | BasicRequest.read rr ty =>
     let valStr := match rr.val with
       | none => ""
       | some val => s!"({val})"
-    s!"R{rr.addr.prettyPrint}{valStr}"
-  | BasicRequest.write  wr _ =>
+    s!"R. {ty}{rr.addr.prettyPrint}{valStr}"
+  | BasicRequest.write  wr ty =>
     let valStr := match wr.val with
      | none => ""
      | some val => s!"({val})"
-    s!"W{wr.addr.prettyPrint}{valStr}"
+    s!"W. {ty}{wr.addr.prettyPrint}{valStr}"
   | BasicRequest.barrier _ => "Fence"
 
 instance : ToString (BasicRequest) where toString := BasicRequest.toString
@@ -105,6 +107,14 @@ structure Scope {V : ValidScopes} where
   threads : List ThreadId
   valid : threads ∈ V.scopes
 
+instance {V : ValidScopes} : BEq (@Scope V) where
+  beq := λ scope₁ scope₂ => scope₁.threads == scope₂.threads
+
+instance {V : ValidScopes} : BEq (@Scope V) where
+  beq := λ scope₁ scope₂ => scope₁.threads == scope₂.threads
+
+instance {V : ValidScopes} : LE (@Scope V) where
+  le := λ scope₁ scope₂ => List.sublist scope₁.threads scope₂.threads
 
 structure Request where
   id : RequestId
@@ -115,7 +125,9 @@ structure Request where
   -- type : α
   deriving BEq
 
-def Request.default : Request := {id := 0, propagated_to := [], thread := 0, basic_type := BasicRequest.barrier Inhabited.default}
+def Request.default : Request :=
+  {id := 0, propagated_to := [], thread := 0,
+   basic_type := BasicRequest.barrier Inhabited.default}
 instance : Inhabited (Request) where default := Request.default
 
 def Request.toString : Request → String
@@ -133,6 +145,9 @@ def Request.isPermanentRead (r : Request) : Bool := r.isRead && ArchReq.isPerman
 
 def Request.value? (r : Request) : Value := r.basic_type.value?
 def Request.setValue (r : Request) (v : Value) : Request := { r with basic_type := r.basic_type.setValue v}
+def Request.isSatisfied (r : Request) : Bool := match r.basic_type with
+  | .read rr _ => rr.val.isSome
+  | _ => false
 
 def BasicRequest.address? (r : BasicRequest) : Option Address := match r with
   | read  req _ => some req.addr
@@ -140,7 +155,6 @@ def BasicRequest.address? (r : BasicRequest) : Option Address := match r with
   | _ => none
 
 def Request.address? (r : Request) : Option Address := r.basic_type.address?
-
 def SatisfiedRead := RequestId × RequestId deriving ToString, BEq
 
 def ValidScopes.validate (V : ValidScopes) (threads : List ThreadId) : (@Scope V) :=
@@ -149,6 +163,10 @@ def ValidScopes.validate (V : ValidScopes) (threads : List ThreadId) : (@Scope V
 def ValidScopes.subscopes (V : ValidScopes) (S : @Scope V) : List (@Scope V) :=
   let children := V.scopes.children S.threads
   children.map V.validate
+
+def ValidScopes.containThread (V: ValidScopes) (t : ThreadId) : List (@Scope V) :=
+  let containing := V.scopes.children [t]
+  containing.map V.validate
 
 instance {V : ValidScopes} : Inhabited (@Scope V) where
  default := {threads := [], valid := sorry}
@@ -163,9 +181,6 @@ def ValidScopes.jointScope : (V : ValidScopes) → ThreadId → ThreadId → (@S
  | valid, t₁, t₂ => match valid.scopes.meet t₁ t₂ with
    | some scope => {threads := scope, valid := sorry}
    | none => unreachable! -- can we get rid of this case distinction?
-
-def ValidScopes.requestScope (valid : ValidScopes) (req : Request) : @Scope valid :=
-  valid.systemScope -- TODO: change here for scoped version
 
 def Request.propagatedTo (r : Request) (t : ThreadId) : Bool := r.propagated_to.elem t
 
@@ -216,6 +231,13 @@ def OrderConstraints.between {V : ValidScopes} (S : @Scope V) (req₁ req₂ : R
   let preds₂ := constraints.predecessors S req₂ reqs
   preds₂.removeAll (req₁::preds₁)
 
+/-
+def SystemState.betweenRequests (state : SystemState) (req₁ req₂ : Request) : List Request :=
+  let betweenIds := state.orderConstraints.between
+    req₁.id req₂.id (reqIds state.requests)
+  state.idsToReqs betweenIds
+  -/
+
 def OrderConstraints.compare {V₁ V₂ : ValidScopes} ( oc₁ : @OrderConstraints V₁) (oc₂ : @OrderConstraints V₂)
   (requests : List RequestId) : Bool :=
   if V₁.scopes.toList != V₂.scopes.toList
@@ -255,20 +277,40 @@ def OrderConstraints.purge {V : ValidScopes} (constraints : @OrderConstraints V)
       { constraints with val := val'}
 -/
 
-def OrderConstraints.add_single_scope {V : ValidScopes} (constraints : @OrderConstraints V)
-  (scope : @Scope V) (reqs : List (RequestId × RequestId)) : @OrderConstraints V :=
+def OrderConstraints.addSingleScope {V : ValidScopes} (constraints : @OrderConstraints V)
+  (scope : @Scope V) (reqs : List (RequestId × RequestId)) (val := true) : @OrderConstraints V :=
   match constraints.val.find? scope.threads with
    | none => constraints
    | some sc_oc =>
-       let sc_oc' := reqs.foldl (init := sc_oc) λ oc req => oc.insert req true
+       let sc_oc' := reqs.foldl (init := sc_oc) λ oc req => oc.insert req val
        let val' := constraints.val.insert scope.threads sc_oc'
        { constraints with val := val' }
 
-def OrderConstraints.add_subscopes {V : ValidScopes} (constraints : @OrderConstraints V)
-(scope : @Scope V) (reqs : List (RequestId × RequestId)) : @OrderConstraints V :=
+def OrderConstraints.addSubscopes {V : ValidScopes} (constraints : @OrderConstraints V)
+(scope : @Scope V) (reqs : List (RequestId × RequestId)) (val := true) : @OrderConstraints V :=
   let subscopes := V.subscopes scope
   --dbg_trace s!"{scope.threads}.subscopes: {subscopes.map λ s => s.threads}"
-  subscopes.foldl (init := constraints) λ oc sc => oc.add_single_scope sc reqs
+  subscopes.foldl (init := constraints) λ oc sc => oc.addSingleScope sc reqs (val := val)
+
+def OrderConstraints.swap {V : ValidScopes} (oc : @OrderConstraints V)
+  (scope : @Scope V) (req₁ req₂ : RequestId) : @OrderConstraints V :=
+  let c₁₂ := oc.lookup scope req₁ req₂
+  let c₂₁ := oc.lookup scope req₂ req₁
+  Id.run do
+    if c₁₂ == c₂₁ then
+      panic! "cycle {req₁.id} ↔ {req₂.id} detected in order constraints."
+    let mut add := []
+    let mut remove := []
+    if c₁₂ then
+      add :=( req₂,req₁) :: add
+      remove :=( req₁,req₂) :: remove
+    if c₂₁ then
+      add :=( req₁,req₂) :: add
+      remove :=( req₂,req₁) :: remove
+    let mut oc' := oc
+    oc' := oc'.addSubscopes scope add
+    oc' := oc'.addSubscopes scope remove (val := false)
+    return oc'
 
 def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints V) (scope : @Scope V) (reqs : List RequestId) : String :=
    let reqPairs := List.join $ reqs.map (λ r => reqs.foldl (λ rs' r' => (r,r')::rs') [])
@@ -441,6 +483,7 @@ class Arch where
   (propagateConstraints : SystemState → RequestId → ThreadId → Bool)
   (satisfyReadConstraints : SystemState → RequestId → RequestId → Bool)
   (reorderCondition : Request → Request → Bool)
+  (requestScope : (valid : ValidScopes) → Request → @Scope valid)
 
 -- private def maxThread : ThreadId → List ThreadId → ThreadId
 --   | curmax, n::rest => if curmax < n then maxThread n rest else maxThread curmax rest

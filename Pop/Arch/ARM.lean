@@ -104,8 +104,10 @@ instance : LitmusSyntax where
   mkBarrier := mkBarrier
   mkInitState := mkInitState
 
-def WRC := {| W x=1 || R. acq x // 1; W y = 1 || R y // 1 ; R x // 0|} -- last two should be an addr? dependency
+def WRC := {| W x=1 || R. acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|}
+def WRC_no_dep := {| W x=1 || R. acq x // 1; W y = 1 || R y // 1 ; R x // 0|}
 def IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
+def IRIW_3_threads := {| W x=1; W y=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 |}
 def IRIW_acq := {| W x=1 ||  R. acq x // 1;  R. acq y // 0 || R. acq  y // 1; R. acq x // 0 || W y=1 |}
 def IRIW_first_acq := {| W x=1 ||  R. acq x // 1;  R y // 0 || R. acq  y // 1; R x // 0 || W y=1 |}
 def MP := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |}
@@ -118,7 +120,7 @@ def dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |}
 --def causality := {| W x = 1 || R x; Fence; W x = 2 || R x; W|}
 
 def arm_2 := [MP,MP_rel,MP_acq,MP_relacq, N7, dekkers, dekkers_fence]
-def arm_3 := [WRC]
+def arm_3 := [WRC, WRC_no_dep, IRIW_3_threads]
 def arm_4 := [IRIW, IRIW_acq, IRIW_first_acq]
 
 def allARM : List Litmus.Test := arm_2 ++ arm_3 ++ arm_4

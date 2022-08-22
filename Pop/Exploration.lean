@@ -1,4 +1,4 @@
-import Pop.States
+import Pop.States 
 import Lean
 import Pop.Pop
 import Pop.Util
@@ -25,12 +25,24 @@ def ProgramState.getAvailable (prog : ProgramState) : List (Transition) := Id.ru
   --dbg_trace "{prog.map λ tr => tr.map Transition.prettyPrintReq}.available = {res.map Transition.prettyPrintReq}"
   return res
 
-def ProgramState.removeTransition (prog : ProgramState) (transition : Transition)
+def ProgramState.consumeTransition (prog : ProgramState) (state : SystemState) (transition : Transition)
   : ProgramState := Id.run do
   let mut res := #[]
   let mut thread' := #[]
+  let mut found := false -- just consume once
   for thread in prog do
-    thread' := thread.erase transition
+    thread' := thread
+    if !found then
+      if let some transition' := thread[0]? then
+        if transition' == transition then
+          thread' := thread'.reverse.pop.reverse -- TODO: somehow don't reverse twice?
+          found := true
+        -- update dependency
+        if transition.isAccept then
+          if let some (Transition.dependency none) := thread'[0]? then
+            thread' := thread'.reverse.pop
+            thread' := thread'.push (Transition.dependency state.freshId)
+              |>.reverse -- TODO: somehow don't reverse twice here either?
     res := res.push thread'
   return res
 
@@ -83,10 +95,8 @@ def SystemState.possibleTransitions (state : SystemState) (unaccepted : ProgramS
   accepts ++ state.possibleSatisfyTransitions ++ state.possiblePropagateTransitions
 
 def SystemState.hasUnsatisfiedReads (state : SystemState) :=
-  let requests := filterNones state.requests.val.toList
-  let reads := requests.filter Request.isRead
-  let readids := reads.map Request.id
-  let unsatisfied := readids.filter state.isSatisfied
+  let reads := state.requests.filter Request.isRead |>.map Request.id
+  let unsatisfied := reads.filter λ r => !(state.isSatisfied r)
   unsatisfied != []
 
 def SystemState.isDeadlocked (state : SystemState) (unaccepted : ProgramState) :=
@@ -95,9 +105,11 @@ def SystemState.isDeadlocked (state : SystemState) (unaccepted : ProgramState) :
 
 def SystemState.outcome : SystemState → Litmus.Outcome
 | state =>
--- TODO: this won't work for reads that stay there
-let triple := state.removed.map λ rd => (rd.thread, rd.address?.get!, rd.value?)
-triple.toArray.qsort (λ (th,ad,_) (th',ad',_) => lexBLe (th,ad) (th',ad')) |>.toList
+  let removed := state.removed.map λ rd => (rd.thread, rd.address?.get!, rd.value?)
+  let satisfied := state.requests.filter Request.isSatisfied
+     |>.map λ rd => (rd.thread, rd.address?.get!, rd.value?)
+  let triples := removed.toArray ++ satisfied.toArray
+  triples.qsort (λ (th,ad,_) (th',ad',_) => lexBLe (th,ad) (th',ad')) |>.toList
 
 def outcomeSubset : Litmus.Outcome → Litmus.Outcome → Bool
   | out₁, out₂ =>
@@ -132,7 +144,7 @@ def SystemState._runWithList  : SystemState →  ProgramState → List Nat → E
         | Except.ok (trans,state') =>
           -- dbg_trace trans.toString
           -- dbg_trace state'
-          state'._runWithList (ProgramState.removeTransition accepts trans) ns
+          state'._runWithList (accepts.consumeTransition state trans) ns
         | Except.error e => Except.error e
 
 def SystemState.runWithList  : SystemState →  ProgramState → List Nat → Except String (SystemState)
@@ -154,8 +166,7 @@ private def searchAuxStep (storePartialTraces : Bool) (partialTrace : List Trans
     let newPT := (if storePartialTraces
                   then partialTrace ++ [t]
                   else [])
-  -- TODO: this could yield a bug if we have two identical requests in a litmus test
-    let newAC :=       ProgramState.removeTransition acceptsRemaining t
+    let newAC :=  acceptsRemaining.consumeTransition st t
     -- TODO: add potential to sanity check
     let newST := st.applyTransition! t
     (newPT,newAC,newST)t

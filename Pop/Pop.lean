@@ -12,6 +12,7 @@ inductive Transition
   | acceptRequest : BasicRequest → ThreadId → Transition
   | propagateToThread : RequestId → ThreadId → Transition
   | satisfyRead : RequestId → RequestId → Transition
+  | dependency : Option RequestId → Transition
  deriving BEq
 
 abbrev ProgramState := Array (Array (Transition))
@@ -22,10 +23,12 @@ def Transition.toString : Transition → String
  | acceptRequest req tid => s!"Accept (T{tid}): {req}"
  | propagateToThread reqid tid => s!"Propagate Request {reqid} to Thread {tid}"
  | satisfyRead readid writeid => s!"Satisify Read Request {readid} with Write Request {writeid}"
+ | dependency req => s!"Dependency on {req}"
 instance : ToString (Transition) where toString := Transition.toString
 
 def Transition.prettyPrintReq : Transition → Option String
  | acceptRequest req _ => some req.prettyPrint
+ | dependency _ => some "dep"
  | _ => none
 
 def Transition.isAccept : Transition → Bool
@@ -214,10 +217,11 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
        | true =>
        let jointScope := state.scopes.jointScope read.thread write.thread -- TODO: are we sure?
        let betweenIds := state.orderConstraints.between jointScope write.id read.id (reqIds state.requests)
+       let requests' := state.requests.remove readId |>.insert read'
        let orderConstraints' := if betweenIds.length > 0
          then state.orderConstraints
          else state.orderConstraints.swap jointScope read.id write.id
-       { requests := state.requests, orderConstraints := orderConstraints',
+       { requests := requests', orderConstraints := orderConstraints',
          removed := state.removed, satisfied := satisfied',
          seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,
          satisfiedCoherent := sorry
@@ -238,12 +242,15 @@ def SystemState.applyTransition! : SystemState → Transition → SystemState
    | state, (.acceptRequest req tId) => state.applyAcceptRequest req tId
    | state, .propagateToThread reqId tId => state.propagate reqId tId
    | state, satisfyRead readId writeId => state.satisfy readId writeId
+   | state, dependency _ => state
 
 open Transition in
 def SystemState.canApplyTransition : SystemState → Transition → Bool
   | state, .acceptRequest req tId => state.canAcceptRequest req tId
   | state, .propagateToThread reqId tId => state.canPropagate reqId tId
   | state, satisfyRead readId writeId => state.canSatisfyRead readId writeId
+  | state, dependency (some depId) => state.isSatisfied depId
+  | _, dependency none => panic! "invalid dependency"
 
 open Transition in
 def SystemState.applyTransition : SystemState → Transition → Except String (SystemState)

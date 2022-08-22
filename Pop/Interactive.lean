@@ -53,7 +53,7 @@ def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except Str
         if let some opTransition := opStep then
           if let some transition := opTransition then
             partialTrace := partialTrace ++ [transition]
-            programState := programState.removeTransition transition
+            programState := programState.consumeTransition systemState transition
           else
             if let some transition := partialTrace[partialTrace.length - 1]? then
               programState := programState.appendTransition transition

@@ -25,13 +25,12 @@ def mkRequest : String × String × Address × Value → ThreadId → Option (Tr
   | ("R", typeStr, addr, _), thId  => some $ Pop.Transition.acceptRequest (mkRead typeStr addr) thId
   | ("W",typeStr , addr, val), thId  => some $ Pop.Transition.acceptRequest (mkWrite typeStr addr val) thId
   | ("Fence", typeStr, _, _), thId => some $ Pop.Transition.acceptRequest (mkBarrier typeStr) thId
+  | ("Dependency", _, _, _), _ => some $ Pop.Transition.dependency none
   | _, _ => none
 
 def mkOutcome : String × String × Address × Value → ThreadId → Litmus.Outcome
   | ("R", _, addr, val@(some _)), thId  => [(thId,addr,val)]
   | _, _ => []
-
-
 
 def initZeroesUnpropagatedTransitions : List Address → List (Transition)
   | addresses =>
@@ -112,6 +111,7 @@ syntax "W." ident ident "=" num : request
 syntax "Fence"   : request
 syntax "Fence." ident  : request
 syntax request ";" request_seq : request_seq
+syntax request ";dep" request_seq : request_seq
 syntax request : request_seq
 syntax request_seq "||" request_set : request_set
 syntax request_seq : request_set
@@ -145,6 +145,9 @@ macro_rules
 macro_rules
   | `(request_seq| $r:request ) => do `([ `[req| $r] ])
   | `(request_seq| $r:request ; $rs:request_seq) => `(`[req| $r] :: `[req_seq| $rs])
+  | `(request_seq| $r:request ;dep $rs:request_seq) => do
+    let dep_syntax <- `(RequestSyntax.mk "Dependency" "" "" none)
+    `(`[req| $r] :: $dep_syntax :: `[req_seq| $rs])
 
 macro_rules
   | `(request_set| $r:request_seq ) => `([`[req_seq| $r]])

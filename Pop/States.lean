@@ -352,6 +352,13 @@ def RequestArray.toString : RequestArray → String
   | arr => String.intercalate ",\n" $ List.map Request.toString $ filterNones arr.val.toList
 instance : ToString (RequestArray) where toString := RequestArray.toString
 
+def RequestArray.filter : RequestArray → (Request → Bool) → List Request
+  | ra, f =>
+  let fOp : Option Request → Bool
+    | some r => f r
+    | none => false
+  filterNones $ Array.toList $ ra.val.filter fOp
+
 def reqIds : (RequestArray) → List RequestId
  | arr =>
    let opIds :=  Array.toList $ arr.val.map (Option.map Request.id)
@@ -470,7 +477,8 @@ def SystemState.idsToReqs : (SystemState) → List RequestId → List (Request)
   | state, ids => filterNones $ ids.map (λ id => state.requests.getReq? id)
 
 def SystemState.isSatisfied : SystemState → RequestId → Bool
-  | state, rid => !(state.satisfied.filter λ (srd,_) => srd == rid).isEmpty
+  | state, rid =>
+  !(state.satisfied.filter λ (srd,_) => srd == rid).isEmpty
 
 def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Bool
   | state, rid, tid => match state.requests.getReq? rid with

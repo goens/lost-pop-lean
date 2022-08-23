@@ -47,13 +47,17 @@ def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except Str
       if let .error msg := exceptTransMsg  then
         return .error msg
       else if let .ok m := exceptTransMsg then
-        let msg := "---------------\n" ++ s!"Current state:\n{systemState}\n"
-        ++ "Possible transitions:\n" ++ "0: Undo (last transition)\n" ++ m
+        let msg := "======================================\n"
+          ++ s!"Program state:\n{programState.prettyPrint}\n"
+          ++ "--------------------------------------\n"
+          ++ s!"Current state:\n{systemState}\n"
+          ++ "Possible transitions:\n" ++ "0: Undo (last transition)\n" ++ m
         let opStep ← Util.selectLoop msg (getTransition systemState programState) stdin
         if let some opTransition := opStep then
           if let some transition := opTransition then
             partialTrace := partialTrace ++ [transition]
             programState := programState.consumeTransition systemState transition
+              |>.clearDependencies (systemState.applyTransition! transition)
           else
             if let some transition := partialTrace[partialTrace.length - 1]? then
               programState := programState.appendTransition transition

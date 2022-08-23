@@ -10,9 +10,10 @@ def main : IO Unit := do
     println! prettyPrintLitmusResult test res
 
   println! "running ARM 3-thread tests"
-  let mp_litmus := runMultipleLitmus Litmus.arm_3
+  let mp_litmus := runMultipleLitmus Litmus.arm_3 (printPartialTraces := true)
   for (test,res) in Litmus.arm_3.zip mp_litmus do
     println! prettyPrintLitmusResult test res
+    
 /-
   println! "running ARM 4-thread (IRIW) tests"
   let iriw_litmus := runMultipleLitmus Litmus.arm_4  (logProgress := true)

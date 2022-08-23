@@ -11,23 +11,37 @@ namespace Pop
 
 variable [Arch]
 
-def ProgramState.prettyPrint : ProgramState → String
-  | stArr => String.intercalate " || " <| Array.toList <|
-     stArr.map λ thread =>
-       String.intercalate "; " $ filterNones $ Array.toList <|
-         thread.map Transition.prettyPrintReq
+def ProgramState.prettyPrint (accepts : ProgramState) : String :=
+  let threadStrings := accepts.map λ th => filterNones $
+    th.toList.map Transition.prettyPrintReq
+  let allThreads := threadStrings.map λ th => String.intercalate "; " th
+  String.intercalate " || " allThreads.toList
 
 def ProgramState.getAvailable (prog : ProgramState) : List (Transition) := Id.run do
   let mut res := []
   for thread in prog do
     if h : thread.size > 0 then
-    res := thread[0] :: res
+      res := thread[0] :: res
   --dbg_trace "{prog.map λ tr => tr.map Transition.prettyPrintReq}.available = {res.map Transition.prettyPrintReq}"
+  return res
+
+def ProgramState.clearDependencies (prog : ProgramState) (state : SystemState)
+  : ProgramState := Id.run do
+  let mut res := #[]
+  let mut thread' := #[]
+  for thread in prog do
+      thread' := thread
+      if let some (Transition.dependency (some req)) := thread[0]? then
+        if state.isSatisfied req then
+          thread' := thread'.reverse.pop.reverse -- TODO: remove reverses?
+      res := res.push thread'
   return res
 
 def ProgramState.consumeTransition (prog : ProgramState) (state : SystemState) (transition : Transition)
   : ProgramState := Id.run do
-  let mut res := #[]
+  unless transition.isAccept do
+    return prog
+  let mut res : ProgramState := #[]
   let mut thread' := #[]
   let mut found := false -- just consume once
   for thread in prog do
@@ -37,14 +51,14 @@ def ProgramState.consumeTransition (prog : ProgramState) (state : SystemState) (
         if transition' == transition then
           thread' := thread'.reverse.pop.reverse -- TODO: somehow don't reverse twice?
           found := true
-        -- update dependency
-        if transition.isAccept then
+          -- update dependency
           if let some (Transition.dependency none) := thread'[0]? then
             thread' := thread'.reverse.pop
             thread' := thread'.push (Transition.dependency state.freshId)
-              |>.reverse -- TODO: somehow don't reverse twice here either?
+                |>.reverse -- TODO: somehow don't reverse twice here either?
     res := res.push thread'
-  return res
+  if found then return res
+  else panic! s!"trying to consume non-existing transition: {transition}"
 
 -- Should hold: remove · append = id
 def ProgramState.appendTransition : ProgramState → Transition → ProgramState
@@ -54,6 +68,9 @@ def ProgramState.appendTransition : ProgramState → Transition → ProgramState
   for idx in [:prog.size] do
     thread' := prog[idx]!
     if idx == thId then
+      if let some (Transition.dependency (some _)) := thread'[0]? then
+        thread' := thread'.reverse.pop -- TODO: another double reverse
+        thread' := thread'.push (Transition.dependency none) |>.reverse
       thread' := #[trans] ++ thread'
     res := res.push thread'
   return res
@@ -90,8 +107,8 @@ def SystemState.possibleSatisfyTransitions (state :  SystemState) : List (Transi
   List.join $ unsatisfied_reads.map λ r => r.possibleSatisfyTransitions state
 
 def SystemState.possibleTransitions (state : SystemState) (unaccepted : ProgramState) :=
-  let allaccepts := unaccepted.map λ th => th.filter Transition.isAccept
-  let accepts := ProgramState.getAvailable allaccepts
+  let allaccepts := unaccepted.map λ th => th.filter (λ tr => tr.isAccept || tr.isDependency)
+  let accepts := ProgramState.getAvailable allaccepts |>.filter state.canApplyTransition
   accepts ++ state.possibleSatisfyTransitions ++ state.possiblePropagateTransitions
 
 def SystemState.hasUnsatisfiedReads (state : SystemState) :=
@@ -144,7 +161,8 @@ def SystemState._runWithList  : SystemState →  ProgramState → List Nat → E
         | Except.ok (trans,state') =>
           -- dbg_trace trans.toString
           -- dbg_trace state'
-          state'._runWithList (accepts.consumeTransition state trans) ns
+          let newSt := accepts.consumeTransition state trans |>.clearDependencies state'
+          state'._runWithList newSt ns
         | Except.error e => Except.error e
 
 def SystemState.runWithList  : SystemState →  ProgramState → List Nat → Except String (SystemState)
@@ -166,9 +184,9 @@ private def searchAuxStep (storePartialTraces : Bool) (partialTrace : List Trans
     let newPT := (if storePartialTraces
                   then partialTrace ++ [t]
                   else [])
-    let newAC :=  acceptsRemaining.consumeTransition st t
     -- TODO: add potential to sanity check
     let newST := st.applyTransition! t
+    let newAC :=  acceptsRemaining.consumeTransition st t |>.clearDependencies newST
     (newPT,newAC,newST)t
 
 private def searchAuxUpdateUnexplored (explored unexplored newtriples : Array SearchState) : Array SearchState :=
@@ -290,14 +308,19 @@ def SystemState.exhaustiveSearchLitmus
 --     filterNones optPairs
 
 def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false)
-: List (List Litmus.Outcome) := Id.run do
+  (printPartialTraces := false) : List (List Litmus.Outcome) := Id.run do
     let mut tasks : Array (Task (List Litmus.Outcome)) := #[]
     for ((initTrans,initProg),(outcome,startingState)) in tests do
       let task := Task.spawn λ _ =>
         let resExpl := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome)
                        (stopAfterFirst := true) (logProgress := logProgress)
         let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.outcome
-        resLitmus
+        if printPartialTraces then
+          let pts := Util.removeDuplicates $ resExpl.map λ (pt,_) => pt
+          dbg_trace s!"trace found for {initProg.prettyPrint}:\n {pts}"
+          resLitmus
+        else
+          resLitmus -- fugly hack: dbg_trace won't work without a term after
       tasks := tasks.push task
     return tasks.map Task.get  |>.toList
 

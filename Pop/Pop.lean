@@ -15,12 +15,10 @@ inductive Transition
   | dependency : Option RequestId → Transition
  deriving BEq
 
-abbrev ProgramState := Array (Array (Transition))
-
 instance : Inhabited (Transition) where default := Transition.acceptRequest default 0
 
 def Transition.toString : Transition → String
- | acceptRequest req tid => s!"Accept (T{tid}): {req}"
+ | acceptRequest req tid => s!"Accept (T{tid}): {req.prettyPrint}"
  | propagateToThread reqid tid => s!"Propagate Request {reqid} to Thread {tid}"
  | satisfyRead readid writeid => s!"Satisify Read Request {readid} with Write Request {writeid}"
  | dependency req => s!"Dependency on {req}"
@@ -28,7 +26,8 @@ instance : ToString (Transition) where toString := Transition.toString
 
 def Transition.prettyPrintReq : Transition → Option String
  | acceptRequest req _ => some req.prettyPrint
- | dependency _ => some "dep"
+ | dependency (some n) => some s!"dep (req{n})"
+ | dependency none => some "dep"
  | _ => none
 
 def Transition.isAccept : Transition → Bool
@@ -46,6 +45,12 @@ def Transition.isSatisfy : Transition → Bool
 def Transition.isReadAccept : Transition → Bool
   | .acceptRequest br _ => br.isRead
   | _ => false
+
+def Transition.isDependency : Transition → Bool
+ | dependency _ => true
+ | _ => false
+
+abbrev ProgramState := Array (Array (Transition))
 
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool := Arch.acceptConstraints
 

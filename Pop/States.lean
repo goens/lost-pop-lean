@@ -131,7 +131,7 @@ def Request.default : Request :=
 instance : Inhabited (Request) where default := Request.default
 
 def Request.toString : Request → String
-  | req => s!" Request {req.id} {req.basic_type} : [propagated to {req.propagated_to}, origin thread : {req.thread}]"
+  | req => s!" Request {req.id} {req.basic_type.prettyPrint} : [propagated to {req.propagated_to}, origin thread : {req.thread}]"
 instance : ToString (Request) where toString := Request.toString
 
 def BasicRequest.isRead    (r : BasicRequest) : Bool := match r with | read  _ _ => true | _ => false

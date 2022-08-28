@@ -316,8 +316,9 @@ def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false)
                        (stopAfterFirst := true) (logProgress := logProgress)
         let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.outcome
         if printPartialTraces then
-          let pts := Util.removeDuplicates $ resExpl.map λ (pt,_) => pt
-          dbg_trace s!"trace found for {initProg.prettyPrint}:\n {pts}"
+          let msgs := Util.removeDuplicates $ resExpl.map
+            λ (pt,st) => s!"trace found for {initProg.prettyPrint}:\n {pt.map (Transition.prettyPrint st)}"
+          dbg_trace (String.intercalate "\n" msgs)
           resLitmus
         else
           resLitmus -- fugly hack: dbg_trace won't work without a term after

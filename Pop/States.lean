@@ -72,12 +72,18 @@ def BasicRequest.prettyPrint : BasicRequest → String
     let valStr := match rr.val with
       | none => ""
       | some val => s!"({val})"
-    s!"R. {ty}{rr.addr.prettyPrint}{valStr}"
+    let tyStr := match s!"{ty}" with
+      | "" => ""
+      | str => s!".{str}"
+    s!"R{tyStr} {rr.addr.prettyPrint}{valStr}"
   | BasicRequest.write  wr ty =>
     let valStr := match wr.val with
      | none => ""
      | some val => s!"({val})"
-    s!"W. {ty}{wr.addr.prettyPrint}{valStr}"
+    let tyStr := match s!"{ty}" with
+      | "" => ""
+      | str => s!".{str}"
+    s!"W{tyStr} {wr.addr.prettyPrint}{valStr}"
   | BasicRequest.barrier _ => "Fence"
 
 instance : ToString (BasicRequest) where toString := BasicRequest.toString
@@ -350,6 +356,7 @@ def RequestArray.empty : RequestArray :=
 
 def RequestArray.toString : RequestArray → String
   | arr => String.intercalate ",\n" $ List.map Request.toString $ filterNones arr.val.toList
+
 instance : ToString (RequestArray) where toString := RequestArray.toString
 
 def RequestArray.filter : RequestArray → (Request → Bool) → List Request

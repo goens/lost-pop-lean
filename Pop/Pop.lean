@@ -25,10 +25,27 @@ def Transition.toString : Transition → String
 instance : ToString (Transition) where toString := Transition.toString
 
 def Transition.prettyPrintReq : Transition → Option String
- | acceptRequest req _ => some req.prettyPrint
- | dependency (some n) => some s!"dep (req{n})"
- | dependency none => some "dep"
- | _ => none
+  | acceptRequest req _ => some req.prettyPrint
+  | dependency (some n) => some s!"dep (req{n})"
+  | dependency none => some "dep"
+  | _ => none
+
+def Transition.prettyPrint : SystemState → Transition → String
+ | state, transition => match transition.prettyPrintReq with
+   | some str => s!"Accept ({str})"
+   | none =>
+     let reqs := state.removed.foldl RequestArray.insert state.requests
+     match transition with
+     | propagateToThread reqid tid =>
+       match reqs.getReq? reqid with
+         | some req => s!"Propagate ({req.basic_type.prettyPrint}) to Thread {tid}"
+         | none => s!"Propagate (UNKNOWN REQUEST {reqid}) to Thread {tid}"
+     | satisfyRead readid writeid =>
+       match (reqs.getReq? readid, reqs.getReq? writeid) with
+       | (some read, some write) => s!"Satisfy ({read.basic_type.prettyPrint})"
+         ++ s!"with ({write.basic_type.prettyPrint})"
+       | _ => s!"Satisfy (UNKNOWN REQUESTS {readid} and/or {writeid})"
+     | _ => panic! "unknown case when pretty-printing {transition}"
 
 def Transition.isAccept : Transition → Bool
  | acceptRequest _ _ => true
@@ -223,9 +240,12 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
        let jointScope := state.scopes.jointScope read.thread write.thread -- TODO: are we sure?
        let betweenIds := state.orderConstraints.between jointScope write.id read.id (reqIds state.requests)
        let requests' := state.requests.remove readId |>.insert read'
+       let orderConstraints' := state.orderConstraints
+       /-
        let orderConstraints' := if betweenIds.length > 0
          then state.orderConstraints
          else state.orderConstraints.swap jointScope read.id write.id
+        -/
        { requests := requests', orderConstraints := orderConstraints',
          removed := state.removed, satisfied := satisfied',
          seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,

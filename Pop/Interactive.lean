@@ -17,7 +17,8 @@ def requestTransitionMessage : SystemState → ProgramState → Except String St
       Except.error "No transitions available!"
     else
       Except.ok $ String.intercalate "\n" $ List.range available.length
-      |>.map (· + 1) |>.zip available |>.map λ (n,trans) => s!"{n}: {trans}"
+      |>.map (· + 1) |>.zip available |>.map
+        λ (n,trans) => s!"{n}: {trans.prettyPrint sysSt}"
 
 def getTransition : SystemState → ProgramState → String → Except String (Option Transition)
   | sysState, progState, input => do

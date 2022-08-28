@@ -310,7 +310,7 @@ def SystemState.exhaustiveSearchLitmus
 def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false)
   (printPartialTraces := false) : List (List Litmus.Outcome) := Id.run do
     let mut tasks : Array (Task (List Litmus.Outcome)) := #[]
-    for ((initTrans,initProg),(outcome,startingState)) in tests do
+    for (Litmus.Test.mk initTrans initProg outcome startingState) in tests do
       let task := Task.spawn λ _ =>
         let resExpl := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome)
                        (stopAfterFirst := true) (logProgress := logProgress)
@@ -327,12 +327,10 @@ def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false)
 
 def prettyPrintLitmusResult : Litmus.Test → List Litmus.Outcome → String
   | test, reslit =>
-     let expected := test.2.1
-     let prog := test.1.2
-     let outcome_res := if reslit.any λ out => outcomeEqiv out expected
+     let outcome_res := if reslit.any λ out => outcomeEqiv out test.expected
        then "✓"
        else "×"
-     let litStr := ProgramState.prettyPrint prog ++ s!". Expected: {expected.prettyPrint}"
+     let litStr := ProgramState.prettyPrint test.program ++ s!". Expected: {test.expected.prettyPrint}"
      s!"litmus: {litStr}. Allowed?: {outcome_res}"
 
 /-

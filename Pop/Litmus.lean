@@ -13,7 +13,12 @@ open Util Pop
 
 variable [Arch]
 abbrev Outcome := List $ ThreadId × Address × Value
-abbrev Test := (List Transition × ProgramState) × Outcome  × SystemState
+
+structure Test where
+ (initTransitions : List Transition)
+ (program : ProgramState)
+ (expected : Outcome)
+ (initState : SystemState)
 
 def addressValuePretty : Address × Value → String
   | (_, none) => "invalid outcome!"
@@ -122,7 +127,8 @@ def createLitmus (list : List (List RequestSyntax))
   let initState := match validScopes with
     | some scopes => SystemState.init scopes
     | none => SystemState.init $ mkValidScopes fullThreads.length
-  ((initWrites ++ initPropagates, reqs.toArray), (outcomes, initState))
+  { initTransitions := initWrites ++ initPropagates,
+    program := reqs.toArray, expected := outcomes, initState := initState}
 
 declare_syntax_cat request
 declare_syntax_cat request_seq

@@ -1,6 +1,5 @@
 import Pop.States
 import Pop.Litmus
-import Pop.Program
 import Pop.Util
 
 open Pop Util

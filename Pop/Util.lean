@@ -1,4 +1,5 @@
 import Std
+import Lean
 open Std.HashMap
 
 namespace Util
@@ -25,6 +26,12 @@ def filterNonesArr {α : Type} : Array (Option α) → Array α
 def blesort : List Nat → List Nat
   | as => Array.toList $ Array.qsort as.toArray (λ x y => Nat.ble x y)
 
+-- TODO: probably horribly slow!
+def alphabetic : String → String → Bool
+  | ⟨a::as⟩, ⟨b::bs⟩ => a < b || (a == b) && alphabetic ⟨as⟩ ⟨bs⟩
+  | ⟨[]⟩, _ => true
+  | ⟨_::_⟩, _ => false
+
 def lexBLt : Nat × Nat → Nat × Nat → Bool
   | (n₁,n₂), (m₁,m₂) => Nat.blt n₁ m₁ || ((n₁ == m₁) && Nat.blt n₂ m₂)
 
@@ -35,14 +42,52 @@ partial def removeDuplicates [BEq α] : List α → List α
   | [] => []
   | (x :: xs) => x :: removeDuplicates (xs.filter (λ y => y != x))
 
-def List.sublist [BEq α] : List α → List α → Bool
+def _root_.List.sublist [BEq α] : List α → List α → Bool
   | l₁, l₂ => l₁.all (λ e => l₂.elem e)
 
-inductive ListTree (α : Type) [BEq α] : List α → Type
-  | leaf (val : List α) : ListTree α val
-  | parentNil  (val : List α) : ListTree α val
-  | parentCons (_ : ListTree α child) (_ : ListTree α sibling)
-  (_ : List.sublist child sibling) : ListTree α sibling
+def setJoinPair [BEq α] (l₁ l₂ : List α) : List α :=
+  match l₁, l₂ with
+  | l₁, [] => l₁
+  | [], l₂ => l₂
+  | a::as, b::bs => match as.contains b, bs.contains a with
+    | true, true => setJoinPair as bs
+    | false, true => b :: setJoinPair as bs
+    | true, false => a :: setJoinPair as bs
+    | false, false => a :: b :: setJoinPair as bs
+
+def setJoin [BEq α] (ls : List (List α)) : List α :=
+  ls.foldl (init := []) setJoinPair
+
+-- Removed sublist condition from type as it made programming
+-- with this basically impossible...
+inductive ListTree (α : Type) [BEq α] : Type
+  | leaf : List α → ListTree α
+  | parentNil : List α → ListTree α
+  | parentCons : ListTree α → ListTree α → ListTree α
+  deriving Repr
+
+open Lean in
+private def quoteListTree [Quote α] [BEq α] : ListTree α → Term
+  | .leaf a => Syntax.mkCApp ``ListTree.leaf #[quote a]
+  | .parentNil a => Syntax.mkCApp ``ListTree.parentNil #[quote a]
+  | .parentCons child sibs => Syntax.mkCApp ``ListTree.parentCons
+    #[quoteListTree child, quoteListTree sibs]
+
+instance {α : Type} [BEq α] [Lean.Quote α] : Lean.Quote (ListTree α) where quote := quoteListTree
+
+-- TODO: this does not check it is well-formed...
+def ListTree.listType [BEq α] : ListTree α  → List α
+  | leaf l => l
+  | parentNil l => l
+  | parentCons _ siblings => listType siblings
+
+def ListTree.mkParent {α : Type} [BEq α]
+  (parent : List α) (children : List (ListTree α)) : Except String (ListTree α) := do
+  let parentType := setJoin $ children.map ListTree.listType
+  unless parentType.sublist parent do
+    throw s!"Error appending. It has a non-sublist child."
+  let parent := ListTree.parentNil parent
+  return children.foldl (init := parent) λ sib ch => ListTree.parentCons ch sib
 
 def Array.pmap : (α → β) → Array α → Array β
   | f, as =>
@@ -52,44 +97,46 @@ def Array.pmap : (α → β) → Array α → Array β
 
 open ListTree
 
-def ListTree.elem [BEq α] {l : List α} :  List α → ListTree α l → Bool
+def ListTree.elem [BEq α] :  List α → ListTree α → Bool
 | val, leaf val' => val == val'
 | val, parentNil val' => val == val'
-| val, parentCons child sibling _ => elem val child || elem val sibling
+| val, parentCons child siblings => elem val child || elem val siblings
 
-instance [BEq α] {l : List α} : Membership (List α) (ListTree α l) where
+instance [BEq α] : Membership (List α) (ListTree α) where
   mem lst tree := tree.elem lst = true
 
-def ListTree.leaves [BEq α] {l : List α} :  ListTree α l → List (List α)
-| leaf val => [val]
-| parentNil _ => []
-| parentCons child sibling _ => leaves child ++ leaves sibling
+def ListTree.leaves [BEq α] :  ListTree α → List (List α)
+  | leaf val => [val]
+  | parentNil _ => []
+  | parentCons child siblings => leaves child ++ leaves siblings
 
-def ListTree.toList [BEq α] {l : List α} :  ListTree α l → List (List α)
- | leaf val => [val]
- | parentNil val => [val]
- | parentCons child sibling _ => toList child ++ toList sibling
+def ListTree.toList [BEq α] :  ListTree α → List (List α)
+  | leaf val => [val]
+  | parentNil val => [val]
+  | parentCons child siblings => leaves child ++ leaves siblings
 
 -- TODO: Is this the proper name?
-def ListTree.children [BEq α] {l : List α} (lt :  ListTree α l) (lst : List α) : List (List α) :=
+def ListTree.children [BEq α] (lt :  ListTree α) (lst : List α) : List (List α) :=
   match lt with
   | leaf val => if List.sublist val lst then [val] else []
   | parentNil val => if List.sublist val lst then [val] else []
-  | parentCons child rest _ => (children child lst) ++ (children rest lst)
+  | parentCons child siblings => (children child lst) ++ (children siblings lst)
 
-def ListTree.meet [BEq α] {l : List α} : ListTree α l → α → α → Option (List α)
+def ListTree.meet [BEq α] : ListTree α → α → α → Option (List α)
   | leaf val, a, b => if (val.elem a && val.elem b) then (some val) else none
   | parentNil val, a, b => if (val.elem a && val.elem b) then (some val) else none
-  | parentCons child sibling _, a, b =>
+  | parentCons child siblings, a, b =>
     let childRes := meet child a b
     match childRes with
       | res@(some _) => res
-      | none => meet sibling a b
+      | none => meet siblings a b
 
+/-
 theorem List.sublist_trans [BEq α] (a b c : List α) : sublist a b → sublist b c → sublist a c := by
   intros hab hbc
   induction a <;> induction b <;> induction c <;> simp [List.sublist, List.all, List.foldr, List.elem] <;> try contradiction
   sorry  -- TODO
+-/
 
 structure Triple (α β γ : Type) where
  fst : α
@@ -150,6 +197,10 @@ def selectLoop {α : Type} : String → (String → Except String α) → IO.FS.
     | .ok a => return (some a)
     | _ => return none
 
+def _root_.List.unique {α : Type} [BEq α] : List α → List α
+  | [] => []
+  | a :: as => if as.contains a then as else (a :: as)
+
 structure ScopedBinaryRelation (α β : Type) [Hashable α] [BEq α] [Hashable β] [BEq β] where
   val : Std.HashMap (α × β × β) Bool
   defaultRes : Bool
@@ -172,10 +223,8 @@ def ScopedBinaryRelation.lookup : ScopedBinaryRelation α β → α → β → �
 notation rel "[" s "," x "," y "]:=" val => ScopedBinaryRelation.update rel s x y val
 
 def ltest := ListTree.leaf [1,2,4]
-def proofltest2 : List.sublist [1,2,4] [1,2,3,4] = true := by simp
-def proofltest3 : List.sublist [1,4] [1,2,3,4] = true := by simp
-def ltest2 := ListTree.parentCons ltest (ListTree.parentNil [1,2,3,4]) proofltest2
-def ltest3 := ListTree.parentCons (ListTree.leaf [1,4]) ltest2 proofltest3
+def ltest2 := ListTree.parentCons ltest (ListTree.parentNil [1,2,3,4])
+def ltest3 := ListTree.parentCons (ListTree.leaf [1,4]) ltest2
 
 #eval ListTree.elem [1,2,4] ltest
 #eval ListTree.elem [1,2,4] ltest2

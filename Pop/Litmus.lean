@@ -175,3 +175,74 @@ macro_rules
 
 macro_rules
   | `({| $r |}) => `( createLitmus `[req_set| $r])
+
+declare_syntax_cat threads
+declare_syntax_cat system_desc
+syntax ident,+ : threads
+syntax "{" threads "}" : system_desc
+syntax "{" threads "}." ident : system_desc
+syntax "{" system_desc,+ "}" : system_desc
+syntax "[sys|" system_desc "]" : term
+
+open Lean
+
+def threadsGetAllNames (threadsSyntax : TSyntax `threads) : Array String :=
+  match threadsSyntax.raw with
+  | `(threads| $[$ts],*) => ts.map λ i => i.getId.toString
+  | _ => unreachable! -- #[]
+
+partial def systemDescGetAllNames (descSyn : TSyntax `system_desc) : Array String :=
+  match descSyn.raw with
+    | `(system_desc| { $ts:threads }) => threadsGetAllNames ts
+    | `(system_desc| { $ts:threads }.$_) => threadsGetAllNames ts
+    | `(system_desc| { $[$sds:system_desc],* }) => sds.map systemDescGetAllNames |>.foldl
+      Array.append #[]
+    | _ => unreachable!
+-- TODO: see if I can use Lean.mkNameMap?
+def mkNameMapping (names : Array String) : String → Option ThreadId :=
+  λ s => List.range names.size |>.foldl
+    (init := none)
+    λ old i => if names[i.toNat]! == s
+      then some i
+      else old
+
+def mkCTA (mapping : String → Option ThreadId) (threads : TSyntax `threads)
+  : Except String (ListTree ThreadId) :=
+  let threadNats := threadsGetAllNames threads |>.toList |>.map mapping
+  if threadNats.contains none
+    then Except.error "Invalid thread string to id mapping"
+    else Except.ok $ ListTree.leaf $ filterNones threadNats
+
+partial def mkSysAux (mapping : String → Option ThreadId) (desc : TSyntax `system_desc)
+  : Except String (ListTree ThreadId) :=
+  match desc.raw with
+    | `(system_desc| { $ts:threads }) => mkCTA mapping ts
+    | `(system_desc| { $ts:threads }.$_) => mkCTA mapping ts
+    | `(system_desc| { $[$sds:system_desc],* }) => do
+      let sdsTrees := (← sds.mapM $ mkSysAux mapping).toList
+      let join := setJoin $ sdsTrees.map ListTree.listType
+      ListTree.mkParent join sdsTrees
+    | _ => Except.error "unexpected syntax in system description"
+
+def mkSys (desc : TSyntax `system_desc) : Except String (ListTree ThreadId) :=
+  let allNames := systemDescGetAllNames desc |>.qsort alphabetic
+  dbg_trace "all names: {allNames}"
+  let mapping := mkNameMapping allNames
+  if allNames.toList.unique.length == allNames.size
+  then
+    mkSysAux mapping desc
+  else
+    let doubles := allNames.toList.unique.foldl (init := allNames) (λ curr name => curr.erase name)
+    Except.error s!"some thread(s) appear(s) more than once: {doubles}"
+
+macro_rules
+  | `([sys| $desc:system_desc ]) => do
+    let descRes := mkSys desc
+    match descRes with
+      | Except.ok lt => `($(quote lt))
+      | Except.error msg => Macro.throwError msg
+
+#eval [sys| {{ T1, T2 } , {T3}.x86, {{T4, T5, T6}}} ].leaves
+
+
+end Pop

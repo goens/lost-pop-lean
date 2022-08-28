@@ -1,5 +1,6 @@
 import Pop.Util
 import Std
+import Lean
 open Util Std.HashMap
 
 namespace Pop
@@ -10,7 +11,7 @@ def Address := Nat deriving ToString, BEq, Inhabited
 def ThreadId := Nat deriving BEq, Ord, LT, LE, ToString, Inhabited, Hashable
 
 def RequestId.toNat : RequestId → Nat := λ x => x
-def ThreadId.toNat : RequestId → Nat := λ x => x
+def ThreadId.toNat : ThreadId → Nat := λ x => x
 def RequestId.ofNat : Nat → RequestId := λ x => x
 def ThreadId.ofNat : Nat → RequestId := λ x => x
 def Address.ofNat : Nat → Address := λ x => x
@@ -22,6 +23,8 @@ instance : OfNat RequestId n where  ofNat := RequestId.ofNat n
 instance : OfNat Address n where ofNat := Address.ofNat n
 instance : OfNat Value n where ofNat := Value.ofNat n
 instance : Coe RequestId Nat where coe := RequestId.toNat
+
+instance : Lean.Quote ThreadId where quote := λ n => Lean.quote (ThreadId.toNat n)
 
 def Address.prettyPrint (addr : Address) : String :=
   match (OfNat.ofNat addr) with
@@ -104,7 +107,7 @@ def BasicRequest.value? : BasicRequest → Value
 
 structure ValidScopes where
   system_scope : List ThreadId
-  scopes : ListTree ThreadId system_scope
+  scopes : ListTree ThreadId
 
 def ValidScopes.default : ValidScopes := { system_scope := [], scopes := ListTree.leaf []}
 instance : Inhabited ValidScopes where default := ValidScopes.default

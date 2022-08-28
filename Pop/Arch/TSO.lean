@@ -16,10 +16,10 @@ instance : ArchReq where
   instBEq := x86.instBEqReq
   instInhabited := x86.instInhabitedReq
   instToString := x86.instToStringReq
-  isPermanentRead := λ _ => true
+  isPermanentRead := λ _ => false
 
-def reorder : Request → Request → Bool
-  | r₁, r₂ => if r₁.isBarrier || r₂.isBarrier
+def reorder : ValidScopes → Request → Request → Bool
+  | _, r₁, r₂ => if r₁.isBarrier || r₂.isBarrier
   then false
   else
   let sc_per_loc := r₁.address? != r₂.address?
@@ -58,17 +58,10 @@ def mkWrite (_ : String) (addr : Address) (val : Value) : BasicRequest :=
 
 def mkBarrier (_ : String) : BasicRequest := BasicRequest.barrier default
 
-def mkInitState (n : Nat) :=
-  let valid_scopes : ValidScopes :=
-    { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
-  SystemState.init valid_scopes
-
-
 instance : LitmusSyntax where
   mkRead := mkRead
   mkWrite := mkWrite
   mkBarrier := mkBarrier
-  mkInitState := mkInitState
 
 def IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
 def IRIW_fences := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence; R x // 0 || W y=1 |}

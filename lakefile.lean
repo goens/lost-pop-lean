@@ -18,10 +18,18 @@ lean_exe pop_x86 {
   root := `InteractTSO
 }
 
+lean_exe pop_ptx {
+  root := `InteractPTX
+}
+
 lean_exe pop_explore_x86 {
   root := `ExploreTSO
 }
 
 lean_exe pop_explore_arm {
   root := `ExploreARM
+}
+
+lean_exe pop_explore_ptx {
+  root := `ExplorePTX
 }

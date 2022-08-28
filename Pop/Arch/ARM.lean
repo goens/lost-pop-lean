@@ -42,8 +42,8 @@ private def _root_.Pop.Request.isWriteRel : Request → Bool :=
 
 infixl:85 "b⇒" => λ a b => !a || b
 
-def reorder : Request → Request → Bool
-  | r_old, r_new =>
+def reorder : ValidScopes → Request → Request → Bool
+  | _, r_old, r_new =>
   let relacq₁ := (r_old.isReadAcq && r_new.isWriteRel) b⇒ (r_old.address? != r_new.address?)
   let relacq₂ := !r_new.isWriteRel
   let relacq₃ := r_old.isReadAcq b⇒ (r_new.thread != r_old.thread)
@@ -89,19 +89,10 @@ def mkBarrier (reqtype : String) : BasicRequest :=
     | "" => BasicRequest.barrier Req.other
     | _ => panic! "invalid barrier type: {reqtype}"
 
-def mkInitState (n : Nat) :=
-  match n with
-  | _ =>
-  let valid_scopes : ValidScopes :=
-    { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
-  SystemState.init valid_scopes
-
-
 instance : LitmusSyntax where
   mkRead := mkRead
   mkWrite := mkWrite
   mkBarrier := mkBarrier
-  mkInitState := mkInitState
 
 def WRC := {| W x=1 || R. acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|}
 def WRC_two_deps := {| W x=1 || R. acq x // 1;dep W y = 1 || R y // 1 ;dep R x // 0|}

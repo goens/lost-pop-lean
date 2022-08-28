@@ -36,7 +36,9 @@ class LitmusSyntax where
   mkRead : String → Address → BasicRequest
   mkWrite : String → Address → Value → BasicRequest
   mkBarrier : String → BasicRequest
-  mkInitState : Nat → SystemState
+
+def mkValidScopes (n : Nat) : ValidScopes :=
+  { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
 
 variable [LitmusSyntax]
 open LitmusSyntax
@@ -101,9 +103,8 @@ structure RequestSyntax where
   (varName : String)
   (value : Option Nat)
 
--- create accepts in a per-thread basis
-def createLitmus : List (List RequestSyntax) → Litmus.Test
-  | list =>
+def createLitmus (list : List (List RequestSyntax))
+  (validScopes : Option ValidScopes) : Litmus.Test :=
   let variablesRaw := list.map λ thread => thread.map (λ r => if r.varName.length == 0 then none else some r.varName)
   let variables := removeDuplicates $ filterNones $ List.join variablesRaw
   let variableNums := variables.zip (List.range variables.length)
@@ -118,12 +119,17 @@ def createLitmus : List (List RequestSyntax) → Litmus.Test
   let outcomes := List.join $ fullThreads.map λ t => mkOutcomeThread t
   let initWrites := initZeroesUnpropagatedTransitions (List.range variables.length)
   let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
-  let initState := mkInitState fullThreads.length
+  let initState := match validScopes with
+    | some scopes => SystemState.init scopes
+    | none => SystemState.init $ mkValidScopes fullThreads.length
   ((initWrites ++ initPropagates, reqs.toArray), (outcomes, initState))
 
 declare_syntax_cat request
 declare_syntax_cat request_seq
 declare_syntax_cat request_set
+declare_syntax_cat threads
+declare_syntax_cat system_desc
+
 syntax "R" ident ("//" num)? : request
 syntax "R." ident ident  ("//" num)? : request
 syntax "W" ident "=" num : request
@@ -135,8 +141,13 @@ syntax request ";dep" request_seq : request_seq
 syntax request : request_seq
 syntax request_seq "||" request_set : request_set
 syntax request_seq : request_set
-syntax "{|" request_set "|}" : term
+syntax ident,+ : threads
+syntax "{" threads "}" : system_desc
+syntax "{" threads "}." ident : system_desc
+syntax "{" system_desc,+ "}" : system_desc
 
+syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? : term
+syntax "`[sys|" system_desc "]" : term
 syntax "`[req|" request "]" : term
 syntax "`[req_seq|" request_seq "]" : term
 syntax "`[req_set|" request_set "]" : term
@@ -173,16 +184,11 @@ macro_rules
   | `(request_set| $r:request_seq ) => `([`[req_seq| $r]])
   | `(request_set| $r:request_seq || $rs:request_set) => `(`[req_seq| $r] :: `[req_set| $rs])
 
+-- TODO: is there a more elegant way to do this with `Option.map`?
 macro_rules
-  | `({| $r |}) => `( createLitmus `[req_set| $r])
-
-declare_syntax_cat threads
-declare_syntax_cat system_desc
-syntax ident,+ : threads
-syntax "{" threads "}" : system_desc
-syntax "{" threads "}." ident : system_desc
-syntax "{" system_desc,+ "}" : system_desc
-syntax "[sys|" system_desc "]" : term
+  | `({| $r |} $[where sys := $opdesc:system_desc ]?) => match opdesc with
+    | none => `( createLitmus `[req_set| $r] none )
+    | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]))
 
 open Lean
 
@@ -224,25 +230,29 @@ partial def mkSysAux (mapping : String → Option ThreadId) (desc : TSyntax `sys
       ListTree.mkParent join sdsTrees
     | _ => Except.error "unexpected syntax in system description"
 
-def mkSys (desc : TSyntax `system_desc) : Except String (ListTree ThreadId) :=
+def mkSys (desc : TSyntax `system_desc) : Except String ValidScopes :=
   let allNames := systemDescGetAllNames desc |>.qsort alphabetic
   let mapping := mkNameMapping allNames
   if allNames.toList.unique.length == allNames.size
-  then
-    mkSysAux mapping desc
+  then do
+    let threads := filterNones (allNames.map mapping).toList
+    let scopes ← mkSysAux mapping desc
+    return { scopes := scopes, system_scope := threads}
   else
     let doubles := allNames.toList.unique.foldl (init := allNames) (λ curr name => curr.erase name)
     Except.error s!"some thread(s) appear(s) more than once: {doubles}"
 
+
 macro_rules
-  | `([sys| $desc:system_desc ]) => do
+  | `(`[sys| $desc:system_desc ]) => do
     let descRes := mkSys desc
     match descRes with
       | Except.ok lt => `($(quote lt))
       | Except.error msg => Macro.throwError msg
 
-#eval [sys| {{ T1, T2 } , {T3}.x86, {{T4, T5, T6}}} ].leaves
+-- Tests
+-- #eval `[sys| {{ T1, T2 } , {T3}.x86, {{T4, T5, T6}}} ].scopes.leaves
 -- should fail!
--- #eval [sys| {{ T1, T2 } , {T2, T3}} ].leaves
+-- #eval `[sys| {{ T1, T2 } , {T2, T3}} ].scopes.leaves
 
 end Pop

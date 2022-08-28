@@ -34,11 +34,11 @@ def Address.prettyPrint (addr : Address) : String :=
     | addr => s!"v{addr}"
 
 class ArchReq where
-(type : Type 0)
-(instBEq : BEq type)
-(instInhabited : Inhabited type)
-(instToString : ToString type)
-(isPermanentRead : type → Bool)
+  (type : Type 0)
+  (instBEq : BEq type)
+  (instInhabited : Inhabited type)
+  (instToString : ToString type)
+  (isPermanentRead : type → Bool)
 
 variable [ArchReq]
 
@@ -87,7 +87,11 @@ def BasicRequest.prettyPrint : BasicRequest → String
       | "" => ""
       | str => s!".{str}"
     s!"W{tyStr} {wr.addr.prettyPrint}{valStr}"
-  | BasicRequest.barrier _ => "Fence"
+  | BasicRequest.barrier ty =>
+    let tyStr := match s!"{ty}" with
+      | "" => ""
+      | str => s!".{str}"
+    s!"Fence{tyStr}"
 
 instance : ToString (BasicRequest) where toString := BasicRequest.toString
 
@@ -111,6 +115,11 @@ structure ValidScopes where
 
 def ValidScopes.default : ValidScopes := { system_scope := [], scopes := ListTree.leaf []}
 instance : Inhabited ValidScopes where default := ValidScopes.default
+
+open Lean in
+private def quoteValidScopes : ValidScopes → Term
+  | ValidScopes.mk system_scope scopes => Syntax.mkCApp ``ValidScopes.mk #[quote system_scope, quote scopes]
+instance : Lean.Quote ValidScopes where quote := quoteValidScopes
 
 structure Scope {V : ValidScopes} where
   threads : List ThreadId
@@ -500,7 +509,7 @@ class Arch where
   (acceptConstraints : SystemState → BasicRequest → ThreadId → Bool )
   (propagateConstraints : SystemState → RequestId → ThreadId → Bool)
   (satisfyReadConstraints : SystemState → RequestId → RequestId → Bool)
-  (reorderCondition : Request → Request → Bool)
+  (reorderCondition : ValidScopes → Request → Request → Bool)
   (requestScope : (valid : ValidScopes) → Request → @Scope valid)
 
 -- private def maxThread : ThreadId → List ThreadId → ThreadId

@@ -33,3 +33,7 @@ lean_exe pop_explore_arm {
 lean_exe pop_explore_ptx {
   root := `ExplorePTX
 }
+
+lean_exe alloy {
+  root := `GenerateAlloy
+}

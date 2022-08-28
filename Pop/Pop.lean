@@ -63,6 +63,14 @@ def Transition.isReadAccept : Transition → Bool
   | .acceptRequest br _ => br.isRead
   | _ => false
 
+def Transition.isWriteAccept : Transition → Bool
+  | .acceptRequest br _ => br.isWrite
+  | _ => false
+
+def Transition.isBarrierAccept : Transition → Bool
+  | .acceptRequest br _ => br.isBarrier
+  | _ => false
+
 def Transition.isDependency : Transition → Bool
  | dependency _ => true
  | _ => false

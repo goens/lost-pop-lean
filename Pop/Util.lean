@@ -201,6 +201,10 @@ def _root_.List.unique {α : Type} [BEq α] : List α → List α
   | [] => []
   | a :: as => if as.contains a then as else (a :: as.unique)
 
+def _root_.List.lookup? {α β : Type} [BEq α] : List (α × β) → α → Option β
+  | [], _ => none
+  | (a,b)::rest, a' => if a == a' then some b else rest.lookup a'
+
 structure ScopedBinaryRelation (α β : Type) [Hashable α] [BEq α] [Hashable β] [BEq β] where
   val : Std.HashMap (α × β × β) Bool
   defaultRes : Bool

@@ -80,7 +80,7 @@ def selectLitmus :  List Litmus.Test → String → Except String Litmus.Test
     | Except.error s!"Invalid index ({n}), must be between 1 and {tests.length}"
   Except.ok test
 
-def interactiveExecution : List Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
+def selectLitmusLoop : List Litmus.Test → IO.FS.Stream → IO (Except String Litmus.Test)
   | tests, stdin => do
     let litmusStrings :=  tests.map λ test => test.program.prettyPrint
     let indices := List.range (litmusStrings.length) |>.map (· +1)
@@ -89,8 +89,15 @@ def interactiveExecution : List Litmus.Test → IO.FS.Stream → IO (Except Stri
     let opLitmus ← Util.selectLoop
       s!"Select litmus test. Available:\n{availableString}" (selectLitmus tests) stdin
     if let some litmus := opLitmus then
-      interactiveExecutionSingle litmus stdin
+      return Except.ok litmus
     else
       return Except.error "^D"
+
+def interactiveExecution : List Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
+  | tests, stdin => do
+    let exceptLitmus ← selectLitmusLoop tests stdin
+    match exceptLitmus with
+      | .ok litmus => interactiveExecutionSingle litmus stdin
+      | .error msg  => return Except.error msg
 
 end Pop

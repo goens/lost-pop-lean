@@ -226,7 +226,6 @@ partial def mkSysAux (mapping : String → Option ThreadId) (desc : TSyntax `sys
 
 def mkSys (desc : TSyntax `system_desc) : Except String (ListTree ThreadId) :=
   let allNames := systemDescGetAllNames desc |>.qsort alphabetic
-  dbg_trace "all names: {allNames}"
   let mapping := mkNameMapping allNames
   if allNames.toList.unique.length == allNames.size
   then
@@ -243,6 +242,7 @@ macro_rules
       | Except.error msg => Macro.throwError msg
 
 #eval [sys| {{ T1, T2 } , {T3}.x86, {{T4, T5, T6}}} ].leaves
-
+-- should fail!
+-- #eval [sys| {{ T1, T2 } , {T2, T3}} ].leaves
 
 end Pop

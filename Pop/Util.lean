@@ -199,7 +199,7 @@ def selectLoop {α : Type} : String → (String → Except String α) → IO.FS.
 
 def _root_.List.unique {α : Type} [BEq α] : List α → List α
   | [] => []
-  | a :: as => if as.contains a then as else (a :: as)
+  | a :: as => if as.contains a then as else (a :: as.unique)
 
 structure ScopedBinaryRelation (α β : Type) [Hashable α] [BEq α] [Hashable β] [BEq β] where
   val : Std.HashMap (α × β × β) Bool

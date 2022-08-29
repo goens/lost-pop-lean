@@ -82,7 +82,10 @@ def selectLitmus :  List Litmus.Test → String → Except String Litmus.Test
 
 def selectLitmusLoop : List Litmus.Test → IO.FS.Stream → IO (Except String Litmus.Test)
   | tests, stdin => do
-    let litmusStrings :=  tests.map λ test => test.program.prettyPrint
+    let litmusStrings :=  tests.map λ test =>
+      test.program.prettyPrint ++
+      (if test.initState.scopes.isUnscoped then ""
+      else s!"\n  where sys := {test.initState.scopes.scopes}")
     let indices := List.range (litmusStrings.length) |>.map (· +1)
     let fullStrings := indices.zip litmusStrings |>.map λ (idx, lit) => s!"{idx}: {lit}"
     let availableString := String.intercalate "\n" fullStrings

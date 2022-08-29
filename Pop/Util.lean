@@ -45,6 +45,9 @@ partial def removeDuplicates [BEq α] : List α → List α
 def _root_.List.sublist [BEq α] : List α → List α → Bool
   | l₁, l₂ => l₁.all (λ e => l₂.elem e)
 
+def _root_.List.setEq [BEq α] : List α → List α → Bool
+  | l₁, l₂ => l₁.sublist l₂ && l₂.sublist l₁
+
 def setJoinPair [BEq α] (l₁ l₂ : List α) : List α :=
   match l₁, l₂ with
   | l₁, [] => l₁
@@ -74,6 +77,14 @@ private def quoteListTree [Quote α] [BEq α] : ListTree α → Term
     #[quoteListTree child, quoteListTree sibs]
 
 instance {α : Type} [BEq α] [Lean.Quote α] : Lean.Quote (ListTree α) where quote := quoteListTree
+
+def ListTree.beq {α : Type} [BEq α] : ListTree α → ListTree α → Bool
+  | .leaf a, .leaf b => a.setEq b
+  | .parentNil a, .parentNil b => a.setEq b
+  | .parentCons child₁ sibs₁, .parentCons child₂ sibs₂ => (beq child₁ child₂) && (beq sibs₁ sibs₂)
+  | _, _ => false
+
+instance {α : Type} [BEq α]  : BEq (ListTree α) where beq := ListTree.beq
 
 -- TODO: this does not check it is well-formed...
 def ListTree.listType [BEq α] : ListTree α  → List α
@@ -115,12 +126,17 @@ def ListTree.toList [BEq α] :  ListTree α → List (List α)
   | parentNil val => [val]
   | parentCons child siblings => leaves child ++ leaves siblings
 
--- TODO: Is this the proper name?
-def ListTree.children [BEq α] (lt :  ListTree α) (lst : List α) : List (List α) :=
+def ListTree.nodesAbove [BEq α] (lt :  ListTree α) (lst : List α) : List (List α) :=
+  match lt with
+  | leaf val => if List.sublist lst val then [val] else []
+  | parentNil val => if List.sublist lst val then [val] else []
+  | parentCons child siblings => (nodesAbove child lst) ++ (nodesAbove siblings lst)
+
+def ListTree.nodesBelow [BEq α] (lt :  ListTree α) (lst : List α) : List (List α) :=
   match lt with
   | leaf val => if List.sublist val lst then [val] else []
   | parentNil val => if List.sublist val lst then [val] else []
-  | parentCons child siblings => (children child lst) ++ (children siblings lst)
+  | parentCons child siblings => (nodesBelow child lst) ++ (nodesBelow siblings lst)
 
 def ListTree.meet [BEq α] : ListTree α → α → α → Option (List α)
   | leaf val, a, b => if (val.elem a && val.elem b) then (some val) else none
@@ -130,6 +146,19 @@ def ListTree.meet [BEq α] : ListTree α → α → α → Option (List α)
     match childRes with
       | res@(some _) => res
       | none => meet siblings a b
+
+private def ListTree.toStringAux [BEq α] [ToString α] : ListTree α → String
+   | .leaf val => String.intercalate ", " (val.map ToString.toString)
+   | .parentNil val => String.intercalate ", " (val.map ToString.toString)
+   | .parentCons child parent@(parentNil _) => "[" ++
+     (toStringAux parent) ++ "] = [" ++ (toStringAux child) ++ "]"
+   | .parentCons child siblings => (toStringAux siblings) ++ ", ["
+     ++ (toStringAux child) ++ "]"
+
+def ListTree.toString [BEq α] [ToString α] (lt : ListTree α) : String :=
+  "[" ++ toStringAux lt ++ "]"
+
+instance [BEq α] [ToString α] : ToString (ListTree α) where toString := ListTree.toString
 
 /-
 theorem List.sublist_trans [BEq α] (a b c : List α) : sublist a b → sublist b c → sublist a c := by
@@ -182,7 +211,7 @@ def exceptIO  {α : Type} [Inhabited α] : Except String α → IO α
       return default
 
 
-def selectLoop {α : Type} : String → (String → Except String α) → IO.FS.Stream → IO (Option α)
+def selectLoop {α : Type 0} : String → (String → Except String α) → IO.FS.Stream → IO (Option α)
   | selectionString, selectFun, inputStream => do
   let mut selected := Except.error "unread"
   while !selected.isOk do
@@ -197,15 +226,15 @@ def selectLoop {α : Type} : String → (String → Except String α) → IO.FS.
     | .ok a => return (some a)
     | _ => return none
 
-def _root_.List.unique {α : Type} [BEq α] : List α → List α
+def _root_.List.unique {α : Type 0} [BEq α] : List α → List α
   | [] => []
   | a :: as => if as.contains a then as else (a :: as.unique)
 
-def _root_.List.lookup? {α β : Type} [BEq α] : List (α × β) → α → Option β
+def _root_.List.lookup? {α β : Type 0} [BEq α] : List (α × β) → α → Option β
   | [], _ => none
   | (a,b)::rest, a' => if a == a' then some b else rest.lookup a'
 
-structure ScopedBinaryRelation (α β : Type) [Hashable α] [BEq α] [Hashable β] [BEq β] where
+structure ScopedBinaryRelation (α β : Type 0) [Hashable α] [BEq α] [Hashable β] [BEq β] where
   val : Std.HashMap (α × β × β) Bool
   defaultRes : Bool
 

@@ -25,18 +25,6 @@ def ProgramState.getAvailable (prog : ProgramState) : List (Transition) := Id.ru
   --dbg_trace "{prog.map λ tr => tr.map Transition.prettyPrintReq}.available = {res.map Transition.prettyPrintReq}"
   return res
 
-def ProgramState.allFilter (prog : ProgramState) (filterFun : Transition → Bool)
-  : List Transition :=
-  List.join $ Array.toList $ prog.map
-    λ th => th.toList.filter filterFun
-
-def ProgramState.allReads (prog : ProgramState) : List Transition :=
-  prog.allFilter Transition.isReadAccept
-def ProgramState.allWrites (prog : ProgramState) : List Transition :=
-  prog.allFilter Transition.isWriteAccept
-def ProgramState.allBarriers (prog : ProgramState) : List Transition :=
-  prog.allFilter Transition.isBarrierAccept
-
 def ProgramState.clearDependencies (prog : ProgramState) (state : SystemState)
   : ProgramState := Id.run do
   let mut res := #[]

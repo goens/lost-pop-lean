@@ -63,11 +63,11 @@ instance : ArchReq where
   isPermanentRead := λ _ => false
   instToString := PTX.instToStringReq
 
-def requestScope (valid : ValidScopes) (req : Request) : @Pop.Scope valid :=
-  let containing := valid.containThread req.thread
+def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
+  let containing := valid.containThread thread
   -- TODO: Could I get rid of this sorting (from the ListTree structure)?
-  |>.toArray |>.qsort (λ l₁ l₂ => l₁.threads.length == l₂.threads.length)
-  match req.basic_type.type.scope with
+    |>.toArray |>.qsort (λ l₁ l₂ => l₁.threads.length < l₂.threads.length)
+  match scope with
   | .sys => valid.systemScope
   | .cta => if let some cta := containing[0]?
     then cta
@@ -81,6 +81,8 @@ def requestScope (valid : ValidScopes) (req : Request) : @Pop.Scope valid :=
       else panic! "invalid gpu scope (not enough scopes)"
     else panic! "invalid gpu scope"
 
+def requestScope (valid : ValidScopes) (req : Request) : @Pop.Scope valid :=
+  getThreadScope valid req.thread req.basic_type.type.scope
 
 def scopeInclusive {V : ValidScopes} : Request → Request → Bool
   | r₁, r₂ =>

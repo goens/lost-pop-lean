@@ -75,7 +75,24 @@ def Transition.isDependency : Transition → Bool
  | dependency _ => true
  | _ => false
 
+def Transition.getAcceptBasicRequest? : Transition → Option BasicRequest
+  | .acceptRequest br _ => some br
+  | _ => none
+
 abbrev ProgramState := Array (Array (Transition))
+
+def ProgramState.allFilter (prog : ProgramState) (filterFun : Transition → Bool)
+  : List Transition :=
+  List.join $ Array.toList $ prog.map
+    λ th => th.toList.filter filterFun
+
+def ProgramState.allReads (prog : ProgramState) : List Transition :=
+  prog.allFilter Transition.isReadAccept
+def ProgramState.allWrites (prog : ProgramState) : List Transition :=
+  prog.allFilter Transition.isWriteAccept
+def ProgramState.allBarriers (prog : ProgramState) : List Transition :=
+  prog.allFilter Transition.isBarrierAccept
+
 
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool := Arch.acceptConstraints
 

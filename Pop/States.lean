@@ -125,6 +125,8 @@ structure Scope {V : ValidScopes} where
   threads : List ThreadId
   valid : threads ∈ V.scopes
 
+instance {V : ValidScopes} : ToString (@Scope V) where toString := λ ⟨threads,_⟩ => s!"{threads}"
+
 instance {V : ValidScopes} : BEq (@Scope V) where
   beq := λ scope₁ scope₂ => scope₁.threads == scope₂.threads
 
@@ -179,15 +181,18 @@ def ValidScopes.validate (V : ValidScopes) (threads : List ThreadId) : (@Scope V
  { threads := threads, valid := sorry }
 
 def ValidScopes.subscopes (V : ValidScopes) (S : @Scope V) : List (@Scope V) :=
-  let children := V.scopes.children S.threads
+  let children := V.scopes.nodesBelow S.threads
   children.map V.validate
 
 def ValidScopes.containThread (V: ValidScopes) (t : ThreadId) : List (@Scope V) :=
-  let containing := V.scopes.children [t]
+  let containing := V.scopes.nodesAbove [t]
   containing.map V.validate
 
 instance {V : ValidScopes} : Inhabited (@Scope V) where
  default := {threads := [], valid := sorry}
+
+def ValidScopes.isUnscoped (V : ValidScopes) : Bool :=
+  V.scopes == (ListTree.leaf V.system_scope)
 
 def ValidScopes.systemScope {V : ValidScopes } : @Scope V :=
   {threads := V.system_scope, valid := sorry}

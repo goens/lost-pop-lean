@@ -125,7 +125,7 @@ infixl:85 "b⇒" => λ a b => !a || b
   }
 -/
 def reorder : ValidScopes → Request → Request → Bool
-  | V, r_old, r_new =>
+  | _, r_old, r_new =>
   let acqrel_fences := (r_old.isFenceAcqRel || r_new.isFenceAcqRel)
                        b⇒ (r_old.thread != r_new.thread)
   let sc_fences := !r_old.isFenceSC && !r_new.isFenceSC
@@ -135,7 +135,15 @@ def reorder : ValidScopes → Request → Request → Bool
   let relacq := (r_new.isAcq && r_old.isRel) b⇒ (r_new.address? != r_old.address?)
   let acqthread := r_new.isAcq b⇒ (r_new.thread != r_old.thread)
   let newrel := !r_new.isRel
-  (@scopeInclusive V) r_old r_new ||
+  --dbg_trace "[reorder] {r_old} {r_new}"
+  --dbg_trace "[reorder] scope inclusive: {(@scopeInclusive V) r_old r_new}"
+  --dbg_trace "[reorder] sc_fences : {sc_fences}"
+  --dbg_trace "[reorder] satisfied : {satisfied}"
+  --dbg_trace "[reorder] relacq : {relacq}"
+  --dbg_trace "[reorder] acqthread : {acqthread}"
+  --dbg_trace "[reorder] newrel : {newrel}"
+  --dbg_trace "[reorder] acqrel_fences : {acqrel_fences}"
+  --(@scopeInclusive V) r_old r_new ||
   (sc_fences && satisfied && relacq && acqthread && newrel && acqrel_fences)
 
 instance : Arch where
@@ -236,6 +244,13 @@ instance : LitmusSyntax where
 def IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
 def IRIW_3ctas := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0}, {T1, T2}, {T3} }
+def IRIW_3ctas_1scoped_w := {| W. cta_rlx x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
+  where sys := { {T0}, {T1, T2}, {T3} }
+def IRIW_3ctas_1scoped_r := {| W x=1 ||  R. cta_rlx x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
+  where sys := { {T0}, {T1, T2}, {T3} }
+def IRIW_3ctas_scoped_rs_after := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R. cta_rlx y // 0 || R y // 1; Fence. cta_sc; R. cta_rlx x // 0 || W y=1 |}
+  where sys := { {T0}, {T1, T2}, {T3} }
+
 def IRIW_2ctas := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0, T2}, {T1, T3} }
 def IRIW_fences := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence; R x // 0 || W y=1 |}
@@ -246,11 +261,17 @@ def MP_fence := {| W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0|}
 def N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |}
 def dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}
 def dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |}
---def causality := {| W x = 1 || R x; Fence; W x = 2 || R x; W|}
+
+def WRC := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|}
+def WRC_two_deps := {| W x=1 || R. sys_acq x // 1;dep W y = 1 || R y // 1 ;dep R x // 0|}
+def WRC_rel := {| W. sys_rel x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|}
+def WRC_acq := {| W x=1 || R. sys_acq x // 1; W y = 1 || R. sys_acq y // 1 ;dep R x // 0|}
+def WRC_no_dep := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ; R x // 0|}
 
 def ptx_2 := [MP,MP_fence1,MP_fence2,MP_fence, N7, dekkers, dekkers_fence]
-def ptx_3 : List Litmus.Test := []
-def ptx_4 := [IRIW, IRIW_3ctas, IRIW_2ctas, IRIW_fences]
+def ptx_3 := [WRC, WRC_rel, WRC_no_dep, WRC_acq, WRC_two_deps]
+
+def ptx_4 := [IRIW, IRIW_3ctas, IRIW_3ctas_1scoped_w, IRIW_3ctas_1scoped_r, IRIW_3ctas_scoped_rs_after,  IRIW_2ctas, IRIW_fences]
 
 def allPTX : List Litmus.Test := ptx_2 ++ ptx_3 ++ ptx_4
 end Litmus

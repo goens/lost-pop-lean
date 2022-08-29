@@ -228,7 +228,15 @@ def selectLoop {α : Type 0} : String → (String → Except String α) → IO.F
 
 def _root_.List.unique {α : Type 0} [BEq α] : List α → List α
   | [] => []
-  | a :: as => if as.contains a then as else (a :: as.unique)
+  | a :: as => if as.contains a then as.unique else (a :: as.unique)
+
+def _root_.List.containsSet {α : Type 0} [BEq α] : List (List α) → List α → Bool
+  | head::tail, l => head.setEq l || tail.containsSet l
+  | [], _ => false
+
+def _root_.List.uniqueSet {α : Type 0} [BEq α] : List (List α) → List (List α)
+  | [] => []
+  | a :: as => if as.containsSet a then as.uniqueSet else (a :: as.uniqueSet)
 
 def _root_.List.lookup? {α β : Type 0} [BEq α] : List (α × β) → α → Option β
   | [], _ => none

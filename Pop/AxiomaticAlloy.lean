@@ -1,5 +1,6 @@
 import Pop.Litmus
 import Pop.Exploration
+import Pop.Util
 
 -- For now specifically for PTX
 import Pop.Arch.PTX
@@ -11,10 +12,21 @@ open Pop
 
 
 def toSizes (litmus : Litmus.Test) : String :=
+  let usedScopes := Util.filterNones $ List.join $
+    (List.range litmus.program.size).map
+      λ thId => litmus.program[thId]!.toList.map
+        λ transition =>
+          match transition.getAcceptBasicRequest? with
+            | none => none
+            | some br => some $ PTX.getThreadScope
+                litmus.initState.scopes thId br.type.scope |>.threads
   s!"  # ptx/Thread = {litmus.initState.threads.length}\n" ++
   s!"  # ptx/Read = {litmus.program.allReads.length}\n" ++
   s!"  # ptx/Write = {litmus.program.allWrites.length}\n" ++
-  s!"  # ptx/Fence = {litmus.program.allBarriers.length}\n"
+  s!"  # ptx/Fence = {litmus.program.allBarriers.length}\n" ++
+  s!"  # ptx/Barrier = 0\n" ++ -- Not considering these for now
+  -- Add the number of threads to scopes, as we don't consider them to be scopes
+  s!"  # ptx/Scope = {usedScopes.uniqueSet.length + litmus.program.size}\n"
 
 def transToAlloy : Transition → String
   | .acceptRequest br _ =>
@@ -22,11 +34,11 @@ def transToAlloy : Transition → String
     | .read _ ty =>
       match ty.sem with
         | .acq => "ptx/Acquire"
-        | _ => "ptx/Read"
+        | _ => "ptx/Read - ptx/Acquire"
     | .write _ ty =>
       match ty.sem with
         | .rel => "ptx/Release"
-        | _ => "ptx/Write"
+        | _ => "ptx/Write - ptx/Release"
     | .barrier ty =>
       match ty.sem with
         | .sc => "ptx/FenceSC"
@@ -62,11 +74,11 @@ def toPreds (litmus : Litmus.Test) : String :=
       for transition in thread do
         if opLast.isNone then -- the first transition in a thread
           opLast := transitionNames.lookup? transition
-          res := res ++ s!"    t{thId}.start = {opLast.get!},\n"
+          res := res ++ s!"    t{thId}.start = {opLast.get!} and\n"
           continue
-        opLast := transitionNames.lookup? transition -- second transition onward
         if let (some cur, some last) := (transitionNames.lookup? transition, opLast) then
-          res := res ++ s!"    {last}.po = {cur},\n"
+          res := res ++ s!"    {last}.po = {cur} and\n"
+        opLast := transitionNames.lookup? transition -- second transition onward
       -- end thread iteration: update state
       thId := thId + 1
       opLast := none
@@ -86,14 +98,14 @@ def toPreds (litmus : Litmus.Test) : String :=
         | panic! s!"Unknown transition {transition}"
       if let some refAddress := address_groups.lookup? address
         -- Not first time seen: then they should be equal
-        then res := res ++ s!"    {refAddress}.address = {transName}.address,\n"
+        then res := res ++ s!"    {refAddress}.address = {transName}.address and\n"
         -- First transition with this address: add as reference value
         else address_groups := (address, transName) :: address_groups
     -- Finally: the reference addresses should be pairwise different
     for (_,name₁) in address_groups do
       for (_,name₂) in address_groups do
         if name₁ != name₂ then
-          res := res ++ s!"    {name₁}.address != {name₂}.address"
+          res := res ++ s!"    {name₁}.address != {name₂}.address and\n"
         else break -- do not add symmetric constraints
     return res
   let scopes := Id.run do
@@ -106,14 +118,14 @@ def toPreds (litmus : Litmus.Test) : String :=
           | panic! s!"Unknown transition {transition}"
         -- Handle special case for system scope (less verbose)
         if br.type.scope == PTX.Scope.sys then
-          res := res ++ s!"    {transName}.scope = System,\n"
+          res := res ++ s!"    {transName}.scope = System and\n"
           continue
         let scope : Scope := PTX.getThreadScope litmus.initState.scopes thId br.type.scope
         for thread in (List.range litmus.program.size) do
           let contains := if scope.threads.contains thread
             then ""
             else "not "
-          res := res ++ s!"    t{thread} {contains}in {transName}.scope.*subscopes,\n"
+          res := res ++ s!"    t{thread} {contains}in {transName}.scope.*subscope and\n"
     return res
   let outcome := Id.run do
     let mut res := ""
@@ -125,17 +137,18 @@ def toPreds (litmus : Litmus.Test) : String :=
        -- The read has a corresponding write (rf)
         let some writeName := transitionNames.lookup? write
           | panic! s!"invalid write ({write}) in outcome"
-        res := res ++ s!"    {writeName}.rf = {readName},\n"
+        res := res ++ s!"    {writeName}.rf = {readName} and\n"
       else
        -- The read has no corresponding (rf) write
-        res := res ++ s!"    no {readName}.~rf,\n"
+        res := res ++ s!"    no {readName}.~rf and\n"
     return res
 
   s!"\n  some\n    {names} |\n" ++
   s!"\n    // Program Order\n{po}\n" ++
   s!"    // Addresses \n{addresses}\n" ++
-  s!"\n    // Scopes \n{scopes}\n" ++
-  s!"    // Outcome \n{outcome}\n"
+  s!"    // Scopes \n{scopes}\n" ++
+  s!"    // Outcome \n{outcome}\n" ++
+  s!"  ptx_mm\n\n"
 
 
 def toAlloyLitmus (litmus : Litmus.Test ) : String :=

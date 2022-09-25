@@ -178,6 +178,7 @@ def SatisfiedRead := RequestId × RequestId deriving ToString, BEq
 def ValidScopes.validate (V : ValidScopes) (threads : List ThreadId) : (@Scope V) :=
  { threads := threads, valid := sorry }
 
+-- Gives the subscopes of S, including S.
 def ValidScopes.subscopes (V : ValidScopes) (S : @Scope V) : List (@Scope V) :=
   let children := V.scopes.nodesBelow S.threads
   children.map V.validate
@@ -307,6 +308,9 @@ def OrderConstraints.addSingleScope {V : ValidScopes} (constraints : @OrderConst
        let val' := constraints.val.insert scope.threads sc_oc'
        { constraints with val := val' }
 
+-- Updates `constraints` to add all pairs in `reqs` to the scope `scope` and each
+-- of its suscopes. The optional value `val` is what the constraint is updated to,
+-- and defaults to `true`.
 def OrderConstraints.addSubscopes {V : ValidScopes} (constraints : @OrderConstraints V)
 (scope : @Scope V) (reqs : List (RequestId × RequestId)) (val := true) : @OrderConstraints V :=
   let subscopes := V.subscopes scope

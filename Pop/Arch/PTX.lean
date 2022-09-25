@@ -84,8 +84,7 @@ def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
 def requestScope (valid : ValidScopes) (req : Request) : @Pop.Scope valid :=
   getThreadScope valid req.thread req.basic_type.type.scope
 
-def scopeInclusive {V : ValidScopes} : Request → Request → Bool
-  | r₁, r₂ =>
+def scopeInclusive (V : ValidScopes) (r₁ r₂ : Request) : Bool :=
   let (t₁,t₂) := (r₁.thread, r₂.thread)
   let scope₁ := requestScope V r₁
   let scope₂ := requestScope V r₂
@@ -109,11 +108,33 @@ def _root_.Pop.Request.isAcq (req : Request) : Bool :=
 
 infixl:85 "b⇒" => λ a b => !a || b
 
+/-
+  SC fence only considers its scope for order constraints.
+  Scopes for rel, acq, acqrel (i.e. non-SC) fences:
+    | W → Fence | Fence |
+    | Fence → W |   ∩   |
+    | R → Fence |   ∩   |
+    | Fence → R | Fence |
+-/
+def scopesMatch : ValidScopes → Request → Request → Bool
+  | V, r_old, r_new =>
+  -- For SC Fences we only consider their scope, and not the other request's
+  if r_old.isFenceSC then
+    (requestScope V r_old).threads.contains r_new.thread
+  else if r_new.isFenceSC then
+    (requestScope V r_new).threads.contains r_old.thread
+  -- by above, not SC ⇒ rel, acq or acqrel
+  else if r_old.isWrite && r_new.isBarrier then
+    (requestScope V r_new).threads.contains r_old.thread
+  else if r_new.isBarrier && r_new.isRead then
+    (requestScope V r_old).threads.contains r_new.thread
+  -- If neither is an SC fence, then we consider their joint scope
+  else @scopeInclusive V r_old r_new
+
 def reorder : ValidScopes → Request → Request → Bool
-  | _, r_old, r_new =>
-  let acqrel_fences := (r_old.isFenceAcqRel || r_new.isFenceAcqRel)
+  | V, r_old, r_new =>
+  let fences := (r_old.isBarrier && r_new.isBarrier)
                        b⇒ (r_old.thread != r_new.thread)
-  let sc_fences := !r_old.isFenceSC && !r_new.isFenceSC
   let satisfied := (r_new.isMem && !r_new.isSatisfied
                     && r_old.isMem && !r_old.isSatisfied)
                     b⇒ (r_new.address? != r_old.address?)
@@ -129,11 +150,17 @@ def reorder : ValidScopes → Request → Request → Bool
   --dbg_trace "[reorder] newrel : {newrel}"
   --dbg_trace "[reorder] acqrel_fences : {acqrel_fences}"
   --(@scopeInclusive V) r_old r_new ||
-  (sc_fences && satisfied && relacq && acqthread && newrel && acqrel_fences)
+  scopesMatch V r_old r_new ||
+  (satisfied && relacq && acqthread && newrel && fences)
+
+-- SC fence blocks accepting until it is propagated.
+def acceptConstraints (state : SystemState) (_ : BasicRequest) (tid : ThreadId) : Bool :=
+  let scfences := state.requests.filter Request.isFenceSC
+  scfences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
 
 instance : Arch where
   req := instArchReq
-  acceptConstraints := λ _ _ _ => true
+  acceptConstraints := acceptConstraints
   propagateConstraints := λ _ _ _ => true
   satisfyReadConstraints := λ _ _ _ => true
   reorderCondition :=  reorder
@@ -150,14 +177,14 @@ def mkRead (scope_sem : String ) (addr : Address) : BasicRequest :=
         | "gpu" => Scope.gpu
         | "sys" => Scope.sys
         | _ =>
-          dbg_trace "invalid PTX scope: {scopeStr}"
+          dbg_trace "(read) invalid PTX scope: {scopeStr}"
           Scope.sys
       let sem := match semStr with
         | "acq" => Semantics.acq
         | "rlx" => Semantics.rlx
         | "weak" => Semantics.weak
         | _ =>
-          dbg_trace "invalid PTX semantics: {semStr}"
+          dbg_trace "(read) invalid PTX semantics: {semStr}"
           Semantics.weak
       BasicRequest.read rr {scope := scope, sem := sem}
     | _ =>
@@ -174,14 +201,14 @@ def mkWrite (scope_sem : String) (addr : Address) (val : Value) : BasicRequest :
         | "gpu" => Scope.gpu
         | "sys" => Scope.sys
         | _ =>
-          dbg_trace "invalid PTX scope: {scopeStr}"
+          dbg_trace "(write) invalid PTX scope: {scopeStr}"
           Scope.sys
       let sem := match semStr with
         | "rel" => Semantics.rel
         | "rlx" => Semantics.rlx
         | "weak" => Semantics.weak
         | _ =>
-          dbg_trace "invalid PTX semantics: {semStr}"
+          dbg_trace "(write) invalid PTX semantics: {semStr}"
           Semantics.weak
       BasicRequest.write wr {scope := scope, sem := sem}
     | _ =>
@@ -197,13 +224,15 @@ def mkBarrier (scope_sem : String) : BasicRequest :=
         | "gpu" => Scope.gpu
         | "sys" => Scope.sys
         | _ =>
-          dbg_trace "invalid PTX scope: {scopeStr}"
+          dbg_trace "(fence) invalid PTX scope: {scopeStr}"
           Scope.sys
       let sem := match semStr with
         | "sc" => Semantics.sc
         | "acqrel" => Semantics.acqrel
+        | "rel" => Semantics.rel
+        | "acq" => Semantics.acq
         | _ =>
-          dbg_trace "invalid PTX semantics: {semStr}"
+          dbg_trace "(fence) invalid PTX semantics: {semStr}"
           Semantics.sc
       BasicRequest.barrier {scope := scope, sem := sem}
     | _ =>
@@ -242,7 +271,7 @@ def IRIW_3ctas_scoped_rs_after := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R. cta
 def IRIW_2ctas := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0, T2}, {T1, T3} }
 def IRIW_fences := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence; R x // 0 || W y=1 |}
-def IRIW_sc_acq_fence := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence. sys_relacq; R x // 0 || W y=1 |}
+def IRIW_sc_acq_fence := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence. sys_acqrel; R x // 0 || W y=1 |}
 def MP := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |}
 def MP_fence1 := {| W x=1; Fence; W y=1 ||  R y // 1; R x // 0 |}
 def MP_fence2 := {| W x=1; W y=1 ||  R y //1; Fence; R x // 0 |}
@@ -274,7 +303,7 @@ def WRC_cta_1_1_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y
   where sys := { {T0}, {T1}, {T2}}
 
 def three_vars_ws := {| W x = 1; Fence. sys_acqrel; W y = 1 || W y = 2; Fence. sys_acqrel; W z = 1 || R z // 1; Fence. sys_acqrel; R x // 0 |}
-def two_plus_two2 := {| W. sys_rel x=1; W. sys_rel y=2;  R. sys_acq y // 1 || W. sys_rel y=1; W. Sys_rel x=2 ;  R. sys_acq x // 1|}
+def two_plus_two2 := {| W. sys_rel x=1; W. sys_rel y=2;  R. sys_acq y // 1 || W. sys_rel y=1; W. sys_rel x=2 ;  R. sys_acq x // 1|}
 def co_two_thread := {| W x = 1; R x // 2 || W x = 2; R x // 1 |}
 def co_four_thread := {| W x = 1 || R x // 1 ; R x // 2 ||  R x // 2; R x // 1; W x = 2 |}
 

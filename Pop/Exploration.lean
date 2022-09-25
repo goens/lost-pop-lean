@@ -2,7 +2,6 @@ import Pop.States
 import Lean
 import Pop.Pop
 import Pop.Util
-import Std.Data
 import Pop.Litmus
 open Std.HashMap
 open Util

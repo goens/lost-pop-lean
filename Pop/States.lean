@@ -1,6 +1,4 @@
 import Pop.Util
-import Std
-import Lean
 open Util Std.HashMap
 
 namespace Pop
@@ -399,8 +397,19 @@ private def RequestArray._insert : RequestArray → Request → Array (Option (R
     let i := req.id.toNat.toUSize
     if h : i.toNat < vals'.size
     then vals'.uset i (some req) h
-    else if i.toNat == vals'.size
-    then vals'.insertAt req.id (some req)
+    -- If we use `i.toNat == vals'.size` then Lean won't unfold the typeclass
+    -- instance of BEq.beq (which is Nat.beq) and we can't use Nat.beq_eq.
+    -- Maybe ask on Zulip?
+    else if h: (Nat.beq i.toNat vals'.size) then
+      let hless : i.toNat < vals'.size + 1 := by
+        {apply Nat.lt_of_succ_le
+         apply Nat.le_of_eq
+         rw [Nat.succ_eq_add_one]
+         rw [Nat.beq_eq] at h
+         rw [h]
+         }
+      let idfin := Fin.mk i.toNat hless
+      vals'.insertAt idfin (some req)
     else unreachable! -- because of growArray before
 
 -- can't be proving these things right now

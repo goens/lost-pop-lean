@@ -73,12 +73,12 @@ def toPreds (litmus : Litmus.Test) : String :=
     for thread in litmus.program do
       for transition in thread do
         if opLast.isNone then -- the first transition in a thread
-          opLast := transitionNames.lookup? transition
+          opLast := transitionNames.lookup transition
           res := res ++ s!"    t{thId}.start = {opLast.get!} and\n"
           continue
-        if let (some cur, some last) := (transitionNames.lookup? transition, opLast) then
+        if let (some cur, some last) := (transitionNames.lookup transition, opLast) then
           res := res ++ s!"    {last}.po = {cur} and\n"
-        opLast := transitionNames.lookup? transition -- second transition onward
+        opLast := transitionNames.lookup transition -- second transition onward
       -- end thread iteration: update state
       thId := thId + 1
       opLast := none
@@ -94,9 +94,9 @@ def toPreds (litmus : Litmus.Test) : String :=
         | panic! s!"cannot get basic request from {transition}"
       let some address := br.address?
         | panic! s!"Unknown address in {br}"
-      let some transName := transitionNames.lookup? transition
+      let some transName := transitionNames.lookup transition
         | panic! s!"Unknown transition {transition}"
-      if let some refAddress := address_groups.lookup? address
+      if let some refAddress := address_groups.lookup address
         -- Not first time seen: then they should be equal
         then res := res ++ s!"    {refAddress}.address = {transName}.address and\n"
         -- First transition with this address: add as reference value
@@ -114,7 +114,7 @@ def toPreds (litmus : Litmus.Test) : String :=
       for transition in litmus.program[thId]! do
         let some br := transition.getAcceptBasicRequest?
           | panic! s!"invalid transition {transition}"
-        let some transName := transitionNames.lookup? transition
+        let some transName := transitionNames.lookup transition
           | panic! s!"Unknown transition {transition}"
         -- Handle special case for system scope (less verbose)
         if br.type.scope == PTX.Scope.sys then
@@ -131,11 +131,11 @@ def toPreds (litmus : Litmus.Test) : String :=
     let mut res := ""
     let rfPairs := litmus.expected.toRFPairs litmus.program
     for (read,opWrite) in rfPairs do
-      let some readName := transitionNames.lookup? read
+      let some readName := transitionNames.lookup read
         | panic! s!"invalid write ({read}) in outcome"
       if let some write := opWrite then
        -- The read has a corresponding write (rf)
-        let some writeName := transitionNames.lookup? write
+        let some writeName := transitionNames.lookup write
           | panic! s!"invalid write ({write}) in outcome"
         res := res ++ s!"    {writeName}.rf = {readName} and\n"
       else

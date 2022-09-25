@@ -1,4 +1,3 @@
-import Std
 import Lean
 open Std.HashMap
 
@@ -237,10 +236,6 @@ def _root_.List.containsSet {α : Type 0} [BEq α] : List (List α) → List α 
 def _root_.List.uniqueSet {α : Type 0} [BEq α] : List (List α) → List (List α)
   | [] => []
   | a :: as => if as.containsSet a then as.uniqueSet else (a :: as.uniqueSet)
-
-def _root_.List.lookup? {α β : Type 0} [BEq α] : List (α × β) → α → Option β
-  | [], _ => none
-  | (a,b)::rest, a' => if a == a' then some b else rest.lookup a'
 
 structure ScopedBinaryRelation (α β : Type 0) [Hashable α] [BEq α] [Hashable β] [BEq β] where
   val : Std.HashMap (α × β × β) Bool

@@ -3,7 +3,6 @@ import Pop.Pop
 import Pop.States
 import Lean
 import Pop.Util
-import Std.Data
 
 open Std.HashMap
 open Util
@@ -41,7 +40,7 @@ structure Test where
       let some write := writeTrans.getAcceptBasicRequest?
         | panic! s!"invalid write {writeTrans}"
       let pair := (write.value?, write.address?.get!)
-      if let some duplicate := value_map.lookup? pair
+      if let some duplicate := value_map.lookup pair
         then panic! s!"found duplicate write: {duplicate}, {writeTrans}"
       value_map := (pair, writeTrans) :: value_map
     -- Now add the predicates for the outcome

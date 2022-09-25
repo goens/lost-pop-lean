@@ -109,21 +109,6 @@ def _root_.Pop.Request.isAcq (req : Request) : Bool :=
 
 infixl:85 "b⇒" => λ a b => !a || b
 
-/-
-  not scope_inclusive[r_old,r_new] or
-  {
-     // fence rel_acq : kindof like dmb_ld.
-     // Reorder (w/ memory events): not allow if same thread, allowed otherwise
-    	r_old + r_new in fence_acq_rel  => r_ord.thread != r_new.thread
-    	r_old not in fence_sc
-    	r_new not in fence_sc
-    	(r_old + r_new) in (memory_access - thread_id.read_response)
-  	  => r_old.addr != r_new.addr
-  	r_new in ld_acquire and r_old in st_release => r_new.addr != r_old.addr
-  	r_new in ld_acquire => r_new.thread != r_old.thread
-  	r_new not in st_release
-  }
--/
 def reorder : ValidScopes → Request → Request → Bool
   | _, r_old, r_new =>
   let acqrel_fences := (r_old.isFenceAcqRel || r_new.isFenceAcqRel)
@@ -244,6 +229,9 @@ instance : LitmusSyntax where
 def IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
 def IRIW_3ctas := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0}, {T1, T2}, {T3} }
+def IRIW_4ctas := {| W x=1 ||  R. cta_rlx x // 1 ; Fence. sys_sc;  R. cta_rlx y // 0 || R. cta_rlx y // 1; Fence. sys_sc; R. sys_rlx x // 0 || W y=1 |}
+  where sys := { {T0}, {T1}, {T2}, {T3} }
+
 def IRIW_3ctas_1scoped_w := {| W. cta_rlx x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0}, {T1, T2}, {T3} }
 def IRIW_3ctas_1scoped_r := {| W x=1 ||  R. cta_rlx x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
@@ -254,10 +242,21 @@ def IRIW_3ctas_scoped_rs_after := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R. cta
 def IRIW_2ctas := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0, T2}, {T1, T3} }
 def IRIW_fences := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence; R x // 0 || W y=1 |}
+def IRIW_sc_acq_fence := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence. sys_relacq; R x // 0 || W y=1 |}
 def MP := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |}
 def MP_fence1 := {| W x=1; Fence; W y=1 ||  R y // 1; R x // 0 |}
 def MP_fence2 := {| W x=1; W y=1 ||  R y //1; Fence; R x // 0 |}
 def MP_fence := {| W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0|}
+def MP_relacq := {| W. sys_rel x=1;  W. sys_rel y=1 ||  R. sys_acq y // 1; R. sys_acq x // 0|}
+def MP_fence_cta := {| W x=1; Fence. cta_sc; W y=1 ||  R y // 1; Fence. cta_sc; R x // 0|}
+  where sys := { {T0}, {T1} }
+def MP_read_cta := {| W x=1; Fence. sys_sc; W y=1 ||  R. cta_rlx y // 1; Fence. sys_sc; R x // 0|}
+  where sys := { {T0}, {T1} }
+def MP_fence_consumer_weak := {| W. sys_weak x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fence. sys_sc; R. sys_weak x // 0|}
+def MP_fence_weak := {| W. sys_weak x=1; Fence. sys_sc; W. sys_weak y=1 ||  R. sys_weak y // 1; Fence. sys_sc; R. sys_weak x // 0|}
+def MP_fence_weak_rel_acq := {| W. sys_weak x=1; Fence. sys_rel; W. sys_weak y=1 ||  R. sys_weak y // 1; Fence. sys_acq; R. sys_weak x // 0|}
+def MP_fence_cta_1fence := {| W x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fence. cta_sc; R x // 0|}
+  where sys := { {T0}, {T1} }
 def N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |}
 def dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}
 def dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |}
@@ -267,11 +266,24 @@ def WRC_two_deps := {| W x=1 || R. sys_acq x // 1;dep W y = 1 || R y // 1 ;dep R
 def WRC_rel := {| W. sys_rel x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|}
 def WRC_acq := {| W x=1 || R. sys_acq x // 1; W y = 1 || R. sys_acq y // 1 ;dep R x // 0|}
 def WRC_no_dep := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ; R x // 0|}
+def WRC_cta_1_2 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
+  where sys := { {T0}, {T1, T2}}
+def WRC_cta_2_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
+  where sys := { {T0, T1}, {T2}}
+def WRC_cta_1_1_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
+  where sys := { {T0}, {T1}, {T2}}
 
-def ptx_2 := [MP,MP_fence1,MP_fence2,MP_fence, N7, dekkers, dekkers_fence]
+def three_vars_ws := {| W x = 1; Fence. sys_acqrel; W y = 1 || W y = 2; Fence. sys_acqrel; W z = 1 || R z // 1; Fence. sys_acqrel; R x // 0 |}
+def two_plus_two2 := {| W. sys_rel x=1; W. sys_rel y=2;  R. sys_acq y // 1 || W. sys_rel y=1; W. Sys_rel x=2 ;  R. sys_acq x // 1|}
+def co_two_thread := {| W x = 1; R x // 2 || W x = 2; R x // 1 |}
+def co_four_thread := {| W x = 1 || R x // 1 ; R x // 2 ||  R x // 2; R x // 1; W x = 2 |}
+
+def ptx_2 := [MP,MP_fence1,MP_fence2,MP_fence, MP_relacq, N7, dekkers, dekkers_fence, MP_fence_weak, MP_fence_consumer_weak, MP_fence_weak_rel_acq, MP_read_cta ] --, MP_fence_cta_1fence, MP_fence_cta]
+--def ptx_2 := [MP_fence_cta]
 def ptx_3 := [WRC, WRC_rel, WRC_no_dep, WRC_acq, WRC_two_deps]
+def ptx_4 := [IRIW, IRIW_3ctas, IRIW_3ctas_1scoped_w, IRIW_3ctas_1scoped_r, IRIW_3ctas_scoped_rs_after,  IRIW_2ctas, IRIW_fences, IRIW_4ctas]
 
-def ptx_4 := [IRIW, IRIW_3ctas, IRIW_3ctas_1scoped_w, IRIW_3ctas_1scoped_r, IRIW_3ctas_scoped_rs_after,  IRIW_2ctas, IRIW_fences]
 
-def allPTX : List Litmus.Test := ptx_2 ++ ptx_3 ++ ptx_4
+-- Important: why is IRIW_3ctas disallowed but MP_fence_cta allowed
+def allPTX : List Litmus.Test := [three_vars_ws] --ptx_2 ++ ptx_3 ++ ptx_4
 end Litmus

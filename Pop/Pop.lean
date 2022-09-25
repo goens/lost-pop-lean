@@ -264,7 +264,7 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
        | true =>
        let jointScope := state.scopes.jointScope read.thread write.thread -- TODO: are we sure?
        let betweenIds := state.orderConstraints.between jointScope write.id read.id (reqIds state.requests)
-       let requests' := state.requests.remove readId |>.insert read'
+       let requests' := state.requests.insert read'
        let orderConstraints' := state.orderConstraints
        /-
        let orderConstraints' := if betweenIds.length > 0

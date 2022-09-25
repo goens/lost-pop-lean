@@ -98,6 +98,11 @@ def BasicRequest.type : BasicRequest → ArchReq.type
   | BasicRequest.write  _ t => t
   | BasicRequest.barrier t => t
 
+def BasicRequest.updateType : BasicRequest → (ArchReq.type → ArchReq.type) → BasicRequest
+  | .read  rr t, f => .read rr (f t)
+  | .write  wr t, f => .write wr (f t)
+  | .barrier t, f => .barrier (f t)
+
 def BasicRequest.setValue : (BasicRequest) → Value → (BasicRequest)
   | BasicRequest.read rr rt, v => BasicRequest.read {rr with val := v} rt
   | br@_ , _ => br
@@ -358,10 +363,13 @@ structure RequestArray where
 
 instance : BEq (RequestArray) where beq := λ arr₁ arr₂ => arr₁.val == arr₂.val
 
-def RequestArray.getReq? : (RequestArray) → RequestId → Option (Request)
+def RequestArray.getReq? : RequestArray → RequestId → Option (Request)
   | arr, rId => match arr.val[rId.toNat]? with
     | some (some req) => some req
     | _ => none
+
+def RequestArray.getReq! : RequestArray → RequestId → Request
+  | arr, rId => arr.val[rId.toNat]?.get!.get!
 
 def RequestArray.map {β : Type} : RequestArray → (Request → β) → Array β
  | rarr, f => filterNonesArr $ rarr.val.map λ opreq => Option.map f opreq
@@ -432,6 +440,8 @@ def RequestArray.insertAtPosition : RequestArray → Option (Request) → USize 
       -- RequestArrayInsertConsistent arr req
     { val := val', coherent := sorry}
 
+-- Inserst request at the position given by its id.
+-- Will overwrite another request with that same id.
 def RequestArray.insert : RequestArray → Request → RequestArray
   | arr, req =>
     let i := req.id.toNat.toUSize
@@ -521,6 +531,17 @@ def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Boo
   | state, rid, tid => match state.requests.getReq? rid with
     | none => false
     | some req => req.propagatedTo tid
+
+def SystemState.updateRequest : SystemState → Request → SystemState
+  | state, request =>
+   let requests' := state.requests.insert request
+   SystemState.mk requests' state.seen state.removed state.scopes state.satisfied
+   state.orderConstraints sorry sorry sorry
+   --{requests := requests', seen := state.seen, removed := state.removed,
+   -- scopes := state.scopes, satisfied := state.satisfied,
+   -- orderConstraints := state.orderConstraints,
+   -- seenCoherent := state.seenCoherent, removedCoherent := state.removedCoherent,
+   -- satisfiedCoherent := state.satisfiedCoherent}
 
 class Arch where
   (req : ArchReq)

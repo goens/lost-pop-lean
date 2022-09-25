@@ -237,6 +237,12 @@ def _root_.List.uniqueSet {α : Type 0} [BEq α] : List (List α) → List (List
   | [] => []
   | a :: as => if as.containsSet a then as.uniqueSet else (a :: as.uniqueSet)
 
+def _root_.List.revlookup [BEq β] : β → List (α × β) → Option α
+  | _, []        => none
+  | a, (k,b)::es => match a == b with
+    | true  => some k
+    | false => revlookup a es
+
 structure ScopedBinaryRelation (α β : Type 0) [Hashable α] [BEq α] [Hashable β] [BEq β] where
   val : Std.HashMap (α × β × β) Bool
   defaultRes : Bool

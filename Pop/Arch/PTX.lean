@@ -24,6 +24,7 @@ inductive Semantics
 structure Req where
   (scope : Scope)
   (sem : Semantics)
+  (predecessorAt : List ThreadId)
   deriving BEq
 
 def Req.isStrong (req : Req) : Bool :=
@@ -31,7 +32,8 @@ def Req.isStrong (req : Req) : Bool :=
   | .weak => false
   | _ => true
 
-instance : Inhabited Req where default := { scope := Scope.sys, sem := Semantics.sc}
+instance : Inhabited Req where default :=
+  { scope := Scope.sys, sem := Semantics.sc, predecessorAt := []}
 
 def Scope.toString : Scope → String
   | .cta => "cta"
@@ -60,7 +62,7 @@ instance : ArchReq where
   type := PTX.Req
   instBEq := PTX.instBEqReq
   instInhabited := PTX.instInhabitedReq
-  isPermanentRead := λ _ => false
+  isPermanentRead := λ _ => true
   instToString := PTX.instToStringReq
 
 def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
@@ -90,21 +92,42 @@ def scopeInclusive (V : ValidScopes) (r₁ r₂ : Request) : Bool :=
   let scope₂ := requestScope V r₂
   scope₁.threads.contains t₂ && scope₂.threads.contains t₁
 
-def _root_.Pop.Request.sem (req : Request) : Semantics :=
+def morallyStrong (V : ValidScopes) (r₁ r₂ : Request) : Bool :=
+  r₁.basic_type.type.isStrong && r₂.basic_type.type.isStrong && scopeInclusive V r₁ r₂
+
+end PTX
+
+namespace Pop
+def Request.sem (req : Request) : PTX.Semantics :=
   req.basic_type.type.sem
 
 -- some shortcuts
-def _root_.Pop.Request.isFenceSC (req : Request) : Bool :=
-  req.isBarrier && req.basic_type.type.sem == Semantics.sc
+def Request.isFenceSC (req : Request) : Bool :=
+  req.isBarrier && req.basic_type.type.sem == PTX.Semantics.sc
 
-def _root_.Pop.Request.isFenceAcqRel (req : Request) : Bool :=
-  req.isBarrier && req.basic_type.type.sem == Semantics.acqrel
+def Request.isFenceAcqRel (req : Request) : Bool :=
+  req.isBarrier && req.basic_type.type.sem == PTX.Semantics.acqrel
 
-def _root_.Pop.Request.isRel (req : Request) : Bool :=
-  req.isWrite && req.basic_type.type.sem == Semantics.rel
+def Request.isRel (req : Request) : Bool :=
+  req.isWrite && req.basic_type.type.sem == PTX.Semantics.rel
 
-def _root_.Pop.Request.isAcq (req : Request) : Bool :=
-  req.isRead && req.basic_type.type.sem == Semantics.acq
+def Request.isAcq (req : Request) : Bool :=
+  req.isRead && req.basic_type.type.sem == PTX.Semantics.acq
+
+def Request.predecessorAt (req : Request) : List ThreadId :=
+  req.basic_type.type.predecessorAt
+
+def Request.makePredecessorAt (req : Request) (thId : ThreadId) : Request :=
+  let predList := req.basic_type.type.predecessorAt
+  if predList.contains thId then
+    req
+  else
+    let updateFun := λ t => { t with predecessorAt := thId::predList : PTX.Req}
+    { req with basic_type := req.basic_type.updateType updateFun}
+
+end Pop
+
+namespace PTX
 
 infixl:85 "b⇒" => λ a b => !a || b
 
@@ -129,7 +152,7 @@ def scopesMatch : ValidScopes → Request → Request → Bool
   else if r_new.isBarrier && r_new.isRead then
     (requestScope V r_old).threads.contains r_new.thread
   -- If neither is an SC fence, then we consider their joint scope
-  else @scopeInclusive V r_old r_new
+  else scopeInclusive V r_old r_new
 
 def reorder : ValidScopes → Request → Request → Bool
   | V, r_old, r_new =>
@@ -150,27 +173,94 @@ def reorder : ValidScopes → Request → Request → Bool
   --dbg_trace "[reorder] newrel : {newrel}"
   --dbg_trace "[reorder] acqrel_fences : {acqrel_fences}"
   --(@scopeInclusive V) r_old r_new ||
-  scopesMatch V r_old r_new ||
+  !scopesMatch V r_old r_new ||
   (satisfied && relacq && acqthread && newrel && fences)
 
--- SC fence blocks accepting until it is propagated.
+-- On SC fence we propagate predecessors to the SC fence's scope. We enforce
+-- this by not accepting, propagating or satisfying any other requests unless
+-- this is propagated. This is the check we use for that. Returns the first
+-- SC fence that it finds that it's blocked on (it should never be more than
+-- one anyway)
+def _root_.Pop.SystemState.blockedOnSCFence (state : SystemState) : Option RequestId := Id.run do
+  let scfences := state.requests.filter Request.isFenceSC
+  for fence in scfences do
+    let scope := PTX.requestScope state.scopes fence
+    if fence.fullyPropagated scope then
+      continue
+    else
+      let preds := state.requests.filter λ r => r.predecessorAt.contains fence.thread
+      unless preds.all λ p => p.fullyPropagated scope do
+        return some fence.id
+  return none
+
+-- SC fence blocks accepting until it is propagated. We don't need to check the
+-- blockedOnSCFence condition as this is stronger.
 def acceptConstraints (state : SystemState) (_ : BasicRequest) (tid : ThreadId) : Bool :=
   let scfences := state.requests.filter Request.isFenceSC
   scfences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
 
+def propagateConstraints (state : SystemState) (rid : RequestId) (thId : ThreadId) : Bool :=
+  if let some fenceId := state.blockedOnSCFence then
+    if fenceId == rid then true
+    else
+      let fence := state.requests.getReq! rid
+      let scope := requestScope state.scopes fence
+      let req := state.requests.getReq! rid
+      scope.threads.contains thId && req.predecessorAt.contains fence.thread
+  else
+    true
+
+def satisfyReadConstraints (state : SystemState) ( _ _ : RequestId) : Bool :=
+  state.blockedOnSCFence == none
+
+-- on a (rel/acq/acqrel) fence we add an edge from each pred to this fence
+-- according to the scopes-match table
+def addEdgesOnFence (state : SystemState) : SystemState := Id.run do
+  let fences := state.requests.filter λ r => r.isBarrier &&
+    !(r.fullyPropagated (requestScope state.scopes r))
+  let mut st := state
+  for fence in fences do
+    let scope := requestScope st.scopes fence
+    let preds := state.requests.filter λ r => r.predecessorAt.contains fence.thread
+    let newConstraintPairs := preds.map Request.id |>.zip (List.replicate preds.length fence.id)
+    let oc' := st.orderConstraints.addSubscopes scope newConstraintPairs
+    st := { st with orderConstraints := oc' }
+   return st
+
+def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
+: SystemState :=
+  let readsFrom := state.satisfied.revlookup reqId
+  match readsFrom with
+    | none => state
+    | some writeId =>
+      let write := state.requests.getReq? writeId |>.get!
+      let read := state.requests.getReq? reqId |>.get!
+      if (morallyStrong state.scopes read write) && !(write.propagated_to.elem thId)
+      then
+        state.updateRequest $ write.makePredecessorAt thId
+      else
+        state
+
+def acceptEffects (state : SystemState) (br : BasicRequest) (_ : ThreadId) :=
+  if br.isBarrier then addEdgesOnFence state else state
+
 instance : Arch where
   req := instArchReq
   acceptConstraints := acceptConstraints
-  propagateConstraints := λ _ _ _ => true
-  satisfyReadConstraints := λ _ _ _ => true
-  reorderCondition :=  reorder
+  satisfyReadConstraints := satisfyReadConstraints
+  propagateConstraints := propagateConstraints
+  reorderCondition := reorder
   requestScope := requestScope
+  acceptEffects := acceptEffects
+  propagateEffects := propagateEffects
+
 
 namespace Litmus
 def mkRead (scope_sem : String ) (addr : Address) : BasicRequest :=
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
   match scope_sem.splitOn "_" with
-    | [""] => BasicRequest.read rr {scope := Scope.sys, sem := Semantics.rlx}
+    | [""] => BasicRequest.read rr
+              {scope := Scope.sys, sem := Semantics.rlx, predecessorAt := []}
     | [scopeStr, semStr] =>
       let scope := match scopeStr with
         | "cta" => Scope.cta
@@ -186,7 +276,8 @@ def mkRead (scope_sem : String ) (addr : Address) : BasicRequest :=
         | _ =>
           dbg_trace "(read) invalid PTX semantics: {semStr}"
           Semantics.weak
-      BasicRequest.read rr {scope := scope, sem := sem}
+      BasicRequest.read rr
+      {scope := scope, sem := sem, predecessorAt := []}
     | _ =>
       dbg_trace "malformed PTX read request: W.{scope_sem}"
       BasicRequest.read rr default
@@ -194,7 +285,8 @@ def mkRead (scope_sem : String ) (addr : Address) : BasicRequest :=
 def mkWrite (scope_sem : String) (addr : Address) (val : Value) : BasicRequest :=
   let wr : WriteRequest := { addr := addr, val := val}
   match scope_sem.splitOn "_" with
-    | [""] => BasicRequest.write wr {scope := Scope.sys, sem := Semantics.rlx}
+    | [""] => BasicRequest.write wr
+              {scope := Scope.sys, sem := Semantics.rlx, predecessorAt := []}
     | [scopeStr, semStr] =>
       let scope := match scopeStr with
         | "cta" => Scope.cta
@@ -210,14 +302,15 @@ def mkWrite (scope_sem : String) (addr : Address) (val : Value) : BasicRequest :
         | _ =>
           dbg_trace "(write) invalid PTX semantics: {semStr}"
           Semantics.weak
-      BasicRequest.write wr {scope := scope, sem := sem}
+      BasicRequest.write wr {scope := scope, sem := sem, predecessorAt := []}
     | _ =>
       dbg_trace "malformed PTX read request: W.{scope_sem}"
       BasicRequest.write wr default
 
 def mkBarrier (scope_sem : String) : BasicRequest :=
   match scope_sem.splitOn "_" with
-    | [""] => BasicRequest.barrier {scope := Scope.sys, sem := Semantics.sc}
+    | [""] => BasicRequest.barrier
+              {scope := Scope.sys, sem := Semantics.sc, predecessorAt := []}
     | [scopeStr, semStr] =>
       let scope := match scopeStr with
         | "cta" => Scope.cta
@@ -234,21 +327,17 @@ def mkBarrier (scope_sem : String) : BasicRequest :=
         | _ =>
           dbg_trace "(fence) invalid PTX semantics: {semStr}"
           Semantics.sc
-      BasicRequest.barrier {scope := scope, sem := sem}
+      BasicRequest.barrier {scope := scope, sem := sem, predecessorAt := []}
     | _ =>
       dbg_trace "malformed PTX read request: Fence.{scope_sem}"
       BasicRequest.barrier default
 
--- Pretty hacky! Probably need nice syntax to configure this in the future
 def mkInitState (n : Nat) :=
   match n with
-  --| 2 =>
-  --| 4 =>
   | _ =>
   let valid_scopes : ValidScopes :=
     { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
   SystemState.init valid_scopes
-
 
 instance : LitmusSyntax where
   mkRead := mkRead

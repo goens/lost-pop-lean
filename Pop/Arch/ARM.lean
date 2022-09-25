@@ -31,9 +31,6 @@ instance : ArchReq where
   isPermanentRead := Req.isPermanentRead
   instToString := instToStringReq
 
-def requestScope (valid : ValidScopes) (_ : Request) : @Pop.Scope valid :=
-  valid.systemScope
-
 private def _root_.Pop.Request.isReadAcq : Request → Bool :=
  λ r => r.isRead && r.basic_type.type == ARM.Req.acq
 
@@ -62,11 +59,7 @@ def satisfyRead (state : SystemState) (r_read_addr : RequestId) (r_write_addr : 
 
 instance : Arch where
   req := instArchReq
-  acceptConstraints := λ _ _ _ => true
-  propagateConstraints := λ _ _ _ => true
-  satisfyReadConstraints := λ _ _ _ => true
   reorderCondition :=  reorder
-  requestScope := requestScope
 
 namespace Litmus
 

@@ -289,9 +289,12 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
 
 open Transition in
 def SystemState.applyTransition! : SystemState → Transition → SystemState
-   | state, (.acceptRequest req tId) => state.applyAcceptRequest req tId
-   | state, .propagateToThread reqId tId => state.propagate reqId tId
-   | state, satisfyRead readId writeId => state.satisfy readId writeId
+   | state, (.acceptRequest req tId) =>
+     (Arch.acceptEffects · req tId) $ state.applyAcceptRequest req tId
+   | state, .propagateToThread reqId tId =>
+     (Arch.propagateEffects · reqId tId) $ state.propagate reqId tId
+   | state, satisfyRead readId writeId =>
+     (Arch.satisfyReadEffects · readId writeId) $ state.satisfy readId writeId
    | state, dependency _ => state
 
 open Transition in

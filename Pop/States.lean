@@ -524,11 +524,14 @@ def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Boo
 
 class Arch where
   (req : ArchReq)
-  (acceptConstraints : SystemState → BasicRequest → ThreadId → Bool )
-  (propagateConstraints : SystemState → RequestId → ThreadId → Bool)
-  (satisfyReadConstraints : SystemState → RequestId → RequestId → Bool)
+  (acceptConstraints : SystemState → BasicRequest → ThreadId → Bool := λ _ _ _ => true)
+  (acceptEffects : SystemState → BasicRequest → ThreadId → SystemState := λ st _ _ => st)
+  (propagateConstraints : SystemState → RequestId → ThreadId → Bool := λ _ _ _ => true)
+  (propagateEffects : SystemState → RequestId → ThreadId → SystemState := λ st _ _ => st)
+  (satisfyReadConstraints : SystemState → RequestId → RequestId → Bool := λ _ _ _ => true)
+  (satisfyReadEffects : SystemState → RequestId → RequestId → SystemState := λ st _ _ => st)
   (reorderCondition : ValidScopes → Request → Request → Bool)
-  (requestScope : (valid : ValidScopes) → Request → @Scope valid)
+  (requestScope : (valid : ValidScopes) → Request → @Scope valid := λ v _ => v.systemScope)
 
 -- private def maxThread : ThreadId → List ThreadId → ThreadId
 --   | curmax, n::rest => if curmax < n then maxThread n rest else maxThread curmax rest

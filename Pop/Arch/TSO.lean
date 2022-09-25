@@ -35,16 +35,10 @@ def propagate : SystemState → RequestId → ThreadId → Bool
     let pred := st.orderPredecessors sscope reqId
     st.idsToReqs pred |>.all λ req => req.fullyPropagated sscope
 
-def requestScope (valid : ValidScopes) (_ : Request) : @Scope valid :=
-  valid.systemScope
-
 instance : Arch where
   req := instArchReq
-  acceptConstraints := λ _ _ _ => true
   propagateConstraints := x86.propagate
-  satisfyReadConstraints := λ _ _ _ => true
   reorderCondition :=  x86.reorder
-  requestScope := x86.requestScope
 
 namespace Litmus
 

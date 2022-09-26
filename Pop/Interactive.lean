@@ -19,7 +19,7 @@ def requestTransitionMessage : SystemState → ProgramState → Except String St
       |>.map (· + 1) |>.zip available |>.map
         λ (n,trans) => s!"{n}: {trans.prettyPrint sysSt}"
 
-def getTransition : SystemState → ProgramState → String → Except String (Option Transition)
+def getTransition : SystemState → ProgramState → String → Except String (Option (Transition × Nat))
   | sysState, progState, input => do
   let available := sysState.possibleTransitions progState
   let some n := input.trim.toNat?
@@ -29,13 +29,14 @@ def getTransition : SystemState → ProgramState → String → Except String (O
     return none
   let some trans := available[n - 1]?
     | Except.error s!"Invalid index ({n}), must be between 1 and {available.length}"
-  Except.ok $ some trans
+  Except.ok $ some (trans, n)
 
 def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
   | (.mk initTrans initProgSt _ initSysSt), stdin => do
     let Except.ok start := initSysSt.applyTrace initTrans
       |  do return Except.error "error initalizing litmus"
     let mut partialTrace := []
+    let mut partialTraceNums := []
     let mut programState := initProgSt
     let mut finished := false
     while !finished do
@@ -50,18 +51,22 @@ def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except Str
         let msg := "======================================\n"
           ++ s!"Program state:\n{programState.prettyPrint}\n"
           ++ "--------------------------------------\n"
+          ++ s!"Current trace:\n{partialTraceNums}\n"
+          ++ "--------------------------------------\n"
           ++ s!"Current state:\n{systemState}\n"
           ++ "Possible transitions:\n" ++ "0: Undo (last transition)\n" ++ m
         let opStep ← Util.selectLoop msg (getTransition systemState programState) stdin
         if let some opTransition := opStep then
-          if let some transition := opTransition then
+          if let some (transition, n) := opTransition then
             partialTrace := partialTrace ++ [transition]
+            partialTraceNums := partialTraceNums ++ [n]
             programState := programState.consumeTransition systemState transition
               |>.clearDependencies (systemState.applyTransition! transition)
           else
             if let some transition := partialTrace[partialTrace.length - 1]? then
               programState := programState.appendTransition transition
               partialTrace := partialTrace.dropLast
+              partialTraceNums := partialTraceNums.dropLast
         else
           finished := true
           return Except.error "^D"

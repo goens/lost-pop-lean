@@ -52,9 +52,15 @@ instance : ToString Scope where toString := Scope.toString
 instance : ToString Semantics where toString := Semantics.toString
 
 def Req.toString (req : Req) : String :=
-  match req.sem, req.scope with
-  | .rlx, .sys => ""
-  | sem, scope => s!"{sem}.{scope}"
+  let typeStr :=
+    match req.sem, req.scope with
+    | .rlx, .sys => ""
+    | sem, scope => s!"{sem}.{scope}"
+  let predStr :=
+    match req.predecessorAt with
+      | [] => ""
+      | preds => s!" pred @ {preds}"
+  typeStr ++ predStr
 
 instance : ToString Req where toString := Req.toString
 
@@ -119,6 +125,7 @@ def Request.predecessorAt (req : Request) : List ThreadId :=
 
 def Request.makePredecessorAt (req : Request) (thId : ThreadId) : Request :=
   let predList := req.basic_type.type.predecessorAt
+  dbg_trace "Making {req} a predecessor at T{thId}"
   if predList.contains thId then
     req
   else
@@ -229,12 +236,14 @@ def addEdgesOnFence (state : SystemState) : SystemState := Id.run do
 
 def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
 : SystemState :=
-  let readsFrom := state.satisfied.revlookup reqId
+  let readsFrom := state.satisfied.lookup reqId
   match readsFrom with
     | none => state
     | some writeId =>
       let write := state.requests.getReq? writeId |>.get!
       let read := state.requests.getReq? reqId |>.get!
+      dbg_trace "checking wether to add Req.{writeId} as predecessor to T{thId}"
+      dbg_trace "MS:{morallyStrong state.scopes read write}, prop: {!(write.propagated_to.elem thId)}"
       if (morallyStrong state.scopes read write) && !(write.propagated_to.elem thId)
       then
         state.updateRequest $ write.makePredecessorAt thId
@@ -403,5 +412,5 @@ def ptx_4 := [IRIW, IRIW_3ctas, IRIW_3ctas_1scoped_w, IRIW_3ctas_1scoped_r, IRIW
 
 
 -- Important: why is IRIW_3ctas disallowed but MP_fence_cta allowed
-def allPTX : List Litmus.Test := [three_vars_ws] --ptx_2 ++ ptx_3 ++ ptx_4
+def allPTX : List Litmus.Test := ptx_2 ++ ptx_3 ++ ptx_4
 end Litmus

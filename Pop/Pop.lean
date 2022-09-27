@@ -38,12 +38,12 @@ def Transition.prettyPrint : SystemState → Transition → String
      match transition with
      | propagateToThread reqid tid =>
        match reqs.getReq? reqid with
-         | some req => s!"Propagate ({req.basic_type.prettyPrint}) to Thread {tid}"
+         | some req => s!"Propagate Req{req.id} ({req.basic_type.prettyPrint}) to Thread {tid}"
          | none => s!"Propagate (UNKNOWN REQUEST {reqid}) to Thread {tid}"
      | satisfyRead readid writeid =>
        match (reqs.getReq? readid, reqs.getReq? writeid) with
-       | (some read, some write) => s!"Satisfy ({read.basic_type.prettyPrint})"
-         ++ s!"with ({write.basic_type.prettyPrint})"
+       | (some read, some write) => s!"Satisfy Req{readid} ({read.basic_type.prettyPrint})"
+         ++ s!" with Req{writeid} ({write.basic_type.prettyPrint})"
        | _ => s!"Satisfy (UNKNOWN REQUESTS {readid} and/or {writeid})"
      | _ => panic! "unknown case when pretty-printing {transition}"
 
@@ -243,6 +243,7 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
       else
         let scope := state.scopes.jointScope read.thread write.thread
         --dbg_trace "can {writeId} satisfy {readId}?"
+        -- TODO: can/should we relax this?
         let oc := state.orderConstraints.lookup scope writeId readId
         let betweenIds := state.orderConstraints.between scope write.id read.id (reqIds state.requests)
         --dbg_trace s!"between {readId} and {writeId}: {betweenIds}"

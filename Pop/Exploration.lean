@@ -195,9 +195,10 @@ private def searchAuxUpdateUnexplored (explored unexplored newtriples : Array Se
     (unexplored.all checkFun && explored.all checkFun)
   Array.append (newtriples.filter filterFun) unexplored
 
+
 private def searchAuxNSteps (stopAfterFirst : Bool) (storePartialTraces : Bool)
   (dontPruneCondition : SystemState → ProgramState → Bool) (n : Nat) (inputStates : Array SearchState)
- : List (List Transition × SystemState) × Array SearchState := Id.run do
+ : (List ((List Transition) × SystemState)) × Array SearchState := Id.run do
  let mut unexplored := inputStates
  let mut stepsRemaining := n
  let mut found := []
@@ -224,12 +225,12 @@ private def searchAuxNSteps (stopAfterFirst : Bool) (storePartialTraces : Bool)
  (found,unexplored)
 
 -- the unapologetically imperative version:
-def SystemState.exhaustiveSearch (state : SystemState) (inittuple : List (Transition) × ProgramState)
+def SystemState.exhaustiveSearch (state : SystemState) (inittuple : (List (Transition)) × ProgramState)
  (dontPruneCondition : optParam (SystemState → ProgramState → Bool) (λ _ _ => true))
  (stopAfterFirst : optParam Bool false) (storePartialTraces : optParam Bool false)
  (numWorkers : optParam Nat 7) (batchSize : optParam Nat 15)
  (breadthFirst : optParam Bool false) (logProgress : optParam Bool false) :
- List (List (Transition) × SystemState) :=
+ List ((List Transition) × SystemState) :=
 match inittuple with
   | (inittransitions, accepts) =>
   let stateinit := state.applyTrace inittransitions
@@ -246,7 +247,7 @@ match inittuple with
       let mut thousands_explored : UInt32 := 1
       --dbg_trace s!"litmus: {accepts.prettyPrint}"
       --dbg_trace s!"starting state:\n{startState}"
-      let mut workers : Array (Task (List (List Transition × SystemState) × Array SearchState)) := #[]
+      let mut workers : Array (Task ((List ((List Transition) × SystemState)) × (Array SearchState))) := #[]
       while unexplored.size > 0 do
           --dbg_trace s!"{unexplored.size} unexplored"
           let n := min unexplored.size (max numWorkers 1) -- at least 1
@@ -286,12 +287,12 @@ match inittuple with
     [(inittransitions,state)]
 
 def SystemState.exhaustiveSearchLitmus
-  (state : SystemState) (litmus : List (Transition) × ProgramState × Litmus.Outcome)
+  (state : SystemState) (litmus : (List Transition) × ProgramState × Litmus.Outcome)
   (stopAfterFirst : optParam Bool false)
   (storePartialTraces : optParam Bool true) (numWorkers : optParam Nat 7)
   (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false)
   (logProgress : optParam Bool false) :
-  List (List (Transition) × SystemState) :=
+  List ((List Transition) × SystemState) :=
     let (inittrans,progstate,expectedOutcome) := litmus
     let pruneFun := λ ss _ => ss.outcomePossible expectedOutcome
     state.exhaustiveSearch (inittrans,progstate) pruneFun stopAfterFirst storePartialTraces numWorkers
@@ -309,7 +310,7 @@ def SystemState.exhaustiveSearchLitmus
 def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false)
   (printPartialTraces := false) : List (List Litmus.Outcome) := Id.run do
     let mut tasks : Array (Task (List Litmus.Outcome)) := #[]
-    for (Litmus.Test.mk initTrans initProg outcome startingState) in tests do
+    for (Litmus.Test.mk initTrans initProg outcome startingState _ _) in tests do
       let task := Task.spawn λ _ =>
         let resExpl := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome)
                        (stopAfterFirst := true) (logProgress := logProgress)
@@ -329,7 +330,7 @@ def prettyPrintLitmusResult : Litmus.Test → List Litmus.Outcome → String
      let outcome_res := if reslit.any λ out => outcomeEqiv out test.expected
        then "✓"
        else "×"
-     let litStr := ProgramState.prettyPrint test.program ++ s!". Expected: {test.expected.prettyPrint}"
+     let litStr := s!"{test.name}. Expected: {test.expected.prettyPrint}"
      s!"litmus: {litStr}. Allowed?: {outcome_res}"
 
 /-

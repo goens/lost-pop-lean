@@ -57,16 +57,16 @@ instance : LitmusSyntax where
   mkWrite := mkWrite
   mkBarrier := mkBarrier
 
-def IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
-def IRIW_fences := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence; R x // 0 || W y=1 |}
-def MP := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |}
-def MP_fence1 := {| W x=1; Fence; W y=1 ||  R y // 1; R x // 0 |}
-def MP_fence2 := {| W x=1; W y=1 ||  R y //1; Fence; R x // 0 |}
-def MP_fence := {| W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0|}
-def N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |}
-def dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}
-def dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |}
---def causality := {| W x = 1 || R x; Fence; W x = 2 || R x; W|}
+deflitmus IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
+deflitmus IRIW_fences := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence; R x // 0 || W y=1 |}
+deflitmus MP := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |}
+deflitmus MP_fence1 := {| W x=1; Fence; W y=1 ||  R y // 1; R x // 0 |}
+deflitmus MP_fence2 := {| W x=1; W y=1 ||  R y //1; Fence; R x // 0 |}
+deflitmus MP_fence := {| W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0|}
+deflitmus N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |}
+deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}
+deflitmus dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |}
+--deflitmus causality := {| W x = 1 || R x; Fence; W x = 2 || R x; W|}
 
 def x86_2 := [MP,MP_fence1,MP_fence2,MP_fence, N7, dekkers, dekkers_fence]
 def x86_4 := [IRIW, IRIW_fences]

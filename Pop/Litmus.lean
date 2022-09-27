@@ -12,96 +12,106 @@ open Util Pop
 
 variable [Arch]
 abbrev Outcome := List $ ThreadId × Address × Value
+inductive AxiomaticAllowed
+  | yes
+  | no
+  | unknown
 
 structure Test where
  (initTransitions : List Transition)
  (program : ProgramState)
-  (expected : Outcome)
-  (initState : SystemState)
+ (expected : Outcome)
+ (initState : SystemState)
+ (name : String)
+ (axiomaticAllowed : AxiomaticAllowed)
 
-  def addressValuePretty : Address × Value → String
-    | (_, none) => "invalid outcome!"
-    | (addr, some val) => s!"{addr.prettyPrint} = {val}"
+def addressValuePretty : Address × Value → String
+  | (_, none) => "invalid outcome!"
+  | (addr, some val) => s!"{addr.prettyPrint} = {val}"
 
-  def Outcome.prettyPrint : Litmus.Outcome → String
-    | outcome =>
-    let threads : List Litmus.Outcome := outcome.groupBy (·.1 == ·.1)
-    let threadStrings := threads.map
-      λ th => String.intercalate "; " $ th.map (addressValuePretty $ Prod.snd ·)
-    String.intercalate " || " threadStrings
+def Outcome.prettyPrint : Litmus.Outcome → String
+  | outcome =>
+  let threads : List Litmus.Outcome := outcome.groupBy (·.1 == ·.1)
+  let threadStrings := threads.map
+    λ th => String.intercalate "; " $ th.map (addressValuePretty $ Prod.snd ·)
+  String.intercalate " || " threadStrings
 
-  -- Assumes each value written at most once per address!
-  def Outcome.toRFPairs (outcome : Litmus.Outcome) (prog : ProgramState)
-    : List (Transition × Option Transition) := Id.run do
-    let mut res : List (Transition × Option Transition) := []
-    -- First we bulid a map of values to the respective writes
-    let mut value_map : List ((Value × Address) × Transition) := []
-    for writeTrans in prog.allWrites do
-      let some write := writeTrans.getAcceptBasicRequest?
-        | panic! s!"invalid write {writeTrans}"
-      let pair := (write.value?, write.address?.get!)
-      if let some duplicate := value_map.lookup pair
-        then panic! s!"found duplicate write: {duplicate}, {writeTrans}"
-      value_map := (pair, writeTrans) :: value_map
-    -- Now add the predicates for the outcome
-    for (thId, addr, value) in outcome do
-      for readTrans in prog[thId.toNat]! do
-        unless readTrans.isReadAccept do
-          continue
-        let some read := readTrans.getAcceptBasicRequest?
-          | panic! s!"invalid read {readTrans}"
-        unless some addr == read.address? do
-          continue
-        -- Thread and address match (because of the guard above +
-        -- iterating only in that thread). We can add it to the list.
-        let pair := (value, addr)
-        if let some writeTrans := value_map.lookup pair
-          then res := (readTrans,some writeTrans) :: res
-          else res := (readTrans, none) :: res
-    return res
+-- Assumes each value written at most once per address!
+def Outcome.toRFPairs (outcome : Litmus.Outcome) (prog : ProgramState)
+  : List (Transition × Option Transition) := Id.run do
+  let mut res : List (Transition × Option Transition) := []
+  -- First we bulid a map of values to the respective writes
+  let mut value_map : List ((Value × Address) × Transition) := []
+  for writeTrans in prog.allWrites do
+    let some write := writeTrans.getAcceptBasicRequest?
+      | panic! s!"invalid write {writeTrans}"
+    let pair := (write.value?, write.address?.get!)
+    if let some duplicate := value_map.lookup pair
+      then panic! s!"found duplicate write: {duplicate}, {writeTrans}"
+    value_map := (pair, writeTrans) :: value_map
+  -- Now add the predicates for the outcome
+  for (thId, addr, value) in outcome do
+    for readTrans in prog[thId.toNat]! do
+      unless readTrans.isReadAccept do
+        continue
+      let some read := readTrans.getAcceptBasicRequest?
+        | panic! s!"invalid read {readTrans}"
+      unless some addr == read.address? do
+        continue
+      -- Thread and address match (because of the guard above +
+      -- iterating only in that thread). We can add it to the list.
+      let pair := (value, addr)
+      if let some writeTrans := value_map.lookup pair
+        then res := (readTrans,some writeTrans) :: res
+        else res := (readTrans, none) :: res
+  return res
 
-  end Litmus
+end Litmus
 
-  namespace Pop
+notation "✓"  => Litmus.AxiomaticAllowed.yes
+notation "×"  => Litmus.AxiomaticAllowed.no
 
-  variable [Arch]
 
-  class LitmusSyntax where
-    mkRead : String → Address → BasicRequest
-    mkWrite : String → Address → Value → BasicRequest
-    mkBarrier : String → BasicRequest
+namespace Pop
 
-  def mkValidScopes (n : Nat) : ValidScopes :=
-    { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
+variable [Arch]
 
-  variable [LitmusSyntax]
-  open LitmusSyntax
+class LitmusSyntax where
+  mkRead : String → Address → BasicRequest
+  mkWrite : String → Address → Value → BasicRequest
+  mkBarrier : String → BasicRequest
 
-  def mkRequest : String × String × Address × Value → ThreadId → Option (Transition)
-    | ("R", typeStr, addr, _), thId  => some $ Pop.Transition.acceptRequest (mkRead typeStr addr) thId
-    | ("W",typeStr , addr, val), thId  => some $ Pop.Transition.acceptRequest (mkWrite typeStr addr val) thId
-    | ("Fence", typeStr, _, _), thId => some $ Pop.Transition.acceptRequest (mkBarrier typeStr) thId
-    | ("Dependency", _, _, _), _ => some $ Pop.Transition.dependency none
-    | _, _ => none
+def mkValidScopes (n : Nat) : ValidScopes :=
+  { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
 
-  def mkOutcome : String × String × Address × Value → ThreadId → Litmus.Outcome
-    | ("R", _, addr, val@(some _)), thId  => [(thId,addr,val)]
-    | _, _ => []
+variable [LitmusSyntax]
+open LitmusSyntax
 
-  def initZeroesUnpropagatedTransitions : List Address → List (Transition)
-    | addresses =>
-    -- Does the threadId matter? For now, using 0
-    addresses.map λ addr => Pop.Transition.acceptRequest (mkWrite "" addr 0) 0
+def mkRequest : String × String × Address × Value → ThreadId → Option (Transition)
+  | ("R", typeStr, addr, _), thId  => some $ Pop.Transition.acceptRequest (mkRead typeStr addr) thId
+  | ("W",typeStr , addr, val), thId  => some $ Pop.Transition.acceptRequest (mkWrite typeStr addr val) thId
+  | ("Fence", typeStr, _, _), thId => some $ Pop.Transition.acceptRequest (mkBarrier typeStr) thId
+  | ("Dependency", _, _, _), _ => some $ Pop.Transition.dependency none
+  | _, _ => none
 
-  def SystemState.initZeroesUnpropagated! : SystemState → List Address → SystemState
-    | state, addresses =>
-      let writeReqs := initZeroesUnpropagatedTransitions addresses
-      state.applyTrace! writeReqs
+def mkOutcome : String × String × Address × Value → ThreadId → Litmus.Outcome
+  | ("R", _, addr, val@(some _)), thId  => [(thId,addr,val)]
+  | _, _ => []
 
-  def SystemState.initZeroesUnpropagated : SystemState → List Address → Except String (SystemState)
-    | state, addresses =>
+def initZeroesUnpropagatedTransitions : List Address → List (Transition)
+  | addresses =>
+  -- Does the threadId matter? For now, using 0
+  addresses.map λ addr => Pop.Transition.acceptRequest (mkWrite "" addr 0) 0
+
+def SystemState.initZeroesUnpropagated! : SystemState → List Address → SystemState
+  | state, addresses =>
     let writeReqs := initZeroesUnpropagatedTransitions addresses
-  state.applyTrace writeReqs
+    state.applyTrace! writeReqs
+
+def SystemState.initZeroesUnpropagated : SystemState → List Address → Except String (SystemState)
+  | state, addresses =>
+  let writeReqs := initZeroesUnpropagatedTransitions addresses
+state.applyTrace writeReqs
 
 def mkPropagateTransitions : List RequestId → List ThreadId → List (Transition)
 | writeReqIds, threads =>
@@ -138,7 +148,8 @@ structure RequestSyntax where
   (value : Option Nat)
 
 def createLitmus (list : List (List RequestSyntax))
-  (validScopes : Option ValidScopes) : Litmus.Test :=
+  (validScopes : Option ValidScopes) (name : String)
+  (axiomaticAllowed := Litmus.AxiomaticAllowed.unknown) : Litmus.Test :=
   let variablesRaw := list.map λ thread => thread.map (λ r => if r.varName.length == 0 then none else some r.varName)
   let variables := removeDuplicates $ filterNones $ List.join variablesRaw
   let variableNums := variables.zip (List.range variables.length)
@@ -157,7 +168,8 @@ def createLitmus (list : List (List RequestSyntax))
     | some scopes => SystemState.init scopes
     | none => SystemState.init $ mkValidScopes fullThreads.length
   { initTransitions := initWrites ++ initPropagates,
-    program := reqs.toArray, expected := outcomes, initState := initState}
+    program := reqs.toArray, expected := outcomes,
+    initState, name, axiomaticAllowed}
 
 declare_syntax_cat request
 declare_syntax_cat request_seq
@@ -225,6 +237,8 @@ macro_rules
     | none => `( createLitmus `[req_set| $r] none )
     | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]))
 
+macro "deflitmus" name:ident " := " litmus:term : command => `(def $name := $litmus $(Lean.quote name.getId.toString))
+
 open Lean
 
 def threadsGetAllNames (threadsSyntax : TSyntax `threads) : Array String :=
@@ -264,6 +278,28 @@ partial def mkSysAux (mapping : String → Option ThreadId) (desc : TSyntax `sys
       let join := setJoin $ sdsTrees.map ListTree.listType
       ListTree.mkParent join sdsTrees
     | _ => Except.error "unexpected syntax in system description"
+
+-- Define an attribute to add up all Litmus tests
+-- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/.E2.9C.94.20Stateful.2FAggregating.20Macros.3F/near/301067121
+/-
+builtin_initialize unusedVariablesIgnoreFnsExt : SimplePersistentEnvExtension Name Unit ←
+  registerSimplePersistentEnvExtension {
+    name          := `unusedVariablesIgnoreFns
+    addEntryFn    := fun _ _ => ()
+    addImportedFn := fun _ => ()
+  }
+
+builtin_initialize
+  registerBuiltinAttribute {
+    name  := `litmustest
+    descr := "litmus test"
+    add   := fun declName stx attrKind => do
+      let env ← getEnv
+      setEnv <| unusedVariablesIgnoreFnsExt.addEntry env decl
+      let prio ← getAttrParamOptPrio stx[1]
+      discard <| addSimpCongrTheorem declName attrKind prio |>.run {} {}
+  }
+-/
 
 def mkSys (desc : TSyntax `system_desc) : Except String ValidScopes :=
   let allNames := systemDescGetAllNames desc |>.qsort alphabetic

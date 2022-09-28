@@ -38,22 +38,25 @@ def Outcome.prettyPrint : Litmus.Outcome → String
 
 -- Assumes each value written at most once per address!
 def Outcome.toRFPairs (outcome : Litmus.Outcome) (prog : ProgramState)
-  : List (Transition × Option Transition) := Id.run do
-  let mut res : List (Transition × Option Transition) := []
+  : List ((Transition × Nat) × Option (Transition × Nat)) := Id.run do
+  let mut res : List ((Transition × Nat) × Option (Transition × Nat)) := []
   -- First we bulid a map of values to the respective writes
-  let mut value_map : List ((Value × Address) × Transition) := []
-  for writeTrans in prog.allWrites do
+  let mut value_map : List ((Value × Address) × (Transition × Nat)) := []
+  for (writeTrans,num) in prog.allWrites.countOcurrences do
     let some write := writeTrans.getAcceptBasicRequest?
       | panic! s!"invalid write {writeTrans}"
     let pair := (write.value?, write.address?.get!)
-    if let some duplicate := value_map.lookup pair
-      then panic! s!"found duplicate write: {duplicate}, {writeTrans}"
-    value_map := (pair, writeTrans) :: value_map
+    value_map := (pair, (writeTrans,num)) :: value_map
   -- Now add the predicates for the outcome
+  let mut seenTrans : List ((ThreadId × Transition) × Nat) := []
   for (thId, addr, value) in outcome do
     for readTrans in prog[thId.toNat]! do
       unless readTrans.isReadAccept do
         continue
+      let num := match seenTrans.lookup (thId,readTrans) with
+        | none => 1
+        | some n => n + 1
+      seenTrans := ((thId,readTrans), num) :: seenTrans
       let some read := readTrans.getAcceptBasicRequest?
         | panic! s!"invalid read {readTrans}"
       unless some addr == read.address? do
@@ -61,9 +64,10 @@ def Outcome.toRFPairs (outcome : Litmus.Outcome) (prog : ProgramState)
       -- Thread and address match (because of the guard above +
       -- iterating only in that thread). We can add it to the list.
       let pair := (value, addr)
-      if let some writeTrans := value_map.lookup pair
-        then res := (readTrans,some writeTrans) :: res
-        else res := (readTrans, none) :: res
+      if let some writeTransNum := value_map.lookup pair
+        then res := ((readTrans, num),some writeTransNum) :: res
+        else res := ((readTrans, num), none) :: res
+      break
   return res
 
 end Litmus

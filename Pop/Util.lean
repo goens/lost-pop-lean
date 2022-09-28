@@ -47,6 +47,14 @@ def _root_.List.sublist [BEq α] : List α → List α → Bool
 def _root_.List.setEq [BEq α] : List α → List α → Bool
   | l₁, l₂ => l₁.sublist l₂ && l₂.sublist l₁
 
+def _root_.List.countOcurrences [BEq α] : List α → List (α × Nat)
+  | [] => []
+  | x::xs =>
+    let rest := xs.countOcurrences
+    match rest.lookup x with
+    | some num => (x, num + 1)::rest
+    | none => (x,1)::rest
+
 def setJoinPair [BEq α] (l₁ l₂ : List α) : List α :=
   match l₁, l₂ with
   | l₁, [] => l₁

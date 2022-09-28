@@ -50,51 +50,55 @@ def transToAlloy : Transition → String
 
 def toPreds (litmus : Litmus.Test) : String :=
   let threads := String.intercalate ",\n    " $ litmus.initState.threads.map λ th => s!"t{th} : ptx/Thread"
-  let readTransitions := litmus.program.allReads
+  let readTransitions := litmus.program.allReads.countOcurrences
   let readNames := readTransitions.zip (List.range readTransitions.length) |>.map
     λ (r,i) => (r,s!"r{i}")
-  let writeTransitions := litmus.program.allWrites
+  let writeTransitions := litmus.program.allWrites.countOcurrences
   let writeNames := writeTransitions.zip (List.range writeTransitions.length) |>.map
     λ (w,i) => (w,s!"w{i}")
-  let fenceTransitions := litmus.program.allBarriers
+  let fenceTransitions := litmus.program.allBarriers.countOcurrences
   let fenceNames := fenceTransitions.zip (List.range fenceTransitions.length) |>.map
     λ (f,i) => (f,s!"f{i}")
-  let transitions := readTransitions ++ writeTransitions ++ fenceTransitions
   let transitionNames := readNames ++ writeNames ++ fenceNames
   let names := String.append (threads ++ ",\n    ") $
     String.intercalate ",\n    " $ transitionNames.map
-      λ (t,name) => s!"{name} : {transToAlloy t}"
+      λ ((t,_),name) => s!"{name} : {transToAlloy t}"
 
   -- Generate PO predicates
   let po := Id.run do
     let mut res := ""
     let mut opLast := none
     let mut thId := 0
+    let mut seenTrans := []
     for thread in litmus.program do
       for transition in thread do
+        let num := match seenTrans.lookup transition with
+          | none => 1
+          | some n => n + 1
+        seenTrans := (transition, num)::seenTrans
         if opLast.isNone then -- the first transition in a thread
-          opLast := transitionNames.lookup transition
+          opLast := transitionNames.lookup (transition,num)
           res := res ++ s!"    t{thId}.start = {opLast.get!} and\n"
           continue
-        if let (some cur, some last) := (transitionNames.lookup transition, opLast) then
+        if let (some cur, some last) := (transitionNames.lookup (transition, num), opLast) then
           res := res ++ s!"    {last}.po = {cur} and\n"
-        opLast := transitionNames.lookup transition -- second transition onward
+        opLast := transitionNames.lookup (transition, num) -- second transition onward
       -- end thread iteration: update state
       thId := thId + 1
       opLast := none
     return res
 
-  let memops := litmus.program.allReads ++ litmus.program.allWrites
+  let memops := readTransitions ++ writeTransitions
   -- Generate address predicates
   let addresses := Id.run do
     let mut res := ""
     let mut address_groups : List (Address × String) := []
-    for transition in memops do
+    for (transition, num) in memops do
       let some br := transition.getAcceptBasicRequest?
         | panic! s!"cannot get basic request from {transition}"
       let some address := br.address?
         | panic! s!"Unknown address in {br}"
-      let some transName := transitionNames.lookup transition
+      let some transName := transitionNames.lookup (transition, num)
         | panic! s!"Unknown transition {transition}"
       if let some refAddress := address_groups.lookup address
         -- Not first time seen: then they should be equal
@@ -110,11 +114,16 @@ def toPreds (litmus : Litmus.Test) : String :=
     return res
   let scopes := Id.run do
     let mut res := ""
+    let mut seenTrans := []
     for thId in (List.range litmus.program.size) do
       for transition in litmus.program[thId]! do
+        let num := match seenTrans.lookup transition with
+          | none => 1
+          | some n => n + 1
+        seenTrans := (transition, num)::seenTrans
         let some br := transition.getAcceptBasicRequest?
           | panic! s!"invalid transition {transition}"
-        let some transName := transitionNames.lookup transition
+        let some transName := transitionNames.lookup (transition, num)
           | panic! s!"Unknown transition {transition}"
         -- Handle special case for system scope (less verbose)
         if br.type.scope == PTX.Scope.sys then
@@ -129,7 +138,10 @@ def toPreds (litmus : Litmus.Test) : String :=
     return res
   let outcome := Id.run do
     let mut res := ""
+    -- TODO: toRFPairs assumes only once per address... we should fix that
     let rfPairs := litmus.expected.toRFPairs litmus.program
+    --dbg_trace ("Outcome :\n " ++ String.intercalate "\n " (litmus.expected.map toString))
+    --dbg_trace ("RFPairs :\n " ++ String.intercalate "\n " (rfPairs.map toString))
     for (read,opWrite) in rfPairs do
       let some readName := transitionNames.lookup read
         | panic! s!"invalid write ({read}) in outcome"
@@ -137,7 +149,7 @@ def toPreds (litmus : Litmus.Test) : String :=
        -- The read has a corresponding write (rf)
         let some writeName := transitionNames.lookup write
           | panic! s!"invalid write ({write}) in outcome"
-        res := res ++ s!"    {writeName}.rf = {readName} and\n"
+        res := res ++ s!"    {readName} in {writeName}.rf  and\n"
       else
        -- The read has no corresponding (rf) write
         res := res ++ s!"    no {readName}.~rf and\n"

@@ -145,6 +145,7 @@ infixl:85 "b⇒" => λ a b => !a || b
     | Fence → W |   ∩   |
     | R → Fence |   ∩   |
     | Fence → R | Fence |
+    TODO: also do this for rel/acq reads/writes
 -/
 def scopesMatch : ValidScopes → Request → Request → Bool
   | V, r_old, r_new =>
@@ -244,6 +245,7 @@ def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
       let read := state.requests.getReq? reqId |>.get!
       dbg_trace "checking wether to add Req.{writeId} as predecessor to T{thId}"
       dbg_trace "MS:{morallyStrong state.scopes read write}, prop: {!(write.propagated_to.elem thId)}"
+      -- TODO: move this to satisfyEffects
       if (morallyStrong state.scopes read write) && !(write.propagated_to.elem thId)
       then
         state.updateRequest $ write.makePredecessorAt thId
@@ -400,6 +402,8 @@ deflitmus WRC_cta_1_2 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_r
   where sys := { {T0}, {T1, T2}}
 deflitmus WRC_cta_2_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0, T1}, {T2}}
+deflitmus WRC_cta_2_1' := {| W. cta_rlx x=1 || R. cta_rlx x // 1; Fence. sys_rel; W. sys_rlx y = 1 || R. sys_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
+  where sys := { {T0, T1}, {T2}}
 deflitmus WRC_cta_1_1_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1}, {T2}}
 
@@ -412,9 +416,13 @@ deflitmus two_plus_two2 := {| W. sys_rel x=1; W. sys_rel y=2;  R. sys_acq y // 1
 deflitmus co_two_thread := {| W x = 1; R x // 2 || W x = 2; R x // 1 |}
 deflitmus co_four_thread := {| W x = 1 || R x // 1 ; R x // 2 ||  R x // 2; R x // 1; W x = 2 |}
 
+deflitmus write_serialization := {| W. cta_rlx x=1;  W. cta_rlx x=2 || R. cta_rlx x // 1; R. cta_rlx x // 2 || R. cta_rlx x // 2 ; R. cta_rlx x // 1|}
+  where sys := { {T0, T1}, {T2} }
+deflitmus write_serialization_unscoped := {| W. cta_rlx x=1;  W. cta_rlx x=2 || R. cta_rlx x // 1; R. cta_rlx x // 2 || R. cta_rlx x // 2 ; R. cta_rlx x // 1|}
+
 def ptx_2 := [MP,MP_fence1,MP_fence2,MP_fence, MP_relacq, N7, dekkers, dekkers_fence, MP_fence_weak, MP_fence_consumer_weak, MP_fence_weak_rel_acq, MP_read_cta, simpleRF ] --, MP_fence_cta_1fence, MP_fence_cta]
 --def ptx_2 := [MP_fence_cta]
-def ptx_3 := [WRC, WRC_rel, WRC_no_dep, WRC_acq, WRC_two_deps, WWRWRR, WWRWRR_scoped]
+def ptx_3 := [WRC, WRC_rel, WRC_no_dep,WRC_cta_2_1,  WRC_acq, WRC_two_deps, WWRWRR, WWRWRR_scoped, write_serialization, write_serialization_unscoped ]
 def ptx_4 := [IRIW, IRIW_3ctas, IRIW_3ctas_1scoped_w, IRIW_3ctas_1scoped_r, IRIW_3ctas_scoped_rs_after,  IRIW_2ctas, IRIW_fences, IRIW_4ctas]
 
 

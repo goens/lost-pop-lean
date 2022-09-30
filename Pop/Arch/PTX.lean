@@ -125,7 +125,7 @@ def Request.predecessorAt (req : Request) : List ThreadId :=
 
 def Request.makePredecessorAt (req : Request) (thId : ThreadId) : Request :=
   let predList := req.basic_type.type.predecessorAt
-  dbg_trace "Making {req} a predecessor at T{thId}"
+  --dbg_trace "Making {req} a predecessor at T{thId}"
   if predList.contains thId then
     req
   else

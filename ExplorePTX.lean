@@ -5,12 +5,12 @@ open Pop PTX
 
 def main : IO Unit := do
   println! "running PTX 2-thread tests"
-  let mp_litmus := runMultipleLitmus Litmus.ptx_2 (logProgress := true)
+  let mp_litmus := runMultipleLitmus Litmus.ptx_2
   for (test,res) in Litmus.ptx_2.zip mp_litmus do
     println! prettyPrintLitmusResult test res
 
   println! "running PTX 3-thread tests"
-  let mp_litmus := runMultipleLitmus Litmus.ptx_3 (printPartialTraces := true)
+  let mp_litmus := runMultipleLitmus Litmus.ptx_3
   for (test,res) in Litmus.ptx_3.zip mp_litmus do
     println! prettyPrintLitmusResult test res
 

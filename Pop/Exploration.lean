@@ -307,7 +307,7 @@ def SystemState.exhaustiveSearchLitmus
 --       | _ => none
 --     filterNones optPairs
 
-def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false)
+def runMultipleLitmusAux (tests : List Litmus.Test) (logProgress := false)
   (printPartialTraces := false) : List (List Litmus.Outcome) := Id.run do
     let mut tasks : Array (Task (List Litmus.Outcome)) := #[]
     for (Litmus.Test.mk initTrans initProg outcome startingState _ _) in tests do
@@ -324,6 +324,17 @@ def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false)
           resLitmus -- fugly hack: dbg_trace won't work without a term after
       tasks := tasks.push task
     return tasks.map Task.get  |>.toList
+
+def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false)
+  (printPartialTraces := false) (batchSize := 6) : List (List Litmus.Outcome)
+  := Id.run do
+    let mut res := []
+    let mut remaining := tests
+    while !remaining.isEmpty do
+      let testBatch := remaining.take batchSize
+      remaining := remaining.drop batchSize
+      res := res ++ (runMultipleLitmusAux testBatch logProgress printPartialTraces)
+    return res
 
 def prettyPrintLitmusResult : Litmus.Test → List Litmus.Outcome → String
   | test, reslit =>

@@ -68,10 +68,10 @@ deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}
 deflitmus dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |}
 --deflitmus causality := {| W x = 1 || R x; Fence; W x = 2 || R x; W|}
 
-def x86_2 := [MP,MP_fence1,MP_fence2,MP_fence, N7, dekkers, dekkers_fence]
-def x86_4 := [IRIW, IRIW_fences]
-
-def allTso : List Litmus.Test := x86_2 ++ x86_4
+def allTSO := litmusTests!
+def tso_2 := allTSO.filter λ lit => lit.numThreads == 2
+def tso_3 := allTSO.filter λ lit => lit.numThreads == 3
+def tso_4 := allTSO.filter λ lit => lit.numThreads == 4
 
 end Litmus
 

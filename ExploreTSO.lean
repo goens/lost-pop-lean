@@ -5,8 +5,8 @@ open Pop x86
 
 def main : IO Unit := do
   println! "running TSO MP tests"
-  let mp_litmus := runMultipleLitmus Litmus.x86_2
-  for (test,res) in Litmus.x86_2.zip mp_litmus do
+  let mp_litmus := runMultipleLitmus Litmus.tso_2
+  for (test,res) in Litmus.tso_2.zip mp_litmus do
     println! prettyPrintLitmusResult test res
 /-
   println! "running TSO IRIW tests"

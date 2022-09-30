@@ -105,9 +105,9 @@ deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}
 deflitmus dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |}
 --def causality := {| W x = 1 || R x; Fence; W x = 2 || R x; W|}
 
-def arm_2 := [MP,MP_rel,MP_acq,MP_relacq, N7, dekkers, dekkers_fence]
-def arm_3 := [WRC, WRC_rel, WRC_no_dep, WRC_acq, IRIW_3_threads]
-def arm_4 := [IRIW, IRIW_acq, IRIW_first_acq]
+def allARM := litmusTests!
+def arm_2 := allARM.filter λ lit => lit.numThreads == 2
+def arm_3 := allARM.filter λ lit => lit.numThreads == 3
+def arm_4 := allARM.filter λ lit => lit.numThreads == 4
 
-def allARM : List Litmus.Test := arm_2 ++ arm_3 ++ arm_4
 end Litmus

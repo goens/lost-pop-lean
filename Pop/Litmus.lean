@@ -25,6 +25,8 @@ structure Test where
  (name : String)
  (axiomaticAllowed : AxiomaticAllowed)
 
+def Test.numThreads (test : Test) := test.program.size
+
 def addressValuePretty : Address × Value → String
   | (_, none) => "invalid outcome!"
   | (addr, some val) => s!"{addr.prettyPrint} = {val}"
@@ -241,8 +243,6 @@ macro_rules
     | none => `( createLitmus `[req_set| $r] none )
     | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]))
 
-macro "deflitmus" name:ident " := " litmus:term : command => `(def $name := $litmus $(Lean.quote name.getId.toString))
-
 open Lean
 
 def threadsGetAllNames (threadsSyntax : TSyntax `threads) : Array String :=
@@ -285,25 +285,43 @@ partial def mkSysAux (mapping : String → Option ThreadId) (desc : TSyntax `sys
 
 -- Define an attribute to add up all Litmus tests
 -- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/.E2.9C.94.20Stateful.2FAggregating.20Macros.3F/near/301067121
-/-
-builtin_initialize unusedVariablesIgnoreFnsExt : SimplePersistentEnvExtension Name Unit ←
-  registerSimplePersistentEnvExtension {
-    name          := `unusedVariablesIgnoreFns
-    addEntryFn    := fun _ _ => ()
-    addImportedFn := fun _ => ()
-  }
+abbrev NameExt := SimplePersistentEnvExtension (Name × Name) (NameMap Name)
 
-builtin_initialize
-  registerBuiltinAttribute {
-    name  := `litmustest
-    descr := "litmus test"
-    add   := fun declName stx attrKind => do
-      let env ← getEnv
-      setEnv <| unusedVariablesIgnoreFnsExt.addEntry env decl
-      let prio ← getAttrParamOptPrio stx[1]
-      discard <| addSimpCongrTheorem declName attrKind prio |>.run {} {}
+private def mkExt (name attr : Name) (descr : String) : IO NameExt := do
+  let addEntryFn | m, (n3, n4) => m.insert n3 n4
+  let ext ← registerSimplePersistentEnvExtension {
+    name, addEntryFn
+    addImportedFn := mkStateFromImportedEntries addEntryFn {}
   }
--/
+  registerBuiltinAttribute {
+    name := attr
+    descr
+    add := fun declName stx attrKind => do
+      let s := ext.getState (← getEnv)
+      let ns ← stx[1].getArgs.mapM fun stx => do
+        let n := stx.getId
+        if s.contains n then throwErrorAt stx "litmus test {n} already declared"
+        pure n
+      modifyEnv $ ns.foldl fun env n =>
+        ext.addEntry env (n, declName)
+  }
+  pure ext
+
+
+private def mkElab (ext : NameExt) (ty : Lean.Expr) : Elab.Term.TermElabM Lean.Expr := do
+  let mut stx := #[]
+  for (_, n4) in ext.getState (← getEnv) do
+    stx := stx.push $ ← `($(mkIdent n4):ident)
+  Elab.Term.elabTerm (← `([$stx,*])) (some ty)
+
+syntax (name := litmusTest) "litmusTest " ident+ : attr
+initialize litmusExtension : NameExt ←
+  mkExt `Pop.litmusExtension `litmusTest
+    (descr := "Litums Tests")
+
+elab "litmusTests!" : term <= ty => mkElab litmusExtension ty
+
+macro "deflitmus" name:ident " := " litmus:term : command => `(@[litmusTest $name] def $name := $litmus $(Lean.quote name.getId.toString))
 
 def mkSys (desc : TSyntax `system_desc) : Except String ValidScopes :=
   let allNames := systemDescGetAllNames desc |>.qsort alphabetic

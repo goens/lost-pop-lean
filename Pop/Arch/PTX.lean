@@ -420,12 +420,10 @@ deflitmus write_serialization := {| W. cta_rlx x=1;  W. cta_rlx x=2 || R. cta_rl
   where sys := { {T0, T1}, {T2} }
 deflitmus write_serialization_unscoped := {| W. cta_rlx x=1;  W. cta_rlx x=2 || R. cta_rlx x // 1; R. cta_rlx x // 2 || R. cta_rlx x // 2 ; R. cta_rlx x // 1|}
 
-def ptx_2 := [MP,MP_fence1,MP_fence2,MP_fence, MP_relacq, N7, dekkers, dekkers_fence, MP_fence_weak, MP_fence_consumer_weak, MP_fence_weak_rel_acq, MP_read_cta, simpleRF ] --, MP_fence_cta_1fence, MP_fence_cta]
---def ptx_2 := [MP_fence_cta]
-def ptx_3 := [WRC, WRC_rel, WRC_no_dep,WRC_cta_2_1,  WRC_acq, WRC_two_deps, WWRWRR, WWRWRR_scoped, write_serialization, write_serialization_unscoped ]
-def ptx_4 := [IRIW, IRIW_3ctas, IRIW_3ctas_1scoped_w, IRIW_3ctas_1scoped_r, IRIW_3ctas_scoped_rs_after,  IRIW_2ctas, IRIW_fences, IRIW_4ctas]
 
+def allPTX := litmusTests!
+def ptx_2 := allPTX.filter λ lit => lit.numThreads == 2
+def ptx_3 := allPTX.filter λ lit => lit.numThreads == 3
+def ptx_4 := allPTX.filter λ lit => lit.numThreads == 4
 
--- Important: why is IRIW_3ctas disallowed but MP_fence_cta allowed
-def allPTX : List Litmus.Test := ptx_2 ++ ptx_3 ++ ptx_4
 end Litmus

@@ -243,8 +243,8 @@ def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
     | some writeId =>
       let write := state.requests.getReq? writeId |>.get!
       let read := state.requests.getReq? reqId |>.get!
-      dbg_trace "checking wether to add Req.{writeId} as predecessor to T{thId}"
-      dbg_trace "MS:{morallyStrong state.scopes read write}, prop: {!(write.propagated_to.elem thId)}"
+      --dbg_trace "checking wether to add Req.{writeId} as predecessor to T{thId}"
+      --dbg_trace "MS:{morallyStrong state.scopes read write}, prop: {!(write.propagated_to.elem thId)}"
       -- TODO: move this to satisfyEffects
       if (morallyStrong state.scopes read write) && !(write.propagated_to.elem thId)
       then
@@ -425,5 +425,4 @@ def allPTX := litmusTests!
 def ptx_2 := allPTX.filter λ lit => lit.numThreads == 2
 def ptx_3 := allPTX.filter λ lit => lit.numThreads == 3
 def ptx_4 := allPTX.filter λ lit => lit.numThreads == 4
-
 end Litmus

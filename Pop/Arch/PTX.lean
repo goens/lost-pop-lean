@@ -120,6 +120,11 @@ def Request.isRel (req : Request) : Bool :=
 def Request.isAcq (req : Request) : Bool :=
   req.isRead && req.basic_type.type.sem == PTX.Semantics.acq
 
+def Request.isAcqRelKind (req : Request) : Bool :=
+  req.basic_type.type.sem == PTX.Semantics.rel ||
+  req.basic_type.type.sem == PTX.Semantics.acq ||
+  req.basic_type.type.sem == PTX.Semantics.acqrel
+
 def Request.predecessorAt (req : Request) : List ThreadId :=
   req.basic_type.type.predecessorAt
 
@@ -155,9 +160,9 @@ def scopesMatch : ValidScopes → Request → Request → Bool
   else if r_new.isFenceSC then
     (requestScope V r_new).threads.contains r_old.thread
   -- by above, not SC ⇒ rel, acq or acqrel
-  else if r_old.isWrite && r_new.isBarrier then
+  else if r_old.isWrite && r_new.isAcqRelKind then
     (requestScope V r_new).threads.contains r_old.thread
-  else if r_new.isBarrier && r_new.isRead then
+  else if r_new.isAcqRelKind && r_new.isRead then
     (requestScope V r_old).threads.contains r_new.thread
   -- If neither is an SC fence, then we consider their joint scope
   else scopeInclusive V r_old r_new

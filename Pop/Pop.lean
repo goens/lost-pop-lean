@@ -114,6 +114,7 @@ RequestId → ThreadId → @OrderConstraints state.scopes
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id)
       let conditions := λ req' : Request =>
+        --dbg_trace s!"{req.id}, {req'.id} newrf?: {newrf req'}"
         --dbg_trace s!"{req.id}, {req'.id} : "
         --dbg_trace s!"{req'.propagatedTo thId}"
         --dbg_trace s!"{!(req'.propagatedTo req.thread)}"
@@ -130,6 +131,7 @@ RequestId → ThreadId → @OrderConstraints state.scopes
       let newReqs := seen.filter (λ r => conditions r || newrf r)
       let newConstraints := newReqs.map λ req' => (req.id, req'.id) -- incoming req. goes before others
       --dbg_trace s!"new constraints: {newConstraints}"
+      --dbg_trace s!"scope: {scope}"
       state.orderConstraints.addSubscopes scope newConstraints
 
 def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Request)

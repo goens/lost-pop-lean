@@ -483,11 +483,16 @@ def SystemState.oderConstraintsString (state : SystemState)
   state.orderConstraints.toString scope $ filterNones $ state.requests.val.toList.map $ Option.map Request.id
 
 def SystemState.toString : SystemState → String
-  | state => s!"requests:\n{state.requests.toString}\n"  ++
+  | state =>
+  let ocString := if state.scopes.scopes.toList.length == 1
+    then s!"constraints: {state.oderConstraintsString}\n"
+    else String.intercalate "\n" $ state.scopes.scopes.toList.map
+      λ scope => s!"constraints (scope {scope}) : {state.oderConstraintsString (state.scopes.validate scope)}"
+  s!"requests:\n{state.requests.toString}\n"  ++
   s!"seen: {state.seen.toString}\n" ++
   s!"removed: {state.removed.toString}\n" ++
   s!"satisfied: {state.satisfied.toString}\n" ++
-  s!"constraints: {state.oderConstraintsString}\n"
+  ocString
 
 def SystemState.orderPredecessors (state : SystemState) (scope : @Scope state.scopes)
   (reqId : RequestId) : List RequestId :=

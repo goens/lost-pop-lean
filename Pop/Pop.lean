@@ -110,7 +110,9 @@ RequestId → ThreadId → @OrderConstraints state.scopes
     | none => state.orderConstraints
     | some req =>
       let newrf := λ req' : Request =>
-        req.isMem && req'.isMem && req.address? == req'.address?
+        req.isMem && req'.isMem && req.address? == req'.address? &&
+        !(state.orderConstraints.lookup scope req.id req'.id) &&
+        !(state.orderConstraints.lookup scope req'.id req.id)
       let conditions := λ req' : Request =>
         --dbg_trace s!"{req.id}, {req'.id} : "
         --dbg_trace s!"{req'.propagatedTo thId}"
@@ -134,8 +136,11 @@ def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Reques
 : @OrderConstraints state.scopes :=
   let seen := state.idsToReqs state.seen |>.filter (Request.propagatedTo . req.thread)
   let scope := Arch.requestScope state.scopes req
-  let newReqs := seen.filter λ req'  => !(Arch.reorderCondition state.scopes req' req) ||
-    req.isMem && req'.isMem && req.address? == req'.address? -- RF edge
+  let newrf := λ req' : Request =>
+    req.isMem && req'.isMem && req.address? == req'.address? &&
+    !(state.orderConstraints.lookup scope req.id req'.id) &&
+    !(state.orderConstraints.lookup scope req'.id req.id)
+  let newReqs := seen.filter λ req'  => !(Arch.reorderCondition state.scopes req' req) || newrf req'
   let newConstraints := newReqs.map λ req' => (req'.id, req.id)
   --dbg_trace s!"seen: {seen}, new: {newReqs}"
   state.orderConstraints.addSubscopes scope newConstraints
@@ -249,12 +254,12 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
         -- TODO: can/should we relax this?
         let oc := state.orderConstraints.lookup scope writeId readId
         let betweenIds := state.orderConstraints.between scope write.id read.id (reqIds state.requests)
-        --dbg_trace s!"between {readId} and {writeId}: {betweenIds}"
+        -- dbg_trace s!"between {readId} and {writeId}: {betweenIds}"
         let between := state.idsToReqs betweenIds
         let writesToAddrBetween := between.filter λ r =>
           r.isWrite && r.address? == write.address? && !(state.isSatisfied r.id)
         arch && oc && writesToAddrBetween.length == 0
-    | _, _ => false
+    | _, _ => panic! s!"unknown request ({readId} or {writeId})"
 
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState
  | state, readId, writeId =>

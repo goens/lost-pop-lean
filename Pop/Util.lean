@@ -131,7 +131,7 @@ def ListTree.leaves [BEq α] :  ListTree α → List (List α)
 def ListTree.toList [BEq α] :  ListTree α → List (List α)
   | leaf val => [val]
   | parentNil val => [val]
-  | parentCons child siblings => leaves child ++ leaves siblings
+  | parentCons child siblings => toList child ++ toList siblings
 
 def ListTree.nodesAbove [BEq α] (lt :  ListTree α) (lst : List α) : List (List α) :=
   match lt with

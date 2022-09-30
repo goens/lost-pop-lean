@@ -119,6 +119,11 @@ structure ValidScopes where
 def ValidScopes.default : ValidScopes := { system_scope := [], scopes := ListTree.leaf []}
 instance : Inhabited ValidScopes where default := ValidScopes.default
 
+def ValidScopes.toString (scopes : ValidScopes) : String :=
+  "{" ++ String.intercalate ", " (scopes.scopes.toList.map ToString.toString) ++ "}"
+
+instance : ToString ValidScopes where toString := ValidScopes.toString
+
 open Lean in
 private def quoteValidScopes : ValidScopes → Term
   | ValidScopes.mk system_scope scopes => Syntax.mkCApp ``ValidScopes.mk #[quote system_scope, quote scopes]

@@ -110,6 +110,7 @@ RequestId → ThreadId → @OrderConstraints state.scopes
     | none => state.orderConstraints
     | some req =>
       let newrf := λ req' : Request =>
+        req.id != req'.id &&
         req.isMem && req'.isMem && req.address? == req'.address? &&
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id)
@@ -139,6 +140,7 @@ def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Reques
   let seen := state.idsToReqs state.seen |>.filter (Request.propagatedTo . req.thread)
   let scope := Arch.requestScope state.scopes req
   let newrf := λ req' : Request =>
+    req.id != req'.id &&
     req.isMem && req'.isMem && req.address? == req'.address? &&
     !(state.orderConstraints.lookup scope req.id req'.id) &&
     !(state.orderConstraints.lookup scope req'.id req.id)

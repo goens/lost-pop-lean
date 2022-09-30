@@ -344,7 +344,7 @@ macro_rules
       | Except.error msg => Macro.throwError msg
 
 -- Tests
--- #eval `[sys| {{ T1, T2 } , {T3}.x86, {{T4, T5, T6}}} ].scopes.leaves
+-- #eval `[sys| {{ T1, T2 } , {T3}.x86, {T4, T5, T6}} ].scopes
 -- should fail!
 -- #eval `[sys| {{ T1, T2 } , {T2, T3}} ].scopes.leaves
 

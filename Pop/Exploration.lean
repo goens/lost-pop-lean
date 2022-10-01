@@ -308,44 +308,46 @@ def SystemState.exhaustiveSearchLitmus
 --     filterNones optPairs
 
 def runMultipleLitmusAux (tests : List Litmus.Test) (logProgress := false)
-  (printPartialTraces := false) : List (List Litmus.Outcome) := Id.run do
-    let mut tasks : Array (Task (List Litmus.Outcome)) := #[]
+  : List ((List Litmus.Outcome) × (List ((List Transition) × SystemState))) := Id.run do
+    let mut tasks  := #[]
     for (Litmus.Test.mk initTrans initProg outcome startingState _ _) in tests do
       let task := Task.spawn λ _ =>
         let resExpl := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome)
                        (stopAfterFirst := true) (logProgress := logProgress)
         let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.outcome
-        if printPartialTraces then
-          let msgs := Util.removeDuplicates $ resExpl.map
-            λ (pt,st) => s!"trace found for {initProg.prettyPrint}:\n {pt.map (Transition.prettyPrint st)}"
-          dbg_trace (String.intercalate "\n" msgs)
-          resLitmus
-        else
-          resLitmus -- fugly hack: dbg_trace won't work without a term after
+        let pts := Util.removeDuplicates $ resExpl
+        (resLitmus, pts)
       tasks := tasks.push task
     return tasks.map Task.get  |>.toList
 
-def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false)
-  (printPartialTraces := false) (batchSize := 6) : List (List Litmus.Outcome)
+def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false) (batchSize := 6)
+: List ((List Litmus.Outcome) × (List ((List Transition) × SystemState)))
   := Id.run do
     let mut res := []
     let mut remaining := tests
     while !remaining.isEmpty do
       let testBatch := remaining.take batchSize
       remaining := remaining.drop batchSize
-      res := res ++ (runMultipleLitmusAux testBatch logProgress printPartialTraces)
+      res := res ++ (runMultipleLitmusAux testBatch logProgress)
     return res
 
-def prettyPrintLitmusResult : Litmus.Test → List Litmus.Outcome → String
-  | test, reslit =>
+def prettyPrintLitmusResult : Litmus.Test → ((List Litmus.Outcome) × (List ((List Transition) × SystemState))) →
+(printWitness : optParam Bool true) → String
+  | test, (reslit, pts), printWitness =>
      let outcome_res := if reslit.any λ out => outcomeEqiv out test.expected
        then "✓"
        else "×"
      let axiomatic := test.axiomaticAllowed.toString
      let litStr := s!"{test.name}. Expected (axiomatic): {axiomatic}"
+     let ptString := match pts.head? with
+       | none => ""
+       | some (pt,state) => toString $ pt.map (Transition.prettyPrint state)
      let resStr := s!"litmus: {litStr}. Allowed?: {outcome_res}"
      if axiomatic != "?" && axiomatic != outcome_res
-       then colorRed resStr
+       then colorRed resStr ++
+         if outcome_res == "✓" && printWitness
+           then s!"\n Witness: {ptString}"
+           else ""
        else resStr
 
 /-

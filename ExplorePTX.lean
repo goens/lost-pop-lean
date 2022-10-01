@@ -7,7 +7,7 @@ def main : IO Unit := do
   println! "running PTX 2-thread tests"
   let mp_litmus := runMultipleLitmus Litmus.ptx_2
   for (test,res) in Litmus.ptx_2.zip mp_litmus do
-    println! prettyPrintLitmusResult test res
+    println! prettyPrintLitmusResult test res (printWitness := true)
 
   println! "running PTX 3-thread tests"
   let mp_litmus := runMultipleLitmus Litmus.ptx_3

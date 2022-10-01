@@ -341,8 +341,12 @@ def prettyPrintLitmusResult : Litmus.Test → List Litmus.Outcome → String
      let outcome_res := if reslit.any λ out => outcomeEqiv out test.expected
        then "✓"
        else "×"
-     let litStr := s!"{test.name}. Expected: {test.expected.prettyPrint}"
-     s!"litmus: {litStr}. Allowed?: {outcome_res}"
+     let axiomatic := test.axiomaticAllowed.toString
+     let litStr := s!"{test.name}. Expected (axiomatic): {axiomatic}"
+     let resStr := s!"litmus: {litStr}. Allowed?: {outcome_res}"
+     if axiomatic != "?" && axiomatic != outcome_res
+       then colorRed resStr
+       else resStr
 
 /-
   Id.run do

@@ -17,6 +17,13 @@ inductive AxiomaticAllowed
   | no
   | unknown
 
+def AxiomaticAllowed.toString : AxiomaticAllowed → String
+  | yes => "✓"
+  | no => "×"
+  | unknown => "?"
+
+instance : ToString AxiomaticAllowed where toString := AxiomaticAllowed.toString
+
 structure Test where
  (initTransitions : List Transition)
  (program : ProgramState)

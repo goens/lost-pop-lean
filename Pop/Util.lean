@@ -68,6 +68,12 @@ def setJoinPair [BEq α] (l₁ l₂ : List α) : List α :=
 def setJoin [BEq α] (ls : List (List α)) : List α :=
   ls.foldl (init := []) setJoinPair
 
+def colorRed : String → String :=
+  λ str => "\x1b[37;41m" ++ str ++ "\u001b[0m"
+
+def colorGreen : String → String :=
+  λ str => "\x1b[37;42m" ++ str ++ "\u001b[0m"
+
 -- Removed sublist condition from type as it made programming
 -- with this basically impossible...
 inductive ListTree (α : Type) [BEq α] : Type

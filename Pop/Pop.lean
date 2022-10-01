@@ -131,6 +131,7 @@ RequestId → ThreadId → @OrderConstraints state.scopes
       --dbg_trace s!"seen: {seen}"
       let newReqs := seen.filter (λ r => conditions r || newrf r)
       let newConstraints := newReqs.map λ req' => (req.id, req'.id) -- incoming req. goes before others
+      -- TODO: why does this not break things with RF? Look into simpleRF PTX Litmus test, an order can cause R to not have any write to read from
       --dbg_trace s!"new constraints: {newConstraints}"
       --dbg_trace s!"scope: {scope}"
       state.orderConstraints.addSubscopes scope newConstraints

@@ -25,7 +25,12 @@ structure Test where
  (name : String)
  (axiomaticAllowed : AxiomaticAllowed)
 
-def Test.numThreads (test : Test) := test.program.size
+def Test.numThreads (test : Test) : Nat := test.program.size
+def Test.numInstructions (test : Test) : Nat := Array.sum $ test.program.map (λ th => th.size)
+def Test.numScopes (test : Test)  : Nat := test.initState.scopes.scopes.toList.length
+def Test.weightedSize (test : Test)  : Nat := test.numThreads * 100 + test.numInstructions * 10 + test.numScopes
+
+instance : Inhabited Test where default := { initTransitions := [], program := #[], expected := [], initState := default, name := "default", axiomaticAllowed := .unknown }
 
 def addressValuePretty : Address × Value → String
   | (_, none) => "invalid outcome!"
@@ -199,7 +204,8 @@ syntax "{" threads "}" : system_desc
 syntax "{" threads "}." ident : system_desc
 syntax "{" system_desc,+ "}" : system_desc
 
-syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? : term
+syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? ("✓")? : term
+syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? "×" : term
 syntax "`[sys|" system_desc "]" : term
 syntax "`[req|" request "]" : term
 syntax "`[req_seq|" request_seq "]" : term
@@ -242,6 +248,12 @@ macro_rules
   | `({| $r |} $[where sys := $opdesc:system_desc ]?) => match opdesc with
     | none => `( createLitmus `[req_set| $r] none )
     | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]))
+  | `({| $r |} $[where sys := $opdesc:system_desc ]? ✓) => match opdesc with
+    | none => `( createLitmus `[req_set| $r] none (axiomaticAllowed := .yes) )
+    | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]) (axiomaticAllowed := .yes))
+  | `({| $r |} $[where sys := $opdesc:system_desc ]? ×) => match opdesc with
+    | none => `( createLitmus `[req_set| $r] none (axiomaticAllowed := .no))
+    | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]) (axiomaticAllowed := .no))
 
 open Lean
 
@@ -312,14 +324,17 @@ private def mkElab (ext : NameExt) (ty : Lean.Expr) : Elab.Term.TermElabM Lean.E
   let mut stx := #[]
   for (_, n4) in ext.getState (← getEnv) do
     stx := stx.push $ ← `($(mkIdent n4):ident)
-  Elab.Term.elabTerm (← `([$stx,*])) (some ty)
+  let listStx := (← `([$stx,*]))
+  let sorted ← `(Array.toList $ Array.qsort ($listStx).toArray (λ x y => Nat.ble x.weightedSize y.weightedSize))
+  Elab.Term.elabTerm sorted (some ty)
 
 syntax (name := litmusTest) "litmusTest " ident+ : attr
 initialize litmusExtension : NameExt ←
   mkExt `Pop.litmusExtension `litmusTest
     (descr := "Litums Tests")
 
-elab "litmusTests!" : term <= ty => mkElab litmusExtension ty
+elab "litmusTests!" : term <= ty => do
+  mkElab litmusExtension ty
 
 macro "deflitmus" name:ident " := " litmus:term : command => `(@[litmusTest $name] def $name := $litmus $(Lean.quote name.getId.toString))
 

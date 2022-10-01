@@ -370,8 +370,8 @@ deflitmus IRIW_3ctas_1scoped_w := {| W. cta_rlx x=1 ||  R x // 1 ; Fence. cta_sc
   where sys := { {T0}, {T1, T2}, {T3} }
 deflitmus IRIW_3ctas_1scoped_r := {| W x=1 ||  R. cta_rlx x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0}, {T1, T2}, {T3} }
-deflitmus IRIW_3ctas_scoped_rs_after := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R. cta_rlx y // 0 || R y // 1; Fence. cta_sc; R. cta_rlx x // 0 || W y=1 |}
-  where sys := { {T0}, {T1, T2}, {T3} }
+deflitmus IRIW_3ctas_scoped_rs_after := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R. cta_rlx y // 0 || R y // 1; Fence. cta_sc; R. cta_rlx x // 0 || W y=1 |} 
+  where sys := { {T0}, {T1, T2}, {T3} } ×
 
 deflitmus IRIW_2ctas := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0, T2}, {T1, T3} }
@@ -384,7 +384,7 @@ deflitmus MP := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |}
 deflitmus MP_fence1 := {| W x=1; Fence; W y=1 ||  R y // 1; R x // 0 |}
 deflitmus MP_fence2 := {| W x=1; W y=1 ||  R y //1; Fence; R x // 0 |}
 deflitmus MP_fence := {| W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0|}
-deflitmus MP_relacq := {| W. sys_rel x=1;  W. sys_rel y=1 ||  R. sys_acq y // 1; R. sys_acq x // 0|}
+deflitmus MP_relacq := {| W. sys_rel x=1;  W. sys_rel y=1 ||  R. sys_acq y // 1; R. sys_acq x // 0|} ×
 deflitmus MP_fence_cta := {| W x=1; Fence. cta_sc; W y=1 ||  R y // 1; Fence. cta_sc; R x // 0|}
   where sys := { {T0}, {T1} }
 deflitmus MP_read_cta := {| W x=1; Fence. sys_sc; W y=1 ||  R. cta_rlx y // 1; Fence. sys_sc; R x // 0|}
@@ -395,7 +395,7 @@ deflitmus MP_fence_weak_rel_acq := {| W. sys_weak x=1; Fence. sys_rel; W. sys_we
 deflitmus MP_fence_cta_1fence := {| W x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fence. cta_sc; R x // 0|}
   where sys := { {T0}, {T1} }
 deflitmus N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |}
-deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}
+deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}  ✓
 deflitmus dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |}
 
 deflitmus WRC := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|}
@@ -426,7 +426,7 @@ deflitmus write_serialization := {| W. cta_rlx x=1;  W. cta_rlx x=2 || R. cta_rl
 deflitmus write_serialization_unscoped := {| W. cta_rlx x=1;  W. cta_rlx x=2 || R. cta_rlx x // 1; R. cta_rlx x // 2 || R. cta_rlx x // 2 ; R. cta_rlx x // 1|}
 
 
-def allPTX := litmusTests!
+def allPTX : List Litmus.Test := litmusTests!
 def ptx_2 := allPTX.filter λ lit => lit.numThreads == 2
 def ptx_3 := allPTX.filter λ lit => lit.numThreads == 3
 def ptx_4 := allPTX.filter λ lit => lit.numThreads == 4

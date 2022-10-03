@@ -115,10 +115,10 @@ def Request.isFenceAcqRel (req : Request) : Bool :=
   req.isBarrier && req.basic_type.type.sem == PTX.Semantics.acqrel
 
 def Request.isRel (req : Request) : Bool :=
-  req.isWrite && req.basic_type.type.sem == PTX.Semantics.rel
+  req.basic_type.type.sem == PTX.Semantics.rel
 
 def Request.isAcq (req : Request) : Bool :=
-  req.isRead && req.basic_type.type.sem == PTX.Semantics.acq
+  req.basic_type.type.sem == PTX.Semantics.acq
 
 def Request.isAcqRelKind (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.rel ||
@@ -175,19 +175,24 @@ def reorder : ValidScopes → Request → Request → Bool
                     && r_old.isMem && !r_old.isSatisfied)
                     b⇒ (r_new.address? != r_old.address?)
   let relacq := (r_new.isAcq && r_old.isRel) b⇒ (r_new.address? != r_old.address?)
-  let acqthread := r_new.isAcq b⇒ (r_new.thread != r_old.thread)
+  -- TODO: Discuss this
+  -- Old idea was something about the originating threads being different:
+  -- I'm not sure about this now...
+  -- let acqthread := r_new.isAcq b⇒ (r_new.thread != r_old.thread) -- rel before, acq after
+  -- Trying instead:
+  let acqafter := r_old.isAcq b⇒ !(r_new.isRead || r_new.thread != r_old.thread)
+  let relbefore := r_old.isWrite b⇒ !(r_new.isAcq || r_new.thread != r_old.thread)
   let newrel := !r_new.isRel
-  --dbg_trace "[reorder] {r_old} {r_new}"
-  --dbg_trace "[reorder] scope inclusive: {(@scopeInclusive V) r_old r_new}"
-  --dbg_trace "[reorder] sc_fences : {sc_fences}"
-  --dbg_trace "[reorder] satisfied : {satisfied}"
-  --dbg_trace "[reorder] relacq : {relacq}"
-  --dbg_trace "[reorder] acqthread : {acqthread}"
-  --dbg_trace "[reorder] newrel : {newrel}"
-  --dbg_trace "[reorder] acqrel_fences : {acqrel_fences}"
-  --(@scopeInclusive V) r_old r_new ||
+  -- dbg_trace "[reorder] {r_old} {r_new}"
+  -- dbg_trace "[reorder] fences : {fences}"
+  -- dbg_trace "[reorder] satisfied : {satisfied}"
+  -- dbg_trace "[reorder] relacq : {relacq}"
+  -- dbg_trace "[reorder] relafter : {relbefore}"
+  -- dbg_trace "[reorder] acqbefore : {acqafter}"
+  -- dbg_trace "[reorder] newrel : {newrel}"
+  -- dbg_trace "[reorder] !scopes match: {!scopesMatch V r_old r_new}"
   !scopesMatch V r_old r_new ||
-  (satisfied && relacq && acqthread && newrel && fences)
+  (satisfied && relacq && acqafter && relbefore && newrel && fences)
 
 -- On SC fence we propagate predecessors to the SC fence's scope. We enforce
 -- this by not accepting, propagating or satisfying any other requests unless
@@ -390,17 +395,23 @@ deflitmus MP := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |} ✓
 deflitmus MP_fence1 := {| W x=1; Fence; W y=1 ||  R y // 1; R x // 0 |} ✓
 deflitmus MP_fence2 := {| W x=1; W y=1 ||  R y //1; Fence; R x // 0 |} ✓
 deflitmus MP_fence := {| W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0|} ×
-deflitmus MP_relacq := {| W. sys_rel x=1;  W. sys_rel y=1 ||  R. sys_acq y // 1; R. sys_acq x // 0|} ×
 deflitmus MP_fence_cta := {| W x=1; Fence. cta_sc; W y=1 ||  R y // 1; Fence. cta_sc; R x // 0|}
   where sys := { {T0}, {T1} } ✓
 deflitmus MP_read_cta := {| W x=1; Fence. sys_sc; W y=1 ||  R. cta_rlx y // 1; Fence. sys_sc; R x // 0|}
   where sys := { {T0}, {T1} } ×
-deflitmus MP_fence_consumer_weak := {| W. sys_weak x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fence. sys_sc; R. sys_weak x // 0|} ×
-deflitmus MP_fence_weak := {| W. sys_weak x=1; Fence. sys_sc; W. sys_weak y=1 ||  R. sys_weak y // 1; Fence. sys_sc; R. sys_weak x // 0|} ×
-deflitmus MP_fence_weak_rel_acq := {| W. sys_weak x=1; Fence. sys_rel; W. sys_weak y=1 ||  R. sys_weak y // 1; Fence. sys_acq; R. sys_weak x // 0|} ×
+deflitmus MP_fence_consumer_weak := {| W. sys_weak x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fence. sys_sc; R. sys_weak x // 0|} -- ×
+deflitmus MP_fence_weak := {| W. sys_weak x=1; Fence. sys_sc; W. sys_weak y=1 ||  R. sys_weak y // 1; Fence. sys_sc; R. sys_weak x // 0|} -- ×
+deflitmus MP_fence_weak_rel_acq := {| W. sys_weak x=1; Fence. sys_rel; W. sys_weak y=1 ||  R. sys_weak y // 1; Fence. sys_acq; R. sys_weak x // 0|} -- ×
+deflitmus MP_fence_rel_acq := {| W x=1; Fence. sys_rel; W  y=1 ||  R y // 1; Fence. sys_acq; R x // 0|} ×  -- [2, 2, 2, 3, 1, 1, 4, 1, 3, 2, 2, 1, 1, 1] →  [Accept (W x(1)), Accept (Fence.rel.sys), Accept (W y(1)), Propagate Req4 (W y(1)) to Thread 1, Accept (R y), Accept (Fence.acq.sys), Propagate Req6 (Fence.acq.sys) to Thread 0, Accept (R x), Propagate Req7 (R x(0)) to Thread 0, Propagate Req2 (W x(1)) to Thread 1, Propagate Req3 (Fence.rel.sys) to Thread 1, Satisfy Req7 (R x(0)) with Req0 (W x(0)), Propagate Req5 (R y(1)) to Thread 0, Satisfy Req5 (R y(1)) with Req4 (W y(1))]
+/- The issue with this test seems to be with the checking of the reorder condition when updating the order constraints:
+  when accepting a new request r_new we check reorder r_new r_old, whereas when propagating, we check reorder r_old r_new.
+  In this way, by delaying the acceptance of the acquire fence, it avoids getting ordered with the release fence. This
+  can in turn be leveraged to propagate the acquire fence first, effectively avoiding the ordering.
+  -/
+deflitmus MP_rel_acq := {| W x=1; W. sys_rel y=1 ||  R. sys_acq y // 1; R x // 0|} ×
 deflitmus MP_fence_cta_1fence := {| W x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fence. cta_sc; R x // 0|}
   where sys := { {T0}, {T1} } ✓
-deflitmus N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |} ×
+deflitmus N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |} ✓
 deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}  ✓
 deflitmus dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |} ×
 

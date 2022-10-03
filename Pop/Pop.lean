@@ -255,7 +255,7 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
       else if (blesort read.propagated_to) != (blesort write.propagated_to) then false
       else
         let scope := state.scopes.jointScope read.thread write.thread
-        --dbg_trace "can {writeId} satisfy {readId}?"
+        -- dbg_trace "can {writeId} satisfy {readId}?"
         -- TODO: can/should we relax this?
         let oc := state.orderConstraints.lookup scope writeId readId
         let betweenIds := state.orderConstraints.between scope write.id read.id (reqIds state.requests)

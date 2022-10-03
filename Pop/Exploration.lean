@@ -229,8 +229,9 @@ def SystemState.exhaustiveSearch (state : SystemState) (inittuple : (List (Trans
  (dontPruneCondition : optParam (SystemState → ProgramState → Bool) (λ _ _ => true))
  (stopAfterFirst : optParam Bool false) (storePartialTraces : optParam Bool false)
  (numWorkers : optParam Nat 7) (batchSize : optParam Nat 15)
- (breadthFirst : optParam Bool false) (logProgress : optParam Bool false) :
- List ((List Transition) × SystemState) :=
+ (breadthFirst : optParam Bool false) (logProgress : optParam Bool false)
+  (maxIterations := some 10000) :
+ Except String $ List ((List Transition) × SystemState) :=
 match inittuple with
   | (inittransitions, accepts) =>
   let stateinit := state.applyTrace inittransitions
@@ -269,6 +270,10 @@ match inittuple with
             if stopAfterFirst && found.length > 0 then
               unexplored := #[]
               break
+            --if let some n := maxIterations  && n < explored.size then
+            if let some n := maxIterations then
+              if explored.size > n then
+                return Except.error s!"Exceeded max. number of iterations({n})"
             if logProgress then
               if newTriples.any λ (pt,_,_)t => pt.length > cur_size then
                 cur_size := cur_size + 1
@@ -282,21 +287,20 @@ match inittuple with
               break
             --dbg_trace "total unexplored: {unexplored.size}"
           workers := #[]
-      return found
-    | .error _ => -- TODO: make this function also an Except value
-    [(inittransitions,state)]
+      return Except.ok found
+    | .error e => .error e
 
 def SystemState.exhaustiveSearchLitmus
   (state : SystemState) (litmus : (List Transition) × ProgramState × Litmus.Outcome)
   (stopAfterFirst : optParam Bool false)
   (storePartialTraces : optParam Bool true) (numWorkers : optParam Nat 7)
   (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false)
-  (logProgress : optParam Bool false) :
-  List ((List Transition) × SystemState) :=
+  (logProgress : optParam Bool false) (maxIterations : optParam (Option Nat) none) :
+  Except String $ List ((List Transition) × SystemState) :=
     let (inittrans,progstate,expectedOutcome) := litmus
     let pruneFun := λ ss _ => ss.outcomePossible expectedOutcome
     state.exhaustiveSearch (inittrans,progstate) pruneFun stopAfterFirst storePartialTraces numWorkers
-      batchSize breadthFirst logProgress
+      batchSize breadthFirst logProgress maxIterations
 
 -- Doesn't work. Need to combine removed with requests
 -- def SystemState.satisfiedRequestPairs : SystemState → List (Request × Request)
@@ -307,47 +311,56 @@ def SystemState.exhaustiveSearchLitmus
 --       | _ => none
 --     filterNones optPairs
 
-def runMultipleLitmusAux (tests : List Litmus.Test) (logProgress := false)
-  : List (Litmus.Test × (List Litmus.Outcome) × (List ((List Transition) × SystemState))) := Id.run do
+def runMultipleLitmusAux (tests : List Litmus.Test) (logProgress := false) (maxIterations : Option Nat)
+  : List ((Litmus.Test) × (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState)))) := Id.run do
     let mut tasks  := #[]
     for test@(Litmus.Test.mk initTrans initProg outcome startingState _ _) in tests do
       let task := Task.spawn λ _ =>
-        let resExpl := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome)
-                       (stopAfterFirst := true) (logProgress := logProgress)
-        let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.outcome
-        let pts := Util.removeDuplicates $ resExpl
-        (test, resLitmus, pts)
+        let resExplExcept := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome)
+                       (stopAfterFirst := true) (logProgress := logProgress) (maxIterations := maxIterations)
+        match resExplExcept with
+          | .ok resExpl =>
+             let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.outcome
+             let pts := Util.removeDuplicates $ resExpl
+             (test, Except.ok (resLitmus, pts))
+          | .error e => (test, Except.error e)
       tasks := tasks.push task
     return tasks.map Task.get  |>.toList
 
-def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false) (batchSize := 6)
-: List (Litmus.Test × (List Litmus.Outcome) × (List ((List Transition) × SystemState)))
+def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false) (batchSize := 6) (maxIterations := some 20000)
+: List ((Litmus.Test) × (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState))))
   := Id.run do
     let mut res := []
     let mut remaining := tests
     while !remaining.isEmpty do
       let testBatch := remaining.take batchSize
       remaining := remaining.drop batchSize
-      res := res ++ (runMultipleLitmusAux testBatch logProgress)
+      res := res ++ (runMultipleLitmusAux testBatch logProgress maxIterations)
     return res
 
-def prettyPrintLitmusResult : Litmus.Test → ((List Litmus.Outcome) × (List ((List Transition) × SystemState))) →
+def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState))) →
 (printWitness : optParam Bool true) → (printHead : optParam Bool true) → (nameColWidth : optParam Nat 30) → String
-  | test, (reslit, pts), printWitness, printHead, nameColWidth =>
-     let outcome_res := if reslit.any λ out => outcomeEqiv out test.expected
-       then "✓"
-       else "×"
+  | test, resExcept , printWitness, printHead, nameColWidth =>
+     --  (reslit, pts)
+     let outcome_res := match resExcept with
+       | .error _ => "?"
+       | .ok (reslit,_) => if reslit.any λ out => outcomeEqiv out test.expected
+         then "✓"
+         else "×"
+     let pts := match resExcept with
+       | .error _ => []
+       | .ok (_, pts) => pts
      let axiomatic := test.axiomaticAllowed.toString
      let ptString := match pts.head? with
        | none => ""
        | some (pt,state) => toString $ pt.map (Transition.prettyPrint state)
      let uncolored := s!"| {test.name}" ++ (String.mk $ List.replicate (nameColWidth - test.name.length - 3) ' ') ++
                    s!"| {axiomatic}         | {outcome_res}   |"
-     let resStr := if axiomatic != "?" && axiomatic != outcome_res
+     let resStr := if axiomatic != "?" && outcome_res != "?" && axiomatic != outcome_res
        then colorRed uncolored
        else uncolored
      let witnessStr := if outcome_res == "✓" && printWitness
-       then s!"\nWitness: {ptString}"
+       then s!"\n    Witness: {ptString}\n"
        else ""
      let headStr := if printHead
      then
@@ -357,12 +370,15 @@ def prettyPrintLitmusResult : Litmus.Test → ((List Litmus.Outcome) × (List ((
      else ""
      headStr ++ resStr ++ witnessStr
 
-def printMultipleLitmusResults : List (Litmus.Test × (List Litmus.Outcome) × (List ((List Transition) × SystemState))) → (printWitnesses : optParam Bool false) → String
+def printMultipleLitmusResults : List ((Litmus.Test) × (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState)))) → (printWitnesses : optParam Bool false) → String
   | results, printWitnesses => Id.run do
   let mut first := true
   let mut resStr := ""
+  let colLength := match List.maximum? $ results.map λ (t,_) => t.name.length with
+    | none => 40
+    | some l => l + 5
   for (test,res) in results do
-    resStr := resStr ++ (prettyPrintLitmusResult test res (printWitness := printWitnesses) (printHead := first)) ++ "\n"
+    resStr := resStr ++ (prettyPrintLitmusResult test res (printWitness := printWitnesses) (printHead := first) (colLength)) ++ "\n"
     first := false
   return resStr
 

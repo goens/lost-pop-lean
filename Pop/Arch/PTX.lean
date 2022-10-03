@@ -68,7 +68,7 @@ instance : ArchReq where
   type := PTX.Req
   instBEq := PTX.instBEqReq
   instInhabited := PTX.instInhabitedReq
-  isPermanentRead := λ _ => true
+  isPermanentRead := λ _ => false
   instToString := PTX.instToStringReq
 
 def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
@@ -194,17 +194,26 @@ def reorder : ValidScopes → Request → Request → Bool
 -- this is propagated. This is the check we use for that. Returns the first
 -- SC fence that it finds that it's blocked on (it should never be more than
 -- one anyway)
+private def _root_.Pop.SystemState.blockedOnSCFencePreds (state : SystemState) (fence : Request) : List Request := Id.run do
+  let mut res := []
+  let scope := PTX.requestScope state.scopes fence
+  if fence.fullyPropagated scope then
+    return res
+  else
+    let preds := state.requests.filter
+      λ r => r.predecessorAt.contains fence.thread ||
+             r.propagatedTo fence.thread && r.id != fence.id
+    res := res ++ preds
+  return res
+
 def _root_.Pop.SystemState.blockedOnSCFence (state : SystemState) : Option RequestId := Id.run do
   let scfences := state.requests.filter Request.isFenceSC
   for fence in scfences do
+    let preds := state.blockedOnSCFencePreds fence
     let scope := PTX.requestScope state.scopes fence
-    if fence.fullyPropagated scope then
-      continue
-    else
-      let preds := state.requests.filter λ r => r.predecessorAt.contains fence.thread
-      unless preds.all λ p => p.fullyPropagated scope do
-        --dbg_trace "blocked on R{fence.id}"
-        return some fence.id
+    unless preds.all λ p => p.fullyPropagated scope do
+      --dbg_trace "blocked on R{fence.id}"
+      return some fence.id
   return none
 
 def acceptConstraints (state : SystemState) (_ : BasicRequest) (tid : ThreadId) : Bool :=
@@ -212,14 +221,11 @@ def acceptConstraints (state : SystemState) (_ : BasicRequest) (tid : ThreadId) 
   state.blockedOnSCFence == none &&
   scfences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
 
-def propagateConstraints (state : SystemState) (rid : RequestId) (thId : ThreadId) : Bool :=
+def propagateConstraints (state : SystemState) (rid : RequestId) (_ : ThreadId) : Bool :=
   if let some fenceId := state.blockedOnSCFence then
-    if fenceId == rid then true
-    else
-      let fence := state.requests.getReq! rid
-      let scope := requestScope state.scopes fence
-      let req := state.requests.getReq! rid
-      scope.threads.contains thId && req.predecessorAt.contains fence.thread
+    let fence := state.requests.getReq! fenceId
+    let preds := state.blockedOnSCFencePreds fence |>.map Request.id
+    preds.contains rid
   else
     true
 

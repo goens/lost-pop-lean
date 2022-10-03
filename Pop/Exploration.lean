@@ -357,12 +357,12 @@ def prettyPrintLitmusResult : Litmus.Test → ((List Litmus.Outcome) × (List ((
      else ""
      headStr ++ resStr ++ witnessStr
 
-def printMultipleLitmusResults : List (Litmus.Test × (List Litmus.Outcome) × (List ((List Transition) × SystemState))) → String
-  | results => Id.run do
+def printMultipleLitmusResults : List (Litmus.Test × (List Litmus.Outcome) × (List ((List Transition) × SystemState))) → (printWitnesses : optParam Bool false) → String
+  | results, printWitnesses => Id.run do
   let mut first := true
   let mut resStr := ""
   for (test,res) in results do
-    resStr := resStr ++ (prettyPrintLitmusResult test res (printWitness := false) (printHead := first)) ++ "\n"
+    resStr := resStr ++ (prettyPrintLitmusResult test res (printWitness := printWitnesses) (printHead := first)) ++ "\n"
     first := false
   return resStr
 

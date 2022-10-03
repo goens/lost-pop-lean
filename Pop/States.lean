@@ -212,7 +212,7 @@ def ValidScopes.threadScope {V : ValidScopes } (t :  ThreadId) (h : [t] ∈ V.sc
 def ValidScopes.jointScope : (V : ValidScopes) → ThreadId → ThreadId → (@Scope V)
  | valid, t₁, t₂ => match valid.scopes.meet t₁ t₂ with
    | some scope => {threads := scope, valid := sorry}
-   | none => unreachable! -- can we get rid of this case distinction?
+   | none => panic! s!"can't find the joint scope of {t₁} and {t₂} in {valid.scopes}"-- can we get rid of this case distinction?
 
 def Request.propagatedTo (r : Request) (t : ThreadId) : Bool := r.propagated_to.elem t
 

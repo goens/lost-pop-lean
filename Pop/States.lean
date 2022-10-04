@@ -129,9 +129,18 @@ structure ValidScopes where
 def ValidScopes.default : ValidScopes := { system_scope := [], scopes := ListTree.leaf []}
 instance : Inhabited ValidScopes where default := ValidScopes.default
 
-def ValidScopes.toString (scopes : ValidScopes) : String :=
-  "{" ++ String.intercalate ", " (scopes.scopes.toList.map ToString.toString) ++ "}"
+def ValidScopes.toStringHet (threadType : Option (ThreadId → String)) (scopes : ValidScopes) : String :=
+  let scopeFun := match threadType with
+    | none => λ _ => ""
+    | some f => λ ss =>
+       let labs := removeDuplicates $ List.map f ss
+       if labs == ["default"] || labs == [] then "" else
+       if labs.length == 1 then labs.head! else
+       String.intercalate "+" labs
+  let scopeLab := λ s : List ThreadId => if s.isEmpty then "" else toString s ++ scopeFun s
+  "{" ++ String.intercalate ", " (scopes.scopes.toList.map scopeLab) ++ "}"
 
+def ValidScopes.toString (scopes : ValidScopes) : String := scopes.toStringHet none
 instance : ToString ValidScopes where toString := ValidScopes.toString
 
 open Lean in

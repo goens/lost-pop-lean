@@ -50,7 +50,7 @@ def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except Str
       else if let .ok m := exceptTransMsg then
         let msg := "======================================\n"
           ++ s!"{name}, program state:\n{programState.prettyPrint}\n"
-          ++ s!"scopes : {systemState.scopes}\n"
+          ++ s!"scopes : {systemState.scopes.toStringHet (some systemState.threadTypes)}\n"
           ++ "--------------------------------------\n"
           ++ s!"Current trace:\n{partialTraceNums}\n"
           ++ "--------------------------------------\n"

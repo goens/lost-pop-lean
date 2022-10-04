@@ -63,21 +63,21 @@ instance : Arch where
 
 namespace Litmus
 
-def mkRead (reqtype : String ) (addr : Address) : BasicRequest :=
+def mkRead (reqtype : String ) (addr : Address) (_ : String): BasicRequest :=
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
   match reqtype with
     | "" => BasicRequest.read rr Req.other
     | "acq" => BasicRequest.read rr Req.acq
     | _ => panic! "invalid read request type: {reqtype}"
 
-def mkWrite (reqtype : String) (addr : Address) (val : Value) : BasicRequest :=
+def mkWrite (reqtype : String) (addr : Address) (val : Value) (_ : String): BasicRequest :=
   let wr : WriteRequest := { addr := addr, val := val}
   match reqtype with
     | "" => BasicRequest.write wr Req.other
     | "rel" => BasicRequest.write wr Req.rel
     | _ => panic! "invalid read request type: {reqtype}"
 
-def mkBarrier (reqtype : String) : BasicRequest :=
+def mkBarrier (reqtype : String) (_ : String): BasicRequest :=
   match reqtype with
     | "" => BasicRequest.barrier Req.other
     | _ => panic! "invalid barrier type: {reqtype}"

@@ -44,12 +44,12 @@ structure ReadRequest where
  addr : Address
  reads_from : Option RequestId
  val : Value
- deriving BEq
+ deriving BEq, Inhabited
 
 structure WriteRequest where
  addr : Address
  val : Value
- deriving BEq
+ deriving BEq, Inhabited
 
 instance : BEq ArchReq.type := ArchReq.instBEq
 instance : Inhabited ArchReq.type := ArchReq.instInhabited
@@ -97,6 +97,16 @@ def BasicRequest.type : BasicRequest → ArchReq.type
   | BasicRequest.read  _ t => t
   | BasicRequest.write  _ t => t
   | BasicRequest.barrier t => t
+
+def BasicRequest.readRequest? : BasicRequest → Option ReadRequest
+  | BasicRequest.read  rr _ => some rr
+  | BasicRequest.write  _ _ => none
+  | BasicRequest.barrier _ => none
+
+def BasicRequest.writeRequest? : BasicRequest → Option WriteRequest
+  | BasicRequest.read  _ _ => none
+  | BasicRequest.write  wr _ => some wr
+  | BasicRequest.barrier _ => none
 
 def BasicRequest.updateType : BasicRequest → (ArchReq.type → ArchReq.type) → BasicRequest
   | .read  rr t, f => .read rr (f t)
@@ -466,6 +476,7 @@ structure SystemState where
   removed : List (Request)
   scopes : ValidScopes
   satisfied : List SatisfiedRead
+  threadTypes : ThreadId → String
   orderConstraints : @OrderConstraints scopes
   seenCoherent : ∀ id : RequestId, id ∈ seen → id ∈ reqIds requests
   removedCoherent : ∀ id : RequestId, id ∈ (removed.map Request.id) → id ∈ reqIds requests
@@ -515,15 +526,15 @@ theorem empty2Coherent (seen : List RequestId) :
   intros
   contradiction
 
-def SystemState.init (S : ValidScopes) : SystemState :=
+def SystemState.init (S : ValidScopes) (threadTypes : ThreadId → String): SystemState :=
   { requests := RequestArray.empty, seen := [], removed := [],
     scopes := S, satisfied := [], orderConstraints := OrderConstraints.empty,
     seenCoherent := emptyCoherent RequestArray.empty,
     removedCoherent := emptyCoherent RequestArray.empty,
-    satisfiedCoherent := empty2Coherent []
+    satisfiedCoherent := empty2Coherent [], threadTypes
   }
 
-def SystemState.default := SystemState.init ValidScopes.default
+def SystemState.default := SystemState.init ValidScopes.default (λ _ => "default")
 instance : Inhabited (SystemState) where default := SystemState.default
 
 
@@ -546,7 +557,7 @@ def SystemState.updateRequest : SystemState → Request → SystemState
   | state, request =>
    let requests' := state.requests.insert request
    SystemState.mk requests' state.seen state.removed state.scopes state.satisfied
-   state.orderConstraints sorry sorry sorry
+   state.threadTypes state.orderConstraints sorry sorry sorry
    --{requests := requests', seen := state.seen, removed := state.removed,
    -- scopes := state.scopes, satisfied := state.satisfied,
    -- orderConstraints := state.orderConstraints,

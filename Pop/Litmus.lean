@@ -95,9 +95,9 @@ namespace Pop
 variable [Arch]
 
 class LitmusSyntax where
-  mkRead : String → Address → BasicRequest
-  mkWrite : String → Address → Value → BasicRequest
-  mkBarrier : String → BasicRequest
+  mkRead : String → Address → String → BasicRequest
+  mkWrite : String → Address → Value → String → BasicRequest
+  mkBarrier : String → String → BasicRequest
 
 def mkValidScopes (n : Nat) : ValidScopes :=
   { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
@@ -105,12 +105,12 @@ def mkValidScopes (n : Nat) : ValidScopes :=
 variable [LitmusSyntax]
 open LitmusSyntax
 
-def mkRequest : String × String × Address × Value → ThreadId → Option (Transition)
-  | ("R", typeStr, addr, _), thId  => some $ Pop.Transition.acceptRequest (mkRead typeStr addr) thId
-  | ("W",typeStr , addr, val), thId  => some $ Pop.Transition.acceptRequest (mkWrite typeStr addr val) thId
-  | ("Fence", typeStr, _, _), thId => some $ Pop.Transition.acceptRequest (mkBarrier typeStr) thId
-  | ("Dependency", _, _, _), _ => some $ Pop.Transition.dependency none
-  | _, _ => none
+def mkRequest : String × String × Address × Value → ThreadId → String → Option (Transition)
+  | ("R", typeStr, addr, _), thId, thTy => some $ Pop.Transition.acceptRequest (mkRead typeStr addr thTy) thId
+  | ("W",typeStr , addr, val), thId, thTy  => some $ Pop.Transition.acceptRequest (mkWrite typeStr addr val thTy) thId
+  | ("Fence", typeStr, _, _), thId, thTy => some $ Pop.Transition.acceptRequest (mkBarrier typeStr thTy) thId
+  | ("Dependency", _, _, _), _, _ => some $ Pop.Transition.dependency none
+  | _, _, _ => none
 
 def mkOutcome : String × String × Address × Value → ThreadId → Litmus.Outcome
   | ("R", _, addr, val@(some _)), thId  => [(thId,addr,val)]
@@ -119,7 +119,7 @@ def mkOutcome : String × String × Address × Value → ThreadId → Litmus.Out
 def initZeroesUnpropagatedTransitions : List Address → List (Transition)
   | addresses =>
   -- Does the threadId matter? For now, using 0
-  addresses.map λ addr => Pop.Transition.acceptRequest (mkWrite "" addr 0) 0
+  addresses.map λ addr => Pop.Transition.acceptRequest (mkWrite "" addr 0 "init") 0
 
 def SystemState.initZeroesUnpropagated! : SystemState → List Address → SystemState
   | state, addresses =>
@@ -166,8 +166,12 @@ structure RequestSyntax where
   (value : Option Nat)
 
 def createLitmus (list : List (List RequestSyntax))
-  (validScopes : Option ValidScopes) (name : String)
+  (opScopesThreadMapping : Option $ ValidScopes × (ThreadId → String)) (name : String)
   (axiomaticAllowed := Litmus.AxiomaticAllowed.unknown) : Litmus.Test :=
+  let validScopes := opScopesThreadMapping.map λ (s,_) => s
+  let threadTypes := match opScopesThreadMapping with
+    | none => λ _ => "default"
+    | some (_,f) => f
   let variablesRaw := list.map λ thread => thread.map (λ r => if r.varName.length == 0 then none else some r.varName)
   let variables := removeDuplicates $ filterNones $ List.join variablesRaw
   let variableNums := variables.zip (List.range variables.length)
@@ -176,15 +180,15 @@ def createLitmus (list : List (List RequestSyntax))
   let replacedVariablesNat : List (List (String × String × Nat × Option Nat)) := list.map λ thread => thread.map replaceVar
   let replacedVariables : List (List (String × String × Address × Value)) := replacedVariablesNat.map λ l => l.map (λ (str,rtype,addr,val) => (str,rtype,Address.ofNat addr, val))
   let fullThreads := replacedVariables.zip (List.range replacedVariables.length)
-  let mkThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkRequest r thId) reqs
+  let mkThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkRequest r thId (threadTypes thId)) reqs
   let mkOutcomeThread := λ (reqs, thId) => List.join $ List.map (λ r => mkOutcome r thId) reqs
   let reqs := fullThreads.map λ t => mkThread t |>.toArray
   let outcomes := List.join $ fullThreads.map λ t => mkOutcomeThread t
   let initWrites := initZeroesUnpropagatedTransitions (List.range variables.length)
   let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
   let initState := match validScopes with
-    | some scopes => SystemState.init scopes
-    | none => SystemState.init $ mkValidScopes fullThreads.length
+    | some scopes => SystemState.init scopes threadTypes
+    | none => SystemState.init (mkValidScopes fullThreads.length) threadTypes
   { initTransitions := initWrites ++ initPropagates,
     program := reqs.toArray, expected := outcomes,
     initState, name, axiomaticAllowed}
@@ -291,15 +295,19 @@ def mkCTA (mapping : String → Option ThreadId) (threads : TSyntax `threads)
     then Except.error "Invalid thread string to id mapping"
     else Except.ok $ ListTree.leaf $ filterNones threadNats
 
+def mkThreadTypeFun : List ((List ThreadId) × String) → ThreadId → String
+  | [], _ => "unknown"
+  | (ids,s)::rest, thId => if ids.contains thId then s else mkThreadTypeFun rest thId
+
 partial def mkSysAux (mapping : String → Option ThreadId) (desc : TSyntax `system_desc)
-  : Except String (ListTree ThreadId) :=
+  : Except String ((ListTree ThreadId) × (List $ (List String) × String)) :=
   match desc.raw with
-    | `(system_desc| { $ts:threads }) => mkCTA mapping ts
-    | `(system_desc| { $ts:threads }.$_) => mkCTA mapping ts
+    | `(system_desc| { $ts:threads }) => return (← mkCTA mapping ts, [(threadsGetAllNames ts |>.toList, "default")])
+    | `(system_desc| { $ts:threads }.$ty) => return (← mkCTA mapping ts, [(threadsGetAllNames ts |>.toList, ty.getId.toString)])
     | `(system_desc| { $[$sds:system_desc],* }) => do
-      let sdsTrees := (← sds.mapM $ mkSysAux mapping).toList
+      let (sdsTrees, names) := (← sds.mapM $ mkSysAux mapping).toList.unzip
       let join := setJoin $ sdsTrees.map ListTree.listType
-      ListTree.mkParent join sdsTrees
+      return (← ListTree.mkParent join sdsTrees, names.join)
     | _ => Except.error "unexpected syntax in system description"
 
 -- Define an attribute to add up all Litmus tests
@@ -345,14 +353,15 @@ elab "litmusTests!" : term <= ty => do
 
 macro "deflitmus" name:ident " := " litmus:term : command => `(@[litmusTest $name] def $name := $litmus $(Lean.quote name.getId.toString))
 
-def mkSys (desc : TSyntax `system_desc) : Except String ValidScopes :=
+def mkSys (desc : TSyntax `system_desc) : Except String (ValidScopes × (List $ (List ThreadId) × String)) :=
   let allNames := systemDescGetAllNames desc |>.qsort alphabetic
   let mapping := mkNameMapping allNames
   if allNames.toList.unique.length == allNames.size
   then do
+    let (scopes, thTypes) ← mkSysAux mapping desc
     let threads := filterNones (allNames.map mapping).toList
-    let scopes ← mkSysAux mapping desc
-    return { scopes := scopes, system_scope := threads}
+    let thIdTypes := thTypes.map λ (thNames,ty) => (thNames.map mapping |> filterNones, ty)
+    return ({ scopes := scopes, system_scope := threads}, thIdTypes)
   else
     let doubles := allNames.toList.unique.foldl (init := allNames) (λ curr name => curr.erase name)
     Except.error s!"some thread(s) appear(s) more than once: {doubles}"
@@ -362,7 +371,7 @@ macro_rules
   | `(`[sys| $desc:system_desc ]) => do
     let descRes := mkSys desc
     match descRes with
-      | Except.ok lt => `($(quote lt))
+      | Except.ok (lt,thTy) => `(($(quote lt), mkThreadTypeFun $(quote thTy)))
       | Except.error msg => Macro.throwError msg
 
 -- Tests

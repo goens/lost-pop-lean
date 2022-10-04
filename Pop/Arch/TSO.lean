@@ -42,15 +42,15 @@ instance : Arch where
 
 namespace Litmus
 
-def mkRead (_ : String ) (addr : Address) : BasicRequest :=
+def mkRead (_ : String ) (addr : Address) (_ : String) : BasicRequest :=
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
   BasicRequest.read rr default
 
-def mkWrite (_ : String) (addr : Address) (val : Value) : BasicRequest :=
+def mkWrite (_ : String) (addr : Address) (val : Value) (_ : String) : BasicRequest :=
   let wr : WriteRequest := { addr := addr, val := val}
   BasicRequest.write wr default
 
-def mkBarrier (_ : String) : BasicRequest := BasicRequest.barrier default
+def mkBarrier (_ : String) (_ : String) : BasicRequest := BasicRequest.barrier default
 
 instance : LitmusSyntax where
   mkRead := mkRead

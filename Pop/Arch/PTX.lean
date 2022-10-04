@@ -283,7 +283,7 @@ instance : Arch where
 
 
 namespace Litmus
-def mkRead (scope_sem : String ) (addr : Address) : BasicRequest :=
+def mkRead (scope_sem : String ) (addr : Address) (_ : String) : BasicRequest :=
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
   match scope_sem.splitOn "_" with
     | [""] => BasicRequest.read rr
@@ -309,7 +309,7 @@ def mkRead (scope_sem : String ) (addr : Address) : BasicRequest :=
       dbg_trace "malformed PTX read request: W.{scope_sem}"
       BasicRequest.read rr default
 
-def mkWrite (scope_sem : String) (addr : Address) (val : Value) : BasicRequest :=
+def mkWrite (scope_sem : String) (addr : Address) (val : Value) (_ : String) : BasicRequest :=
   let wr : WriteRequest := { addr := addr, val := val}
   match scope_sem.splitOn "_" with
     | [""] => BasicRequest.write wr
@@ -334,7 +334,7 @@ def mkWrite (scope_sem : String) (addr : Address) (val : Value) : BasicRequest :
       dbg_trace "malformed PTX read request: W.{scope_sem}"
       BasicRequest.write wr default
 
-def mkBarrier (scope_sem : String) : BasicRequest :=
+def mkBarrier (scope_sem : String) (_ : String) : BasicRequest :=
   match scope_sem.splitOn "_" with
     | [""] => BasicRequest.barrier
               {scope := Scope.sys, sem := Semantics.sc, predecessorAt := []}
@@ -448,3 +448,5 @@ def ptx_2 := allPTX.filter λ lit => lit.numThreads == 2
 def ptx_3 := allPTX.filter λ lit => lit.numThreads == 3
 def ptx_4 := allPTX.filter λ lit => lit.numThreads == 4
 end Litmus
+
+end PTX

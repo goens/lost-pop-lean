@@ -170,6 +170,7 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
   let seen' := blesort $ state.seen ++ [req.id]
   let orderConstraints' := state.updateOrderConstraintsAccept req
   { requests := requests', scopes := state.scopes, seen := seen',
+    threadTypes := state.threadTypes,
     orderConstraints := orderConstraints',
     removed := state.removed, satisfied := state.satisfied,
     seenCoherent := sorry
@@ -191,6 +192,7 @@ def SystemState.unapplyAcceptRequest : SystemState → RequestId → SystemState
 -- TODO: PR for multiple updates?
   | state, rId => {requests := state.requests.remove rId,
                    seen := state.seen, removed := state.removed, orderConstraints := state.orderConstraints,
+                   threadTypes := state.threadTypes,
                    scopes := state.scopes, satisfied := state.satisfied,
                    seenCoherent := sorry, removedCoherent :=sorry, satisfiedCoherent := sorry}
 
@@ -239,6 +241,7 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
     let scope := state.scopes.jointScope thId req.thread
     let orderConstraints' := state.updateOrderConstraintsPropagate scope reqId thId
     { requests := requests', orderConstraints := orderConstraints',
+      threadTypes := state.threadTypes,
       seen := state.seen, removed := state.removed, satisfied := state.satisfied,
       seenCoherent := sorry, removedCoherent := sorry,
       satisfiedCoherent := state.satisfiedCoherent
@@ -287,6 +290,7 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
         -/
        { requests := requests', orderConstraints := orderConstraints',
          removed := state.removed, satisfied := satisfied',
+         threadTypes := state.threadTypes,
          seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,
          satisfiedCoherent := sorry
        }
@@ -296,6 +300,7 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
        let requests' := state.requests.remove readId
        { requests := requests', orderConstraints := state.orderConstraints,
          removed := removed', satisfied := satisfied',
+         threadTypes := state.threadTypes,
          seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,
          satisfiedCoherent := sorry
        }

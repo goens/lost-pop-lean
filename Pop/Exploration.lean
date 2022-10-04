@@ -302,6 +302,13 @@ def SystemState.exhaustiveSearchLitmus
     state.exhaustiveSearch (inittrans,progstate) pruneFun stopAfterFirst storePartialTraces numWorkers
       batchSize breadthFirst logProgress maxIterations
 
+def _root_.Litmus.Test.exhaustiveSearch (test : Litmus.Test) (stopAfterFirst : optParam Bool false)
+  (storePartialTraces : optParam Bool true) (numWorkers : optParam Nat 7)
+  (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false)
+  (logProgress : optParam Bool false) (maxIterations : optParam (Option Nat) none) :
+  Except String $ List ((List Transition) × SystemState) :=
+  test.initState.exhaustiveSearchLitmus (test.initTransitions,test.program,test.expected) (stopAfterFirst := stopAfterFirst) (storePartialTraces := storePartialTraces) (numWorkers := numWorkers) (batchSize := batchSize) (breadthFirst := breadthFirst) (logProgress := logProgress) (maxIterations := maxIterations)
+
 -- Doesn't work. Need to combine removed with requests
 -- def SystemState.satisfiedRequestPairs : SystemState → List (Request × Request)
 --   | state =>

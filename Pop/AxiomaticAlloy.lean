@@ -70,6 +70,7 @@ def toPreds (litmus : Litmus.Test) : String :=
     let mut opLast := none
     let mut thId := 0
     let mut seenTrans := []
+    let mut dep := false
     for thread in litmus.program do
       for transition in thread do
         let num := match seenTrans.lookup transition with
@@ -80,8 +81,14 @@ def toPreds (litmus : Litmus.Test) : String :=
           opLast := transitionNames.lookup (transition,num)
           res := res ++ s!"    t{thId}.start = {opLast.get!} and\n"
           continue
+        else if transition.isDependency then
+          dep := true
+          continue
         if let (some cur, some last) := (transitionNames.lookup (transition, num), opLast) then
           res := res ++ s!"    {last}.po = {cur} and\n"
+          if dep then
+            res := res ++ s!"    {last}.dep = {cur} and\n"
+            dep := false
         opLast := transitionNames.lookup (transition, num) -- second transition onward
       -- end thread iteration: update state
       thId := thId + 1
@@ -172,5 +179,5 @@ def toAlloyLitmus (litmus : Litmus.Test ) : String :=
   "}\n" ++ "run generated_litmus_test for 10"
 
 
-#eval toAlloyLitmus PTX.Litmus.IRIW
+#eval toAlloyLitmus Litmus.IRIW
 

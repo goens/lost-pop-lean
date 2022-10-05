@@ -576,7 +576,7 @@ def SystemState.updateRequest : SystemState → Request → SystemState
 class Arch where
   (req : ArchReq)
   (acceptConstraints : SystemState → BasicRequest → ThreadId → Bool := λ _ _ _ => true)
-  (acceptEffects : SystemState → BasicRequest → ThreadId → SystemState := λ st _ _ => st)
+  (acceptEffects : SystemState → RequestId → ThreadId → SystemState := λ st _ _ => st)
   (propagateConstraints : SystemState → RequestId → ThreadId → Bool := λ _ _ _ => true)
   (propagateEffects : SystemState → RequestId → ThreadId → SystemState := λ st _ _ => st)
   (satisfyReadConstraints : SystemState → RequestId → RequestId → Bool := λ _ _ _ => true)

@@ -160,7 +160,7 @@ def SystemState.freshId : SystemState → RequestId
       | none => 0
       | some id => (Nat.succ id)
 
-def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState
+def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState × RequestId
   | state, reqType, tId =>
   let req : Request :=
     {propagated_to := [tId], thread := tId,
@@ -169,14 +169,14 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
   let requests' := state.requests.insert req
   let seen' := blesort $ state.seen ++ [req.id]
   let orderConstraints' := state.updateOrderConstraintsAccept req
-  { requests := requests', scopes := state.scopes, seen := seen',
-    threadTypes := state.threadTypes,
-    orderConstraints := orderConstraints',
-    removed := state.removed, satisfied := state.satisfied,
-    seenCoherent := sorry
-    removedCoherent := sorry
-    satisfiedCoherent := sorry
-  }
+  ({ requests := requests', scopes := state.scopes, seen := seen',
+     threadTypes := state.threadTypes,
+     orderConstraints := orderConstraints',
+     removed := state.removed, satisfied := state.satisfied,
+     seenCoherent := sorry
+     removedCoherent := sorry
+     satisfiedCoherent := sorry
+  }, req.id)
 
 def SystemState.canUnapplyRequest : SystemState → RequestId → Bool
   | state, rId =>
@@ -309,7 +309,8 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
 open Transition in
 def SystemState.applyTransition! : SystemState → Transition → SystemState
    | state, (.acceptRequest req tId) =>
-     (Arch.acceptEffects · req tId) $ state.applyAcceptRequest req tId
+     let (acceptedState,acceptedReq) := state.applyAcceptRequest req tId
+     (Arch.acceptEffects acceptedState acceptedReq tId)
    | state, .propagateToThread reqId tId =>
      (Arch.propagateEffects · reqId tId) $ state.propagate reqId tId
    | state, satisfyRead readId writeId =>

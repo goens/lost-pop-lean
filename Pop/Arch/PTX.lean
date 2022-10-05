@@ -280,8 +280,14 @@ def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
       else
         state
 
-def acceptEffects (state : SystemState) (br : BasicRequest) (_ : ThreadId) :=
-  if br.isBarrier then addEdgesOnFence state else state
+/-
+ * A predecessor should behave *as if* it was in that same thread.
+ * We add edge between predecessor and fence always (?):  maybe only for ≥release?
+ * Add predecessor only at RF (not at propagate)
+-/
+def acceptEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId) :=
+  let propState := propagateEffects state reqId thId
+  if (state.requests.getReq! reqId).isBarrier then addEdgesOnFence propState else propState
 
 instance : Arch where
   req := instArchReq
@@ -292,10 +298,6 @@ instance : Arch where
   requestScope := requestScope
   acceptEffects := acceptEffects
   propagateEffects := propagateEffects
-
-
-end PTX
-open PTX
 
 namespace Litmus
 def mkRead (scope_sem : String ) (addr : Address) (_ : String) : BasicRequest :=
@@ -429,8 +431,12 @@ deflitmus MP_fence_cta_1fence := {| W x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fe
 deflitmus N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |} ✓
 deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}  ✓
 deflitmus dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |} ×
+deflitmus dekkers_acqrelfence := {| W x=1; Fence. sys_acqrel; R y //0 || W y=1; Fence. sys_acqrel;  R x // 0 |} ✓
 
 deflitmus WRC := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|} ✓
+/- [2, 2, 6, 5, 1, 4, 4, 2, 2, 1, 6, 4, 5, 4, 1, 2, 1]
+[Accept (R.acq.sys x), Accept (W y(1)), Propagate Req3 (W y(1)) to Thread 2, Propagate Req3 (W y(1)) to Thread 0, Accept (R y), Propagate Req4 (R y(1)) to Thread 0, Propagate Req4 (R y(1)) to Thread 1, Satisfy Req4 (R y(1)) with Req3 (W y(1)), Accept (W x(1)), Accept (R x), Propagate Req6 (R x(0)) to Thread 1, Propagate Req6 (R x(0)) to Thread 0, Propagate Req5 (W x(1)) to Thread 2, Propagate Req5 (W x(1)) to Thread 1, Satisfy Req6 (R x(0)) with Req0 (W x(0)), Propagate Req2 (R.acq.sys x(1)) to Thread 2, Propagate Req2 (R.acq.sys x(1)) to Thread 0, Satisfy Req2 (R.acq.sys x(1)) with Req5 (W x(1))]
+-/
 deflitmus WRC_two_deps := {| W x=1 || R. sys_acq x // 1;dep W y = 1 || R y // 1 ;dep R x // 0|} ✓
 deflitmus WRC_rel := {| W. sys_rel x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|} ✓
 deflitmus WRC_acq := {| W x=1 || R. sys_acq x // 1; W y = 1 || R. sys_acq y // 1 ;dep R x // 0|} ✓

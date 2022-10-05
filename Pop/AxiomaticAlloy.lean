@@ -179,5 +179,5 @@ def toAlloyLitmus (litmus : Litmus.Test ) : String :=
   "}\n" ++ "run generated_litmus_test for 10"
 
 
-#eval toAlloyLitmus Litmus.IRIW
+#eval toAlloyLitmus PTX.Litmus.IRIW
 

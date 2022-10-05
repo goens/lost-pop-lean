@@ -117,8 +117,18 @@ def Request.isFenceAcqRel (req : Request) : Bool :=
 def Request.isRel (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.rel
 
+def Request.isGeqRel (req : Request) : Bool :=
+  req.basic_type.type.sem == PTX.Semantics.rel ||
+  req.basic_type.type.sem == PTX.Semantics.acqrel ||
+  req.basic_type.type.sem == PTX.Semantics.sc
+
 def Request.isAcq (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.acq
+
+def Request.isGeqAcq (req : Request) : Bool :=
+  req.basic_type.type.sem == PTX.Semantics.acq ||
+  req.basic_type.type.sem == PTX.Semantics.acqrel ||
+  req.basic_type.type.sem == PTX.Semantics.sc
 
 def Request.isAcqRelKind (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.rel ||
@@ -169,20 +179,22 @@ def scopesMatch : ValidScopes → Request → Request → Bool
 
 def reorder : ValidScopes → Request → Request → Bool
   | V, r_old, r_new =>
+  -- TODO: we are not sure if this might make our model stronger than necessary
   let fences := (r_old.isBarrier && r_new.isBarrier)
                        b⇒ (r_old.thread != r_new.thread)
-  let satisfied := (r_new.isMem && !r_new.isSatisfied
-                    && r_old.isMem && !r_old.isSatisfied)
-                    b⇒ (r_new.address? != r_old.address?)
-  let relacq := (r_new.isAcq && r_old.isRel) b⇒ (r_new.address? != r_old.address?)
+  -- Removing 'satisfied': PTX doesn't keep any reads
+  -- Removing 'relacq': redundant with RF/FR edges; we don't see the point
+  -- TODO: is SC fence also rel/acq?
   -- TODO: Discuss this
-  -- Old idea was something about the originating threads being different:
-  -- I'm not sure about this now...
-  -- let acqthread := r_new.isAcq b⇒ (r_new.thread != r_old.thread) -- rel before, acq after
-  -- Trying instead:
-  let acqafter := r_old.isAcq b⇒ !(r_new.isRead || r_new.thread != r_old.thread)
-  let relbefore := r_old.isWrite b⇒ !(r_new.isAcq || r_new.thread != r_old.thread)
-  let newrel := !r_new.isRel
+  /-
+  r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
+  -/
+  let acqafter := r_old.isGeqAcq b⇒ (r_new.thread != r_old.thread)
+  let acqread :=  r_new.isGeqAcq b⇒ (r_new.thread != r_old.thread && r_old.isRead)
+   -- TODO: why also for diff. threads? should this be handled with predeecessors?
+  let newrel := !r_new.isGeqRel
+  let relwrite := r_old.isGeqRel b⇒ (r_new.thread != r_old.thread && r_new.isWrite)
+  -- TODO: what about acqrel and (w -> r)?
   -- dbg_trace "[reorder] {r_old} {r_new}"
   -- dbg_trace "[reorder] fences : {fences}"
   -- dbg_trace "[reorder] satisfied : {satisfied}"
@@ -192,7 +204,7 @@ def reorder : ValidScopes → Request → Request → Bool
   -- dbg_trace "[reorder] newrel : {newrel}"
   -- dbg_trace "[reorder] !scopes match: {!scopesMatch V r_old r_new}"
   !scopesMatch V r_old r_new ||
-  (satisfied && relacq && acqafter && relbefore && newrel && fences)
+  (acqafter  && newrel && fences && acqread && relwrite)
 
 -- On SC fence we propagate predecessors to the SC fence's scope. We enforce
 -- this by not accepting, propagating or satisfying any other requests unless

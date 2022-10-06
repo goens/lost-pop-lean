@@ -1,6 +1,6 @@
 import Lean
+import Std
 open Std.HashMap
-
 namespace Util
 
 theorem n_minus_one_le_n {n : Nat} : n > 0 → n - 1 < n := by

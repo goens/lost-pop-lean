@@ -37,3 +37,5 @@ lean_exe pop_explore_ptx {
 lean_exe alloy {
   root := `GenerateAlloy
 }
+
+require std from git "https://github.com/leanprover/std4.git"

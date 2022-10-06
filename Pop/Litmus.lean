@@ -19,7 +19,7 @@ inductive AxiomaticAllowed
 
 def AxiomaticAllowed.toString : AxiomaticAllowed → String
   | yes => "✓"
-  | no => "×"
+  | no => "╳"
   | unknown => "?"
 
 instance : ToString AxiomaticAllowed where toString := AxiomaticAllowed.toString
@@ -85,10 +85,6 @@ def Outcome.toRFPairs (outcome : Litmus.Outcome) (prog : ProgramState)
   return res
 
 end Litmus
-
-notation "✓"  => Litmus.AxiomaticAllowed.yes
-notation "×"  => Litmus.AxiomaticAllowed.no
-
 
 namespace Pop
 
@@ -216,7 +212,7 @@ syntax "{" threads "}." ident : system_desc
 syntax "{" system_desc,+ "}" : system_desc
 
 syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? ("✓")? : term
-syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? "×" : term
+syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? "╳" : term
 syntax "`[sys|" system_desc "]" : term
 syntax "`[req|" request "]" : term
 syntax "`[req_seq|" request_seq "]" : term
@@ -262,7 +258,7 @@ macro_rules
   | `({| $r |} $[where sys := $opdesc:system_desc ]? ✓) => match opdesc with
     | none => `( createLitmus `[req_set| $r] none (axiomaticAllowed := .yes) )
     | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]) (axiomaticAllowed := .yes))
-  | `({| $r |} $[where sys := $opdesc:system_desc ]? ×) => match opdesc with
+  | `({| $r |} $[where sys := $opdesc:system_desc ]? ╳) => match opdesc with
     | none => `( createLitmus `[req_set| $r] none (axiomaticAllowed := .no))
     | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]) (axiomaticAllowed := .no))
 
@@ -295,7 +291,7 @@ def mkCTA (mapping : String → Option ThreadId) (threads : TSyntax `threads)
     then Except.error "Invalid thread string to id mapping"
     else Except.ok $ ListTree.leaf $ filterNones threadNats
 
-def mkThreadTypeFun : List ((List ThreadId) × String) → ThreadId → String
+def mkThreadTypeFun : List (List ThreadId × String) → ThreadId → String
   | [], _ => "unknown"
   | (ids,s)::rest, thId => if ids.contains thId then s else mkThreadTypeFun rest thId
 
@@ -353,7 +349,7 @@ elab "litmusTests!" : term <= ty => do
 
 macro "deflitmus" name:ident " := " litmus:term : command => `(@[litmusTest $name] def $name := $litmus $(Lean.quote name.getId.toString))
 
-def mkSys (desc : TSyntax `system_desc) : Except String (ValidScopes × (List $ (List ThreadId) × String)) :=
+def mkSys (desc : TSyntax `system_desc) : Except String (ValidScopes × (List $ List ThreadId × String)) :=
   let allNames := systemDescGetAllNames desc |>.qsort alphabetic
   let mapping := mkNameMapping allNames
   if allNames.toList.unique.length == allNames.size
@@ -365,7 +361,6 @@ def mkSys (desc : TSyntax `system_desc) : Except String (ValidScopes × (List $ 
   else
     let doubles := allNames.toList.unique.foldl (init := allNames) (λ curr name => curr.erase name)
     Except.error s!"some thread(s) appear(s) more than once: {doubles}"
-
 
 macro_rules
   | `(`[sys| $desc:system_desc ]) => do

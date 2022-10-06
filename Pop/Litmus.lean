@@ -19,7 +19,7 @@ inductive AxiomaticAllowed
 
 def AxiomaticAllowed.toString : AxiomaticAllowed → String
   | yes => "✓"
-  | no => "╳"
+  | no => "𐄂"
   | unknown => "?"
 
 instance : ToString AxiomaticAllowed where toString := AxiomaticAllowed.toString
@@ -212,7 +212,7 @@ syntax "{" threads "}." ident : system_desc
 syntax "{" system_desc,+ "}" : system_desc
 
 syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? ("✓")? : term
-syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? "╳" : term
+syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? "𐄂" : term
 syntax "`[sys|" system_desc "]" : term
 syntax "`[req|" request "]" : term
 syntax "`[req_seq|" request_seq "]" : term
@@ -258,7 +258,7 @@ macro_rules
   | `({| $r |} $[where sys := $opdesc:system_desc ]? ✓) => match opdesc with
     | none => `( createLitmus `[req_set| $r] none (axiomaticAllowed := .yes) )
     | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]) (axiomaticAllowed := .yes))
-  | `({| $r |} $[where sys := $opdesc:system_desc ]? ╳) => match opdesc with
+  | `({| $r |} $[where sys := $opdesc:system_desc ]? 𐄂) => match opdesc with
     | none => `( createLitmus `[req_set| $r] none (axiomaticAllowed := .no))
     | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]) (axiomaticAllowed := .no))
 

@@ -263,31 +263,26 @@ def addEdgesOnFence (state : SystemState) : SystemState := Id.run do
     st := { st with orderConstraints := oc' }
    return st
 
-def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
+def satisfyEffects (state : SystemState) (readId : RequestId) (writeId : RequestId)
 : SystemState :=
-  let readsFrom := state.satisfied.lookup reqId
-  match readsFrom with
-    | none => state
-    | some writeId =>
-      let write := state.requests.getReq? writeId |>.get!
-      let read := state.requests.getReq? reqId |>.get!
-      --dbg_trace "checking wether to add Req.{writeId} as predecessor to T{thId}"
-      --dbg_trace "MS:{morallyStrong state.scopes read write}, prop: {!(write.propagated_to.elem thId)}"
-      -- TODO: move this to satisfyEffects
-      if (morallyStrong state.scopes read write) && !(write.propagated_to.elem thId)
-      then
-        state.updateRequest $ write.makePredecessorAt thId
-      else
-        state
+  let write := state.requests.getReq? writeId |>.get!
+  let unremoved := state.requests.getReq? readId
+  let read := match unremoved with
+    | some r => r
+    | none => state.removed.find? (λ r => r.id == readId) |>.get!
+  if morallyStrong state.scopes read write
+  then
+    state.updateRequest $ write.makePredecessorAt read.thread
+  else
+    state
 
 /-
  * A predecessor should behave *as if* it was in that same thread.
  * We add edge between predecessor and fence always (?):  maybe only for ≥release?
  * Add predecessor only at RF (not at propagate)
 -/
-def acceptEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId) :=
-  let propState := propagateEffects state reqId thId
-  if (state.requests.getReq! reqId).isBarrier then addEdgesOnFence propState else propState
+def acceptEffects (state : SystemState) (reqId : RequestId) (_ : ThreadId) :=
+  if (state.requests.getReq! reqId).isBarrier then addEdgesOnFence state else state
 
 instance : Arch where
   req := instArchReq
@@ -297,7 +292,7 @@ instance : Arch where
   reorderCondition := reorder
   requestScope := requestScope
   acceptEffects := acceptEffects
-  propagateEffects := propagateEffects
+  satisfyReadEffects := satisfyEffects
 
 namespace Litmus
 def mkRead (scope_sem : String ) (addr : Address) (_ : String) : BasicRequest :=

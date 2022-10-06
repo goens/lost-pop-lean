@@ -353,7 +353,7 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
        | .error _ => "?"
        | .ok (reslit,_) => if reslit.any λ out => outcomeEqiv out test.expected
          then "✓"
-         else "×"
+         else "╳"
      let pts := match resExcept with
        | .error _ => []
        | .ok (_, pts) => pts
@@ -377,7 +377,7 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
      else ""
      headStr ++ resStr ++ witnessStr
 
-def printMultipleLitmusResults : List ((Litmus.Test) × (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState)))) → (printWitnesses : optParam Bool false) → String
+def printMultipleLitmusResults : List (Litmus.Test × (Except String $ List Litmus.Outcome × List (List Transition × SystemState))) → (printWitnesses : optParam Bool false) → String
   | results, printWitnesses => Id.run do
   let mut first := true
   let mut resStr := ""

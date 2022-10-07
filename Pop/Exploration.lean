@@ -351,6 +351,9 @@ def buildInteractiveNumbering : Litmus.Test → List Transition → Option (List
     let mut state := test.initState.applyTrace test.initTransitions |>.toOption.get!
     let mut progState := test.program
     for transition in transitions do
+      if transition.isDependency then
+        progState := progState.consumeTransition state transition
+        continue
       let available := state.possibleTransitions progState
       let idx? := available.findIdx? (λ t => t == transition || (t.isAccept && t.getAcceptBasicRequest? == transition.getAcceptBasicRequest?))
       if let some i := idx? then
@@ -384,7 +387,9 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
      let uncolored := s!"| {test.name}" ++ (String.mk $ List.replicate (nameColWidth - test.name.length - 3) ' ') ++
                    s!"| {axiomatic}         | {outcome_res}   |"
      let resStr := if axiomatic != "?" && outcome_res != "?" && axiomatic != outcome_res
-       then colorRed uncolored
+       then colorString .red uncolored
+       else if outcome_res == "?" || axiomatic == "?"
+       then colorString .yellow uncolored
        else uncolored
      let witnessStr := if outcome_res == "✓" && printWitness && ptNums.isSome
        then s!"\n    Witness: {ptNums.get!}\n"

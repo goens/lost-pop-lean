@@ -58,15 +58,15 @@ instance : ToString ArchReq.type := ArchReq.instToString
 inductive BasicRequest
  | read : ReadRequest → ArchReq.type → BasicRequest
  | write : WriteRequest → ArchReq.type → BasicRequest
- | barrier : ArchReq.type → BasicRequest
+ | fence : ArchReq.type → BasicRequest
  deriving BEq
 
-instance : Inhabited BasicRequest where default := BasicRequest.barrier default
+instance : Inhabited BasicRequest where default := BasicRequest.fence default
 
 def BasicRequest.toString : BasicRequest → String
   | BasicRequest.read  rr _ => s!"read (Addr{rr.addr}) : {rr.val}"
   | BasicRequest.write  wr _ => s!"write (Addr{wr.addr}) : {wr.val}"
-  | BasicRequest.barrier _ => "barrier"
+  | BasicRequest.fence _ => "fence"
 
 def BasicRequest.prettyPrint : BasicRequest → String
   | BasicRequest.read rr ty =>
@@ -85,7 +85,7 @@ def BasicRequest.prettyPrint : BasicRequest → String
       | "" => ""
       | str => s!".{str}"
     s!"W{tyStr} {wr.addr.prettyPrint}{valStr}"
-  | BasicRequest.barrier ty =>
+  | BasicRequest.fence ty =>
     let tyStr := match s!"{ty}" with
       | "" => ""
       | str => s!".{str}"
@@ -96,22 +96,22 @@ instance : ToString (BasicRequest) where toString := BasicRequest.toString
 def BasicRequest.type : BasicRequest → ArchReq.type
   | BasicRequest.read  _ t => t
   | BasicRequest.write  _ t => t
-  | BasicRequest.barrier t => t
+  | BasicRequest.fence t => t
 
 def BasicRequest.readRequest? : BasicRequest → Option ReadRequest
   | BasicRequest.read  rr _ => some rr
   | BasicRequest.write  _ _ => none
-  | BasicRequest.barrier _ => none
+  | BasicRequest.fence _ => none
 
 def BasicRequest.writeRequest? : BasicRequest → Option WriteRequest
   | BasicRequest.read  _ _ => none
   | BasicRequest.write  wr _ => some wr
-  | BasicRequest.barrier _ => none
+  | BasicRequest.fence _ => none
 
 def BasicRequest.updateType : BasicRequest → (ArchReq.type → ArchReq.type) → BasicRequest
   | .read  rr t, f => .read rr (f t)
   | .write  wr t, f => .write wr (f t)
-  | .barrier t, f => .barrier (f t)
+  | .fence t, f => .fence (f t)
 
 def BasicRequest.setValue : (BasicRequest) → Value → (BasicRequest)
   | BasicRequest.read rr rt, v => BasicRequest.read {rr with val := v} rt
@@ -174,7 +174,7 @@ structure Request where
 
 def Request.default : Request :=
   {id := 0, propagated_to := [], thread := 0,
-   basic_type := BasicRequest.barrier Inhabited.default}
+   basic_type := BasicRequest.fence Inhabited.default}
 instance : Inhabited (Request) where default := Request.default
 
 def Request.toString : Request → String
@@ -183,11 +183,11 @@ instance : ToString (Request) where toString := Request.toString
 
 def BasicRequest.isRead    (r : BasicRequest) : Bool := match r with | read  _ _ => true | _ => false
 def BasicRequest.isWrite   (r : BasicRequest) : Bool := match r with | write _ _ => true | _ => false
-def BasicRequest.isBarrier (r : BasicRequest) : Bool := match r with | barrier _ => true | _ => false
+def BasicRequest.isFence (r : BasicRequest) : Bool := match r with | fence _ => true | _ => false
 def Request.isRead    (r : Request) : Bool := r.basic_type.isRead
 def Request.isWrite   (r : Request) : Bool := r.basic_type.isWrite
-def Request.isBarrier (r : Request) : Bool := r.basic_type.isBarrier
-def Request.isMem     (r : Request) : Bool := !r.basic_type.isBarrier
+def Request.isFence (r : Request) : Bool := r.basic_type.isFence
+def Request.isMem     (r : Request) : Bool := !r.basic_type.isFence
 def Request.isPermanentRead (r : Request) : Bool := r.isRead && ArchReq.isPermanentRead r.basic_type.type
 
 def Request.value? (r : Request) : Value := r.basic_type.value?

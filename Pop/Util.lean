@@ -68,11 +68,40 @@ def setJoinPair [BEq α] (l₁ l₂ : List α) : List α :=
 def setJoin [BEq α] (ls : List (List α)) : List α :=
   ls.foldl (init := []) setJoinPair
 
-def colorRed : String → String :=
-  λ str => "\x1b[37;41m" ++ str ++ "\u001b[0m"
+inductive Color
+  | red : Color
+  | green : Color
+  | blue : Color
+  | yellow : Color
+  | black : Color
+  | magenta : Color
+  | cyan : Color
+  | white : Color
 
-def colorGreen : String → String :=
-  λ str => "\x1b[37;42m" ++ str ++ "\u001b[0m"
+def Color.toNat : Color → Nat
+ | .black   => 0
+ | .red     => 1
+ | .green   => 2
+ | .yellow  => 3
+ | .blue    => 4
+ | .magenta => 5
+ | .cyan    => 6
+ | .white   => 7
+
+def Color.isBright : Color → Bool
+ | .black => false
+ | .red     => false
+ | .green   => false
+ | .yellow  => true
+ | .blue    => false
+ | .magenta => true --?
+ | .cyan    => true --?
+ | .white   => true
+
+def colorString : Color → String → String :=
+  λ color str =>
+    let textColor := if color.isBright then Color.black else Color.white
+    s!"\x1b[3{textColor.toNat};4{color.toNat}m" ++ str ++ "\u001b[0m"
 
 -- Removed sublist condition from type as it made programming
 -- with this basically impossible...

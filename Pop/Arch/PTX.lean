@@ -109,10 +109,10 @@ def Request.sem (req : Request) : PTX.Semantics :=
 
 -- some shortcuts
 def Request.isFenceSC (req : Request) : Bool :=
-  req.isBarrier && req.basic_type.type.sem == PTX.Semantics.sc
+  req.isFence && req.basic_type.type.sem == PTX.Semantics.sc
 
 def Request.isFenceAcqRel (req : Request) : Bool :=
-  req.isBarrier && req.basic_type.type.sem == PTX.Semantics.acqrel
+  req.isFence && req.basic_type.type.sem == PTX.Semantics.acqrel
 
 def Request.isRel (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.rel
@@ -180,7 +180,7 @@ def scopesMatch : ValidScopes → Request → Request → Bool
 def reorder : ValidScopes → Request → Request → Bool
   | V, r_old, r_new =>
   -- TODO: we are not sure if this might make our model stronger than necessary
-  let fences := (r_old.isBarrier && r_new.isBarrier)
+  let fences := (r_old.isFence && r_new.isFence)
                        b⇒ (r_old.thread != r_new.thread)
   -- Removing 'satisfied': PTX doesn't keep any reads
   -- Removing 'relacq': redundant with RF/FR edges; we don't see the point
@@ -252,7 +252,7 @@ def satisfyReadConstraints (state : SystemState) ( _ _ : RequestId) : Bool :=
 -- on a (rel/acq/acqrel) fence we add an edge from each pred to this fence
 -- according to the scopes-match table
 def addEdgesOnFence (state : SystemState) : SystemState := Id.run do
-  let fences := state.requests.filter λ r => r.isBarrier &&
+  let fences := state.requests.filter λ r => r.isFence &&
     !(r.fullyPropagated (requestScope state.scopes r))
   let mut st := state
   for fence in fences do
@@ -287,7 +287,7 @@ def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
 -/
 def acceptEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId) :=
   let propState := propagateEffects state reqId thId
-  if (state.requests.getReq! reqId).isBarrier then addEdgesOnFence propState else propState
+  if (state.requests.getReq! reqId).isFence then addEdgesOnFence propState else propState
 
 instance : Arch where
   req := instArchReq
@@ -351,9 +351,9 @@ def mkWrite (scope_sem : String) (addr : Address) (val : Value) (_ : String) : B
       dbg_trace "malformed PTX read request: W.{scope_sem}"
       BasicRequest.write wr default
 
-def mkBarrier (scope_sem : String) (_ : String) : BasicRequest :=
+def mkFence (scope_sem : String) (_ : String) : BasicRequest :=
   match scope_sem.splitOn "_" with
-    | [""] => BasicRequest.barrier
+    | [""] => BasicRequest.fence
               {scope := Scope.sys, sem := Semantics.sc, predecessorAt := []}
     | [scopeStr, semStr] =>
       let scope := match scopeStr with
@@ -371,10 +371,10 @@ def mkBarrier (scope_sem : String) (_ : String) : BasicRequest :=
         | _ =>
           dbg_trace "(fence) invalid PTX semantics: {semStr}"
           Semantics.sc
-      BasicRequest.barrier {scope := scope, sem := sem, predecessorAt := []}
+      BasicRequest.fence {scope := scope, sem := sem, predecessorAt := []}
     | _ =>
       dbg_trace "malformed PTX read request: Fence.{scope_sem}"
-      BasicRequest.barrier default
+      BasicRequest.fence default
 
 def mkInitState (n : Nat) :=
   match n with
@@ -386,7 +386,7 @@ def mkInitState (n : Nat) :=
 instance : LitmusSyntax where
   mkRead := mkRead
   mkWrite := mkWrite
-  mkBarrier := mkBarrier
+  mkFence := mkFence
 
 deflitmus IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |} ✓
 deflitmus IRIW_3ctas := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}

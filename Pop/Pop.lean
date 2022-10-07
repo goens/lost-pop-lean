@@ -67,8 +67,8 @@ def Transition.isWriteAccept : Transition → Bool
   | .acceptRequest br _ => br.isWrite
   | _ => false
 
-def Transition.isBarrierAccept : Transition → Bool
-  | .acceptRequest br _ => br.isBarrier
+def Transition.isFenceAccept : Transition → Bool
+  | .acceptRequest br _ => br.isFence
   | _ => false
 
 def Transition.isDependency : Transition → Bool
@@ -90,8 +90,8 @@ def ProgramState.allReads (prog : ProgramState) : List Transition :=
   prog.allFilter Transition.isReadAccept
 def ProgramState.allWrites (prog : ProgramState) : List Transition :=
   prog.allFilter Transition.isWriteAccept
-def ProgramState.allBarriers (prog : ProgramState) : List Transition :=
-  prog.allFilter Transition.isBarrierAccept
+def ProgramState.allFences (prog : ProgramState) : List Transition :=
+  prog.allFilter Transition.isFenceAccept
 
 
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool := Arch.acceptConstraints

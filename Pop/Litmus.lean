@@ -93,7 +93,7 @@ variable [Arch]
 class LitmusSyntax where
   mkRead : String → Address → String → BasicRequest
   mkWrite : String → Address → Value → String → BasicRequest
-  mkBarrier : String → String → BasicRequest
+  mkFence : String → String → BasicRequest
 
 def mkValidScopes (n : Nat) : ValidScopes :=
   { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
@@ -104,7 +104,7 @@ open LitmusSyntax
 def mkRequest : String × String × Address × Value → ThreadId → String → Option (Transition)
   | ("R", typeStr, addr, _), thId, thTy => some $ Pop.Transition.acceptRequest (mkRead typeStr addr thTy) thId
   | ("W",typeStr , addr, val), thId, thTy  => some $ Pop.Transition.acceptRequest (mkWrite typeStr addr val thTy) thId
-  | ("Fence", typeStr, _, _), thId, thTy => some $ Pop.Transition.acceptRequest (mkBarrier typeStr thTy) thId
+  | ("Fence", typeStr, _, _), thId, thTy => some $ Pop.Transition.acceptRequest (mkFence typeStr thTy) thId
   | ("Dependency", _, _, _), _, _ => some $ Pop.Transition.dependency none
   | _, _, _ => none
 

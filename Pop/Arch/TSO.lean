@@ -19,7 +19,7 @@ instance : ArchReq where
   isPermanentRead := λ _ => false
 
 def reorder : ValidScopes → Request → Request → Bool
-  | _, r₁, r₂ => if r₁.isBarrier || r₂.isBarrier
+  | _, r₁, r₂ => if r₁.isFence || r₂.isFence
   then false
   else
   let sc_per_loc := r₁.address? != r₂.address?
@@ -50,12 +50,12 @@ def mkWrite (_ : String) (addr : Address) (val : Value) (_ : String) : BasicRequ
   let wr : WriteRequest := { addr := addr, val := val}
   BasicRequest.write wr default
 
-def mkBarrier (_ : String) (_ : String) : BasicRequest := BasicRequest.barrier default
+def mkFence (_ : String) (_ : String) : BasicRequest := BasicRequest.fence default
 
 instance : LitmusSyntax where
   mkRead := mkRead
   mkWrite := mkWrite
-  mkBarrier := mkBarrier
+  mkFence := mkFence
 
 deflitmus IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
 deflitmus IRIW_fences := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence; R x // 0 || W y=1 |}

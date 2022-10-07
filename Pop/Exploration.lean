@@ -377,13 +377,16 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
        | .ok (reslit,_) => if reslit.any λ out => outcomeEqiv out test.expected
          then "✓"
          else "𐄂"
-     let pts := match resExcept with
-       | .error _ => []
+     let (pt, opState) := match resExcept with
+       | .error _ => ([], none)
        | .ok (_, pts) => match pts.head? with
-         | some pt => pt.1
-         | none => []
+         | some pt => (pt.1, some pt.2)
+         | none => ([], none)
+     let ptString := match opState with
+       | none => ""
+       | some state => toString $ pt.map (Transition.prettyPrint state)
      let axiomatic := test.axiomaticAllowed.toString
-     let ptNums := buildInteractiveNumbering test pts
+     let ptNums := buildInteractiveNumbering test pt
      let uncolored := s!"| {test.name}" ++ (String.mk $ List.replicate (nameColWidth - test.name.length - 3) ' ') ++
                    s!"| {axiomatic}         | {outcome_res}   |"
      let resStr := if axiomatic != "?" && outcome_res != "?" && axiomatic != outcome_res
@@ -392,7 +395,7 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
        then colorString .yellow uncolored
        else uncolored
      let witnessStr := if outcome_res == "✓" && printWitness && ptNums.isSome
-       then s!"\n    Witness: {ptNums.get!}\n"
+       then s!"\n    Witness: {ptNums.get!} → {ptString}\n"
        else ""
      let headStr := if printHead
      then

@@ -345,6 +345,26 @@ def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false) (batchSi
       res := res ++ (runMultipleLitmusAux testBatch logProgress maxIterations)
     return res
 
+def buildInteractiveNumbering : Litmus.Test → List Transition → Option (List Nat)
+  | test, transitions => Id.run do
+    let mut res := []
+    let mut state := test.initState.applyTrace test.initTransitions |>.toOption.get!
+    let mut progState := test.program
+    for transition in transitions do
+      let available := state.possibleTransitions progState
+      let idx? := available.findIdx? (λ t => t == transition || (t.isAccept && t.getAcceptBasicRequest? == transition.getAcceptBasicRequest?))
+      if let some i := idx? then
+        res := res ++ [i]
+      else
+        panic! s!"cannot find transition ({transition}) in available transitions: {available}"
+      let nextSt? := state.applyTransition transition
+      if let some nextSt := nextSt?.toOption
+        then
+          progState := progState.consumeTransition state transition
+          state := nextSt
+        else
+          panic! s!"error while applying transition {nextSt?}"
+    return some (res.map (· + 1))
 def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState))) →
 (printWitness : optParam Bool true) → (printHead : optParam Bool true) → (nameColWidth : optParam Nat 30) → String
   | test, resExcept , printWitness, printHead, nameColWidth =>
@@ -356,18 +376,18 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
          else "𐄂"
      let pts := match resExcept with
        | .error _ => []
-       | .ok (_, pts) => pts
+       | .ok (_, pts) => match pts.head? with
+         | some pt => pt.1
+         | none => []
      let axiomatic := test.axiomaticAllowed.toString
-     let ptString := match pts.head? with
-       | none => ""
-       | some (pt,state) => toString $ pt.map (Transition.prettyPrint state)
+     let ptNums := buildInteractiveNumbering test pts
      let uncolored := s!"| {test.name}" ++ (String.mk $ List.replicate (nameColWidth - test.name.length - 3) ' ') ++
                    s!"| {axiomatic}         | {outcome_res}   |"
      let resStr := if axiomatic != "?" && outcome_res != "?" && axiomatic != outcome_res
        then colorRed uncolored
        else uncolored
-     let witnessStr := if outcome_res == "✓" && printWitness
-       then s!"\n    Witness: {ptString}\n"
+     let witnessStr := if outcome_res == "✓" && printWitness && ptNums.isSome
+       then s!"\n    Witness: {ptNums.get!}\n"
        else ""
      let headStr := if printHead
      then

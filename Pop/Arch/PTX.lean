@@ -211,7 +211,7 @@ def reorder : ValidScopes → Request → Request → Bool
 -- this is propagated. This is the check we use for that. Returns the first
 -- SC fence that it finds that it's blocked on (it should never be more than
 -- one anyway)
-private def _root_.Pop.SystemState.blockedOnSCFencePreds (state : SystemState) (fence : Request) : List Request := Id.run do
+private def _root_.Pop.SystemState.blockedOnFencePreds (state : SystemState) (fence : Request) : List Request := Id.run do
   let mut res := []
   let scope := PTX.requestScope state.scopes fence
   if fence.fullyPropagated scope then
@@ -219,35 +219,49 @@ private def _root_.Pop.SystemState.blockedOnSCFencePreds (state : SystemState) (
   else
     let preds := state.requests.filter
       λ r => r.predecessorAt.contains fence.thread ||
+             -- TODO: why this second constraint?
              r.propagatedTo fence.thread && r.id != fence.id
     res := res ++ preds
   return res
 
-def _root_.Pop.SystemState.blockedOnSCFence (state : SystemState) : Option RequestId := Id.run do
-  let scfences := state.requests.filter Request.isFenceSC
-  for fence in scfences do
-    let preds := state.blockedOnSCFencePreds fence
+def _root_.Pop.SystemState.blockedOnFence (state : SystemState) : Option RequestId := Id.run do
+  let fences := state.requests.filter Request.isFence
+  for fence in fences do
+    let preds := state.blockedOnFencePreds fence
     let scope := PTX.requestScope state.scopes fence
-    unless preds.all λ p => p.fullyPropagated scope do
-      --dbg_trace "blocked on R{fence.id}"
+    -- This is the change, blocking when unsatisfied reads (breaks MP_fence_cta_1fence)
+    -- let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == fence.thread
+    -- unless readsOnThread.all λ r => state.isSatisfied r.id do
+    --   --dbg_trace "blocked on Fence (R{fence.id}) with unsatisfied reads ({readsOnThread}) "
+    --   return some fence.id
+    unless !fence.isFenceSC || preds.all λ p => p.fullyPropagated scope do
+      --dbg_trace "blocked on FenceSC (R{fence.id}) with unpropagated predecessors ({preds}) to scope {scope}"
       return some fence.id
   return none
 
-def acceptConstraints (state : SystemState) (_ : BasicRequest) (tid : ThreadId) : Bool :=
-  let scfences := state.requests.filter Request.isFenceSC
-  state.blockedOnSCFence == none &&
-  scfences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
+def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId) : Bool :=
+    match state.blockedOnFence with
+      | none =>
+        let scfences := state.requests.filter Request.isFenceSC
+        scfences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
+      | some fenceId =>
+        let fence := state.requests.getReq! fenceId
+        if fence.isFenceSC then
+           false
+        else
+           true --br.isWrite
 
-def propagateConstraints (state : SystemState) (rid : RequestId) (_ : ThreadId) : Bool :=
-  if let some fenceId := state.blockedOnSCFence then
+def propagateConstraints (state : SystemState) (rid : RequestId) (thId : ThreadId) : Bool :=
+  if let some fenceId := state.blockedOnFence then
     let fence := state.requests.getReq! fenceId
-    let preds := state.blockedOnSCFencePreds fence |>.map Request.id
-    preds.contains rid
+    let scope := PTX.requestScope state.scopes fence
+    if fence.isFenceSC && scope.threads.contains thId then
+      let preds := state.blockedOnFencePreds fence |>.map Request.id
+      let req := state.requests.getReq! rid
+      preds.contains rid || (req.isRead && req.thread == fence.thread)
+    else true
   else
     true
-
-def satisfyReadConstraints (state : SystemState) ( _ _ : RequestId) : Bool :=
-  state.blockedOnSCFence == none
 
 -- on a (rel/acq/acqrel) fence we add an edge from each pred to this fence
 -- according to the scopes-match table
@@ -292,7 +306,6 @@ def acceptEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId) :=
 instance : Arch where
   req := instArchReq
   acceptConstraints := acceptConstraints
-  satisfyReadConstraints := satisfyReadConstraints
   propagateConstraints := propagateConstraints
   reorderCondition := reorder
   requestScope := requestScope

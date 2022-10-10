@@ -303,6 +303,10 @@ def acceptEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId) :=
   let propState := propagateEffects state reqId thId
   if (state.requests.getReq! reqId).isFence then addEdgesOnFence propState else propState
 
+def satisfyReadEffects : SystemState → RequestId → RequestId → SystemState
+  | state, _, _ => addEdgesOnFence state
+  -- TODO: also add fence-pred edges here
+
 instance : Arch where
   req := instArchReq
   acceptConstraints := acceptConstraints
@@ -311,6 +315,7 @@ instance : Arch where
   requestScope := requestScope
   acceptEffects := acceptEffects
   propagateEffects := propagateEffects
+  satisfyReadEffects := satisfyReadEffects
 
 namespace Litmus
 def mkRead (scope_sem : String ) (addr : Address) (_ : String) : BasicRequest :=
@@ -480,13 +485,19 @@ deflitmus WRC_cta_2_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_r
   Propagate Req8 (R x(0)) to Thread 0,
   Propagate Req7 (W. pred @ [1] x(1)) to Thread 2,
   Satisfy Req8 (R x(0)) with Req0 (W. pred @ [2] x(0)),
-  Satisfy Req2 (R x(1)) with Req7 (W. pred @ [1] x(1))] -/
+  Satisfy Req2 (R x(1)) with Req7 (W. pred @ [1] x(1))]
+
+[Accept (R x), Accept (Fence.rel.sys), Accept (R.rlx.cta y), Propagate Req4 (R.rlx.cta y(1)) to Thread 1, Accept (W.rlx.cta y(1)), Propagate Req5 (W.rlx.cta y(1)) to Thread 0, Propagate Req2 (R x(1)) to Thread 2, Propagate Req3 (Fence.rel.sys) to Thread 2, Accept (Fence.acq.sys), Propagate Req6 (Fence.acq.sys) to Thread 1, Accept (W x(1)), Propagate Req7 (W x(1)) to Thread 1, Propagate Req4 (R.rlx.cta y(1)) to Thread 0, Accept (R x), Propagate Req8 (R x(0)) to Thread 1, Propagate Req2 (R x(1)) to Thread 0, Propagate Req3 (Fence.rel.sys) to Thread 0, Propagate Req6 (Fence.acq.sys) to Thread 0, Propagate Req5 (W.rlx.cta y(1)) to Thread 2, Satisfy Req4 (R.rlx.cta y(1)) with Req5 (W.rlx.cta y(1)), Propagate Req8 (R x(0)) to Thread 0, Satisfy Req8 (R x(0)) with Req0 (W x(0)), Propagate Req7 (W x(1)) to Thread 2, Satisfy Req2 (R x(1)) with Req7 (W x(1))]
+
+ -/
 deflitmus WRC_cta_2_1' := {| W. cta_rlx x=1 || R. cta_rlx x // 1; Fence. sys_rel; W. sys_rlx y = 1 || R. sys_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0, T1}, {T2}} 𐄂
 deflitmus WRC_cta_1_1_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1}, {T2}} ✓
 
 deflitmus WWRWRR := {| W. cta_rel x=1;  W. cta_rel y=1 || R. cta_acq y // 1; W. cta_rel z = 1 || R. cta_acq z // 1 ; R. cta_acq x // 0|} 𐄂
+deflitmus WWRWRR_fences := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_acq; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} ✓
+deflitmus WWRWRR_fences' := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_acqrel; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} 𐄂
 deflitmus WWRWRR_scoped := {| W. cta_rel x=1;  W. cta_rel y=1 || R. cta_acq y // 1; W. cta_rel z = 1 || R. cta_acq z // 1 ; R. cta_acq x // 0|}
   where sys := { {T0}, {T1, T2}} 𐄂
 

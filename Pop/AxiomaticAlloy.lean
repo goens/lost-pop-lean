@@ -23,7 +23,7 @@ def toSizes (litmus : Litmus.Test) : String :=
   s!"  # ptx/Thread = {litmus.initState.threads.length}\n" ++
   s!"  # ptx/Read = {litmus.program.allReads.length}\n" ++
   s!"  # ptx/Write = {litmus.program.allWrites.length}\n" ++
-  s!"  # ptx/Fence = {litmus.program.allBarriers.length}\n" ++
+  s!"  # ptx/Fence = {litmus.program.allFences.length}\n" ++
   s!"  # ptx/Barrier = 0\n" ++ -- Not considering these for now
   -- Add the number of threads to scopes, as we don't consider them to be scopes
   s!"  # ptx/Scope = {usedScopes.uniqueSet.length + litmus.program.size}\n"
@@ -39,7 +39,7 @@ def transToAlloy : Transition → String
       match ty.sem with
         | .rel => "ptx/Release"
         | _ => "ptx/Write - ptx/Release"
-    | .barrier ty =>
+    | .fence ty =>
       match ty.sem with
         | .sc => "ptx/FenceSC"
         | .acqrel => "ptx/FenceAcqRel"
@@ -56,7 +56,7 @@ def toPreds (litmus : Litmus.Test) : String :=
   let writeTransitions := litmus.program.allWrites.countOcurrences
   let writeNames := writeTransitions.zip (List.range writeTransitions.length) |>.map
     λ (w,i) => (w,s!"w{i}")
-  let fenceTransitions := litmus.program.allBarriers.countOcurrences
+  let fenceTransitions := litmus.program.allFences.countOcurrences
   let fenceNames := fenceTransitions.zip (List.range fenceTransitions.length) |>.map
     λ (f,i) => (f,s!"f{i}")
   let transitionNames := readNames ++ writeNames ++ fenceNames

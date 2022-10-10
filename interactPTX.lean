@@ -7,7 +7,7 @@ def main : IO Unit := do
 let res ← Pop.interactiveExecution (Litmus.allPTX) (← IO.getStdin)
   if let .ok (trace,litmus,systemState)t := res
   then
-    let outcome := systemState.outcome
+    let outcome := systemState.partialOutcome
     println! "========================="
     println! "=======  SUMMARY  ======="
     println! "========================="

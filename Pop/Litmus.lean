@@ -94,6 +94,10 @@ def simpleOutcomeToRFPairs (outcome :  List $ ThreadId × Address × Value) (pro
       break
   return res
 
+def Outcome.toRFPairs (outcome : Outcome) (prog : ProgramState)
+  : List $ (Transition × Nat) × Option (Transition × Nat) :=
+   let simple := outcome.map λ r => (r.thread,r.address,r.value)
+   simpleOutcomeToRFPairs simple prog
 
 end Litmus
 

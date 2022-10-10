@@ -110,7 +110,7 @@ RequestId → ThreadId → @OrderConstraints state.scopes
     | none => state.orderConstraints
     | some req =>
       let newrf := λ req' : Request =>
-        req.id != req'.id &&
+        req.id != req'.id && req'.propagatedTo thId &&
         req.isMem && req'.isMem && req.address? == req'.address? &&
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id)

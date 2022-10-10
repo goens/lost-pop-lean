@@ -162,9 +162,13 @@ def SystemState.freshId : SystemState → RequestId
 
 def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState × RequestId
   | state, reqType, tId =>
-  let req : Request :=
+  let prelimReq : Request :=
     {propagated_to := [tId], thread := tId,
-     basic_type := reqType, id := state.freshId}
+     basic_type := reqType, id := state.freshId, occurrence := 0} -- should never stay as 0
+  let previous := state.requests.filter λ r => prelimReq.equivalent r
+  let removed := state.removed.filter λ r => prelimReq.equivalent r
+  let occurrences := previous.map Request.occurrence ++ removed.map Request.occurrence
+  let req := { prelimReq with occurrence := (occurrences.maximum + 1) }
   --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
   let requests' := state.requests.insert req
   let seen' := blesort $ state.seen ++ [req.id]

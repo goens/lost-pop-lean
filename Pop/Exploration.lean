@@ -119,23 +119,27 @@ def SystemState.isDeadlocked (state : SystemState) (unaccepted : ProgramState) :
   let transitions := state.possibleTransitions unaccepted
   transitions == [] && state.hasUnsatisfiedReads
 
-def SystemState.outcome : SystemState → Litmus.Outcome
+def SystemState.partialOutcome : SystemState → Litmus.Outcome
 | state =>
-  let removed := state.removed.map λ rd => (rd.thread, rd.address?.get!, rd.value?)
-  let satisfied := state.requests.filter Request.isSatisfied
-     |>.map λ rd => (rd.thread, rd.address?.get!, rd.value?)
-  let triples := removed.toArray ++ satisfied.toArray
-  triples.qsort (λ (th,ad,_) (th',ad',_) => lexBLe (th,ad) (th',ad')) |>.toList
+  let reqToReadOutcome := λ rd : Request =>
+    { thread := rd.thread, address := rd.address?.get!, value := rd.value?,
+      occurrence := rd.occurrence : Litmus.ReadOutcome}
+  let removed : List Litmus.ReadOutcome := state.removed.map reqToReadOutcome
+  let satisfied := state.requests.filter Request.isSatisfied |>.map reqToReadOutcome
+  removed ++ satisfied
 
 def outcomeSubset : Litmus.Outcome → Litmus.Outcome → Bool
   | out₁, out₂ =>
-  out₁.all λ triple => out₂.contains triple
+  out₁.all λ readOutcome => out₂.contains readOutcome
 
 def outcomeEqiv : Litmus.Outcome → Litmus.Outcome → Bool
   | out₁, out₂ => outcomeSubset out₁ out₂ && outcomeSubset out₂ out₁
 
 def SystemState.outcomePossible : SystemState → Litmus.Outcome → Bool
- | state, expectedOutcome => outcomeSubset state.outcome expectedOutcome
+ | state, expectedOutcome =>
+   -- TODO: deal with 
+   --let rfpairs := 
+   outcomeSubset state.partialOutcome expectedOutcome
 
 -- This should be a monad transformer or smth...
 def SystemState.takeNthStep (state : SystemState) (acceptRequests : ProgramState)
@@ -327,7 +331,7 @@ def runMultipleLitmusAux (tests : List Litmus.Test) (logProgress := false) (maxI
                        (stopAfterFirst := true) (logProgress := logProgress) (maxIterations := maxIterations)
         match resExplExcept with
           | .ok resExpl =>
-             let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.outcome
+             let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.partialOutcome
              let pts := Util.removeDuplicates $ resExpl
              (test, Except.ok (resLitmus, pts))
           | .error e => (test, Except.error e)

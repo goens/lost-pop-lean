@@ -11,7 +11,16 @@ namespace Litmus
 open Util Pop
 
 variable [Arch]
-abbrev Outcome := List $ ThreadId × Address × Value
+
+structure ReadOutcome where
+  thread : ThreadId
+  address : Address
+  value : Value
+  occurrence : Nat
+  deriving BEq
+
+abbrev Outcome := List ReadOutcome
+
 inductive AxiomaticAllowed
   | yes
   | no
@@ -45,13 +54,14 @@ def addressValuePretty : Address × Value → String
 
 def Outcome.prettyPrint : Litmus.Outcome → String
   | outcome =>
-  let threads : List Litmus.Outcome := outcome.groupBy (·.1 == ·.1)
+  let threads : List Litmus.Outcome := outcome.groupBy (·.thread == ·.thread)
   let threadStrings := threads.map
-    λ th => String.intercalate "; " $ th.map (addressValuePretty $ Prod.snd ·)
+    λ th => String.intercalate "; " $ th.map (λ readOut => addressValuePretty $ (readOut.address, readOut.value))
   String.intercalate " || " threadStrings
 
+
 -- Assumes each value written at most once per address!
-def Outcome.toRFPairs (outcome : Litmus.Outcome) (prog : ProgramState)
+def simpleOutcomeToRFPairs (outcome :  List $ ThreadId × Address × Value) (prog : ProgramState)
   : List ((Transition × Nat) × Option (Transition × Nat)) := Id.run do
   let mut res : List ((Transition × Nat) × Option (Transition × Nat)) := []
   -- First we bulid a map of values to the respective writes
@@ -84,6 +94,7 @@ def Outcome.toRFPairs (outcome : Litmus.Outcome) (prog : ProgramState)
       break
   return res
 
+
 end Litmus
 
 namespace Pop
@@ -108,9 +119,14 @@ def mkRequest : String × String × Address × Value → ThreadId → String →
   | ("Dependency", _, _, _), _, _ => some $ Pop.Transition.dependency none
   | _, _, _ => none
 
-def mkOutcome : String × String × Address × Value → ThreadId → Litmus.Outcome
-  | ("R", _, addr, val@(some _)), thId  => [(thId,addr,val)]
-  | _, _ => []
+def mkReadOutcomeTriple : String × String × Address × Value → ThreadId → Option (ThreadId × Address × Value)
+  | ("R", _, addr, val@(some _)), thId  => some (thId,addr,val)
+  | _, _ => none
+
+def mkOutcome : List (ThreadId × Address × Value) → Litmus.Outcome
+  | readOutcomes => readOutcomes.countOcurrences.map
+    λ ((thId,addr,val),num) =>
+      { thread := thId, address := addr, value := val, occurrence := num}
 
 def initZeroesUnpropagatedTransitions : List Address → List (Transition)
   | addresses =>
@@ -177,9 +193,9 @@ def createLitmus (list : List (List RequestSyntax))
   let replacedVariables : List (List (String × String × Address × Value)) := replacedVariablesNat.map λ l => l.map (λ (str,rtype,addr,val) => (str,rtype,Address.ofNat addr, val))
   let fullThreads := replacedVariables.zip (List.range replacedVariables.length)
   let mkThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkRequest r thId (threadTypes thId)) reqs
-  let mkOutcomeThread := λ (reqs, thId) => List.join $ List.map (λ r => mkOutcome r thId) reqs
+  let mkOutcomeThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkReadOutcomeTriple r thId) reqs
   let reqs := fullThreads.map λ t => mkThread t |>.toArray
-  let outcomes := List.join $ fullThreads.map λ t => mkOutcomeThread t
+  let outcomes := mkOutcome $ List.join $ fullThreads.map λ t => mkOutcomeThread t
   let initWrites := initZeroesUnpropagatedTransitions (List.range variables.length)
   let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
   let initState := match validScopes with

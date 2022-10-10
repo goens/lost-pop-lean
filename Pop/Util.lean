@@ -37,6 +37,11 @@ def lexBLt : Nat × Nat → Nat × Nat → Bool
 def lexBLe : Nat × Nat → Nat × Nat → Bool
 | n, m => lexBLt n m || n == m
 
+def _root_.List.maximum : List Nat → Nat
+  | a::[] => a
+  | a::rest => max a (rest.maximum)
+  | [] => 0
+
 partial def removeDuplicates [BEq α] : List α → List α
   | [] => []
   | (x :: xs) => x :: removeDuplicates (xs.filter (λ y => y != x))

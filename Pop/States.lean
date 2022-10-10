@@ -168,12 +168,13 @@ structure Request where
   propagated_to : List ThreadId
   thread : ThreadId
   basic_type : BasicRequest
+  occurrence : Nat
   -- scope : Scope
   -- type : α
   deriving BEq
 
 def Request.default : Request :=
-  {id := 0, propagated_to := [], thread := 0,
+  {id := 0, propagated_to := [], thread := 0, occurrence := 0,
    basic_type := BasicRequest.fence Inhabited.default}
 instance : Inhabited (Request) where default := Request.default
 
@@ -202,6 +203,11 @@ def BasicRequest.address? (r : BasicRequest) : Option Address := match r with
   | _ => none
 
 def Request.address? (r : Request) : Option Address := r.basic_type.address?
+
+def Request.equivalent (r₁ r₂ : Request) : Bool :=
+  if r₁.isFence then r₁.basic_type == r₂.basic_type
+  else r₁.address? == r₂.address? && r₁.value? == r₂.value?
+
 def SatisfiedRead := RequestId × RequestId deriving ToString, BEq
 
 def ValidScopes.validate (V : ValidScopes) (threads : List ThreadId) : (@Scope V) :=
@@ -572,6 +578,7 @@ def SystemState.updateRequest : SystemState → Request → SystemState
    -- orderConstraints := state.orderConstraints,
    -- seenCoherent := state.seenCoherent, removedCoherent := state.removedCoherent,
    -- satisfiedCoherent := state.satisfiedCoherent}
+def SystemState.allRequests (state : SystemState) : List Request := state.removed ++ filterNones state.requests.val.toList
 
 class Arch where
   (req : ArchReq)

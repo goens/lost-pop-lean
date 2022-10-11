@@ -443,18 +443,24 @@ deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}  ✓
 deflitmus dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |} 𐄂
 deflitmus dekkers_acqrelfence := {| W x=1; Fence. sys_acqrel; R y //0 || W y=1; Fence. sys_acqrel;  R x // 0 |} ✓
 deflitmus WRC := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|} ✓
+  2, 3, 2, 4, 2, 2, 4, 1, 3, 1, 4, 1, 2, 2, 1
 deflitmus WRC_two_deps := {| W x=1 || R. sys_acq x // 1;dep W y = 1 || R y // 1 ;dep R x // 0|} ✓
 deflitmus WRC_rel := {| W. sys_rel x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|} ✓
+  2, 3, 2, 4, 2, 1, 3, 4, 1, 3, 2, 1, 3, 1, 1, 1
 deflitmus WRC_acq := {| W x=1 || R. sys_acq x // 1; W y = 1 || R. sys_acq y // 1 ;dep R x // 0|} ✓
+  2, 3, 2, 4, 2, 2, 1, 2, 4, 3, 2, 1, 3, 1, 1, 1
 deflitmus WRC_no_dep := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ; R x // 0|} ✓
+  2, 2, 1, 2, 1, 8, 5, 4, 4, 2, 3, 4, 3, 2, 1, 2, 2, 1
 deflitmus WRC_cta_1_2 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1, T2}} 𐄂
 deflitmus WRC_cta_2_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0, T1}, {T2}} ✓
+  2, 2, 1, 7, 2, 6, 5, 1, 1, 4, 1, 2, 5, 4, 3, 3, 3, 1, 1, 1, 1, 1, 1
 deflitmus WRC_cta_2_1' := {| W. cta_rlx x=1 || R. cta_rlx x // 1; Fence. sys_rel; W. sys_rlx y = 1 || R. sys_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0, T1}, {T2}} 𐄂
 deflitmus WRC_cta_1_1_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1}, {T2}} ✓
+  2, 2, 1, 7, 2, 6, 6, 2, 1, 7, 1, 6, 2, 5, 1, 4, 5, 3, 4, 2, 3, 1, 2, 1
 deflitmus WWRWRR := {| W. cta_rel x=1;  W. cta_rel y=1 || R. cta_acq y // 1; W. cta_rel z = 1 || R. cta_acq z // 1 ; R. cta_acq x // 0|} 𐄂
   3, 3, 1, 5, 2, 1, 6, 5, 2, 2, 3, 1, 2, 1, 1, 1, 2, 2, 2, 2, 1
 deflitmus WWRWRR_fences := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_acq; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} ✓

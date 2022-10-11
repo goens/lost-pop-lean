@@ -64,8 +64,8 @@ inductive BasicRequest
 instance : Inhabited BasicRequest where default := BasicRequest.fence default
 
 def BasicRequest.toString : BasicRequest → String
-  | BasicRequest.read  rr _ => s!"read (Addr{rr.addr}) : {rr.val}"
-  | BasicRequest.write  wr _ => s!"write (Addr{wr.addr}) : {wr.val}"
+  | BasicRequest.read  rr _ => s!"R {rr.addr.prettyPrint}" ++ match rr.val with | none => "" | some v => s!"({v})"
+  | BasicRequest.write  wr _ => s!"W {wr.addr.prettyPrint}" ++ match wr.val with | none => "" | some v => s!"({v})"
   | BasicRequest.fence _ => "fence"
 
 def BasicRequest.prettyPrint : BasicRequest → String
@@ -182,6 +182,9 @@ def Request.toString : Request → String
   | req => s!" Request {req.id} {req.basic_type.prettyPrint} : [propagated to {req.propagated_to}, origin thread : {req.thread}]"
 instance : ToString (Request) where toString := Request.toString
 
+def Request.toShortString : Request → String
+  | req => s!"{req.id}[{req.basic_type.toString}]"
+
 def BasicRequest.isRead    (r : BasicRequest) : Bool := match r with | read  _ _ => true | _ => false
 def BasicRequest.isWrite   (r : BasicRequest) : Bool := match r with | write _ _ => true | _ => false
 def BasicRequest.isFence (r : BasicRequest) : Bool := match r with | fence _ => true | _ => false
@@ -288,6 +291,11 @@ def OrderConstraints.between {V : ValidScopes} (S : @Scope V) (req₁ req₂ : R
   let preds₂ := constraints.predecessors S req₂ reqs
   preds₂.removeAll (req₁::preds₁)
 
+-- TODO: is this really a quasi top sort?
+def OrderConstraints.qtopSort {V : ValidScopes} (S : @Scope V)
+  (reqs : List Request) (constraints : @OrderConstraints V)  : List Request :=
+  reqs.toArray.qsort (λ r₁ r₂ => constraints.lookup S r₁.id r₂.id) |>.toList
+
 /-
 def SystemState.betweenRequests (state : SystemState) (req₁ req₂ : Request) : List Request :=
   let betweenIds := state.orderConstraints.between
@@ -372,10 +380,11 @@ def OrderConstraints.swap {V : ValidScopes} (oc : @OrderConstraints V)
     oc' := oc'.addSubscopes scope remove (val := false)
     return oc'
 
-def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints V) (scope : @Scope V) (reqs : List RequestId) : String :=
-   let reqPairs := List.join $ reqs.map (λ r => reqs.foldl (λ rs' r' => (r,r')::rs') [])
-   let reqTrue := reqPairs.filter $ λ (r₁,r₂) => constraints.lookup scope r₁ r₂
-   reqTrue.toString
+def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints V) (scope : @Scope V) (reqs : List Request) : String :=
+   let reqsSorted := constraints.qtopSort scope reqs
+   let reqPairs := List.join $ reqsSorted.map (λ r => reqsSorted.foldl (λ rs' r' => (r,r')::rs') [])
+   let reqTrue := reqPairs.filter $ λ (r₁,r₂) => constraints.lookup scope r₁.id r₂.id
+   String.intercalate "; " $ reqTrue.map λ (r₁, r₂) => s!"{r₁.toShortString} → {r₂.toShortString}"
 
 private def opReqId? : Option (Request) → Option RequestId := Option.map λ r => r.id
 
@@ -511,7 +520,7 @@ instance : BEq (SystemState) where beq := SystemState.beq
 
 def SystemState.oderConstraintsString (state : SystemState)
 (scope : optParam (@Scope state.scopes) state.scopes.systemScope) : String :=
-  state.orderConstraints.toString scope $ filterNones $ state.requests.val.toList.map $ Option.map Request.id
+  state.orderConstraints.toString scope $ filterNones $ state.requests.val.toList
 
 def SystemState.toString : SystemState → String
   | state =>

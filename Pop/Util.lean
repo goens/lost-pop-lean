@@ -229,7 +229,7 @@ def TupleTuple'2Triple {α β γ : Type} : α × (β × γ) → Triple α β γ
 
 instance {α β γ : Type} : Coe ((α × β) × γ)  (Triple α β γ) where coe := TupleTuple2Triple
 instance {α β γ : Type} : Coe (α × (β × γ))  (Triple α β γ) where coe := TupleTuple'2Triple
-
+instance {α β γ : Type} [Inhabited α] [Inhabited β] [Inhabited γ] : Inhabited (Triple α β γ) where default:= (default,default,default)t
 -- def ListTree.joinSub [BEq α] {l₁ l₂: List α} (h : List.sublist l₁ l₂) : ListTree α l₁ → ListTree α l₂ → ListTree α l₂
 --   | (leaf l₁), (parentNil l₂) => parentCons (leaf l₁) (parentNil l₂) h
 --   | (leaf l₁), (leaf l₂) => parentCons (leaf l₁) (parentNil l₂) h

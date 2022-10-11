@@ -254,8 +254,8 @@ structure SearchOptions where
  (dontPruneCondition : SystemState → ProgramState → Bool := (λ _ _ => true))
  (stopAfterFirst : Bool := false)
  (storePartialTraces : Bool := true)
- (numWorkers : Nat := 7)
- (singleBatchSize : Nat := 15)
+ (numWorkers : Nat := 1)
+ (singleBatchSize : Nat := 1)
  (multiBatchSize : Nat := 6)
  (breadthFirst : Bool := false)
  (logProgress : Bool := false)
@@ -345,11 +345,13 @@ match inittuple with
               randGen := some g'
               idx := (idx + n) % unexplored.size
             if let transition::rest := guide then
-              if let some guideIdx := unexplored.findIdx? λ (pt,_,_)t => pt.last' == some transition then
-                --dbg_trace "guide: found next transition {transition}"
-                idx := guideIdx
-                if (unexplored.eraseIdx idx |>.findIdx? λ (pt,_,_)t => pt.last' == some transition).isNone then
-                  guide := rest
+              unless unexplored[0]!.fst.isEmpty do
+                let (first,last) := unexplored.split
+                  λ (pt,_,_)t => pt.last' == some transition
+                let firstSorted := first.qsort λ (pt,_,_)t (pt',_,_)t => Nat.ble pt'.length pt.length -- longest first!
+                unexplored := firstSorted ++ last
+                guide := rest
+                idx := 0
             let some unexplored_cur := unexplored[idx]?
               | panic! "index error, this shouldn't happen" -- TODO: prove i is fine
             unexplored := unexplored.eraseIdx idx

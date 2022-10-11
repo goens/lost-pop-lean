@@ -380,11 +380,35 @@ def OrderConstraints.swap {V : ValidScopes} (oc : @OrderConstraints V)
     oc' := oc'.addSubscopes scope remove (val := false)
     return oc'
 
-def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints V) (scope : @Scope V) (reqs : List Request) : String :=
+def OrderConstraints.groupsToString : List Request → List Request → String
+  | [],_ => ""
+  | _,[] => ""
+  | [r₁],[r₂] => s!"{r₁.toShortString} → {r₂.toShortString}"
+  | [r₁],reqs => s!"{r₁.toShortString} → " ++ "{" ++ (String.intercalate ", " $ reqs.map Request.toShortString) ++ "}"
+  | reqs,[r₂] => "{" ++ (String.intercalate ", " $ reqs.map Request.toShortString) ++ "} → " ++ r₂.toShortString
+  | reqs₁, reqs₂ => "{" ++ (String.intercalate ", " $ reqs₁.map Request.toShortString) ++
+                    "} → {" ++ (String.intercalate ", " $ reqs₂.map Request.toShortString) ++ "}"
+
+def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints V) (scope : @Scope V) (reqs : List Request) : String := Id.run do
    let reqsSorted := constraints.qtopSort scope reqs
-   let reqPairs := List.join $ reqsSorted.map (λ r => reqsSorted.foldl (λ rs' r' => (r,r')::rs') [])
-   let reqTrue := reqPairs.filter $ λ (r₁,r₂) => constraints.lookup scope r₁.id r₂.id
-   String.intercalate "; " $ reqTrue.map λ (r₁, r₂) => s!"{r₁.toShortString} → {r₂.toShortString}"
+   let mut pairs := []
+   for req in reqsSorted do
+     let deps := reqsSorted.filter λ req' => constraints.lookup scope req.id req'.id
+       if deps.isEmpty then
+         continue
+       pairs := pairs ++ [ (req,deps) ]
+   let mut res : List (List Request × List Request) := []
+   for (req,deps) in pairs do
+     if res.any λ (lhs,_) => lhs.contains req then
+       continue
+     let mut lhs := [req]
+     for req' in reqsSorted do
+       if req' == req then
+         continue
+       if pairs.lookup req' == some deps then
+         lhs := req'::lhs
+     res := res ++ [(lhs,deps)]
+   String.intercalate ";   " $ res.map λ (lhs,rhs) => OrderConstraints.groupsToString lhs rhs
 
 private def opReqId? : Option (Request) → Option RequestId := Option.map λ r => r.id
 

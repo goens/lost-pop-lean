@@ -208,6 +208,17 @@ def SystemState.finishedNoDeadlock (state : SystemState) (unaccepted : ProgramSt
 
 abbrev SearchState := Triple (List Transition) ProgramState SystemState
 
+structure SearchOptions where
+ (dontPruneCondition : SystemState → ProgramState → Bool := (λ _ _ => true))
+ (stopAfterFirst : Bool := false)
+ (storePartialTraces : Bool := true)
+ (numWorkers : Nat := 7)
+ (singleBatchSize : Nat := 15)
+ (multiBatchSize : Nat := 6)
+ (breadthFirst : Bool := false)
+ (logProgress : Bool := false)
+ (maxIterations : Option Nat := none)
+
 private def searchAuxStep (storePartialTraces : Bool) (partialTrace : List Transition)
 (acceptsRemaining : ProgramState) (st : SystemState) : Array SearchState :=
   let transitions := st.possibleTransitions acceptsRemaining
@@ -228,13 +239,12 @@ private def searchAuxUpdateUnexplored (explored unexplored newtriples : Array Se
   Array.append (newtriples.filter filterFun) unexplored
 
 
-private def searchAuxNSteps (stopAfterFirst : Bool) (storePartialTraces : Bool)
-  (dontPruneCondition : SystemState → ProgramState → Bool) (n : Nat) (inputStates : Array SearchState)
+private def searchAuxNSteps (options : SearchOptions) (inputStates : Array SearchState)
  : (List ((List Transition) × SystemState)) × Array SearchState := Id.run do
  let mut unexplored := inputStates
- let mut stepsRemaining := n
+ let mut stepsRemaining := options.singleBatchSize
  let mut found := []
- let stepFun := searchAuxStep storePartialTraces
+ let stepFun := searchAuxStep options.storePartialTraces
  while h : unexplored.size > 0 && stepsRemaining > 0 do
    let (partialTrace,acceptsRemaining,st)t := unexplored[unexplored.size - 1]'
      (by rw [Bool.and_eq_true] at h
@@ -242,7 +252,7 @@ private def searchAuxNSteps (stopAfterFirst : Bool) (storePartialTraces : Bool)
          exact n_minus_one_le_n h')
    let newTriplesRaw := stepFun partialTrace acceptsRemaining st
    let newTriples := newTriplesRaw.filter λ (_,ps,ss)t =>
-     dontPruneCondition ss ps
+     options.dontPruneCondition ss ps
    unexplored := unexplored.pop
    unexplored := searchAuxUpdateUnexplored #[] unexplored newTriples
    --dbg_trace "popped {partialTrace}, remaining unexplored{unexplored.map λ (pt,_,_)t => pt} "
@@ -251,23 +261,18 @@ private def searchAuxNSteps (stopAfterFirst : Bool) (storePartialTraces : Bool)
      if ss.finishedNoDeadlock ps
      then some (pt,ss)
      else none
-   if stopAfterFirst && found.length > 0
+   if options.stopAfterFirst && found.length > 0
      then return (found,unexplored)
    --dbg_trace "returning unexplored: {unexplored.map λ triple => triple.1}"
  (found,unexplored)
 
 -- the unapologetically imperative version:
 def SystemState.exhaustiveSearch (state : SystemState) (inittuple : (List (Transition)) × ProgramState)
- (dontPruneCondition : optParam (SystemState → ProgramState → Bool) (λ _ _ => true))
- (stopAfterFirst : optParam Bool false) (storePartialTraces : optParam Bool false)
- (numWorkers : optParam Nat 7) (batchSize : optParam Nat 15)
- (breadthFirst : optParam Bool false) (logProgress : optParam Bool false)
-  (maxIterations := some 10000) :
- Except String $ List ((List Transition) × SystemState) :=
+  (options : SearchOptions) : Except String $ List ((List Transition) × SystemState) :=
 match inittuple with
   | (inittransitions, accepts) =>
   let stateinit := state.applyTrace inittransitions
-  let stepFun := searchAuxNSteps stopAfterFirst storePartialTraces dontPruneCondition batchSize
+  let stepFun := searchAuxNSteps options
   match stateinit with
     | .ok startState =>
     Id.run do
@@ -283,30 +288,30 @@ match inittuple with
       let mut workers : Array (Task ((List ((List Transition) × SystemState)) × (Array SearchState))) := #[]
       while unexplored.size > 0 do
           --dbg_trace s!"{unexplored.size} unexplored"
-          let n := min unexplored.size (max numWorkers 1) -- at least 1
+          let n := min unexplored.size (max options.numWorkers 1) -- at least 1
           for i in [0:n] do
             -- FIXME: Change cur! (??)
             -- BFS : first
             --let some unexplored_cur := unexplored[i]?
-            let idx := if breadthFirst then unexplored.size - 1 else i
+            let idx := if options.breadthFirst then unexplored.size - 1 else i
             let some unexplored_cur := unexplored[idx]?
               | panic! "index error, this shouldn't happen" -- TODO: prove i is fine
             unexplored := unexplored.eraseIdx idx
-            if !breadthFirst then
+            if !options.breadthFirst then
               explored := explored.push unexplored_cur
             let task := Task.spawn λ _ => stepFun #[unexplored_cur]
             workers := workers.push task
           for worker in workers do
             let (newFound,newTriples) := worker.get
             found := newFound ++ found
-            if stopAfterFirst && found.length > 0 then
+            if options.stopAfterFirst && found.length > 0 then
               unexplored := #[]
               break
             --if let some n := maxIterations  && n < explored.size then
-            if let some n := maxIterations then
+            if let some n := options.maxIterations then
               if explored.size > n then
                 return Except.error s!"Exceeded max. number of iterations({n})"
-            if logProgress then
+            if options.logProgress then
               if newTriples.any λ (pt,_,_)t => pt.length > cur_size then
                 cur_size := cur_size + 1
                 dbg_trace "progress: partial traces of size {cur_size}"
@@ -315,7 +320,7 @@ match inittuple with
                 thousands_explored := thousands_explored + 1
 
             unexplored := searchAuxUpdateUnexplored explored unexplored newTriples
-            if stopAfterFirst && found.length > 0 then
+            if options.stopAfterFirst && found.length > 0 then
               break
             --dbg_trace "total unexplored: {unexplored.size}"
           workers := #[]
@@ -323,40 +328,27 @@ match inittuple with
     | .error e => .error e
 
 def SystemState.exhaustiveSearchLitmus
-  (state : SystemState) (litmus : (List Transition) × ProgramState × Litmus.Outcome)
-  (stopAfterFirst : optParam Bool false)
-  (storePartialTraces : optParam Bool true) (numWorkers : optParam Nat 7)
-  (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false)
-  (logProgress : optParam Bool false) (maxIterations : optParam (Option Nat) none) :
-  Except String $ List ((List Transition) × SystemState) :=
+  (state : SystemState) (litmus : (List Transition) × ProgramState × Litmus.Outcome) (options : SearchOptions)
+  : Except String $ List ((List Transition) × SystemState) :=
     let (inittrans,progstate,expectedOutcome) := litmus
     let pruneFun := λ ss _ => ss.outcomePossible expectedOutcome progstate
-    state.exhaustiveSearch (inittrans,progstate) pruneFun stopAfterFirst storePartialTraces numWorkers
-      batchSize breadthFirst logProgress maxIterations
+    state.exhaustiveSearch (inittrans,progstate) {options with dontPruneCondition := pruneFun}
+
 
 def _root_.Litmus.Test.exhaustiveSearch (test : Litmus.Test) (stopAfterFirst : optParam Bool false)
   (storePartialTraces : optParam Bool true) (numWorkers : optParam Nat 7)
   (batchSize : optParam Nat 15) (breadthFirst : optParam Bool false)
   (logProgress : optParam Bool false) (maxIterations : optParam (Option Nat) none) :
   Except String $ List ((List Transition) × SystemState) :=
-  test.initState.exhaustiveSearchLitmus (test.initTransitions,test.program,test.expected) (stopAfterFirst := stopAfterFirst) (storePartialTraces := storePartialTraces) (numWorkers := numWorkers) (batchSize := batchSize) (breadthFirst := breadthFirst) (logProgress := logProgress) (maxIterations := maxIterations)
+    let options : SearchOptions := { stopAfterFirst, storePartialTraces, numWorkers, singleBatchSize := batchSize, breadthFirst, logProgress, maxIterations}
+  test.initState.exhaustiveSearchLitmus (test.initTransitions,test.program,test.expected) options
 
--- Doesn't work. Need to combine removed with requests
--- def SystemState.satisfiedRequestPairs : SystemState → List (Request × Request)
---   | state =>
---     let pairsOpt := state.satisfied.map λ (rdId, wrId) => (state.requests.val[rdId], state.requests.val[wrId])
---     let optPairs := pairsOpt.map λ (opRd, opWr) => match (opRd,opWr) with
---       | (some rd, some wr) => some (rd,wr)
---       | _ => none
---     filterNones optPairs
-
-def runMultipleLitmusAux (tests : List Litmus.Test) (logProgress := false) (maxIterations : Option Nat)
+def runMultipleLitmusAux (tests : List Litmus.Test) (options : SearchOptions)
   : List ((Litmus.Test) × (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState)))) := Id.run do
     let mut tasks  := #[]
     for test@(Litmus.Test.mk initTrans initProg outcome startingState _ _) in tests do
       let task := Task.spawn λ _ =>
-        let resExplExcept := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome)
-                       (stopAfterFirst := true) (logProgress := logProgress) (maxIterations := maxIterations)
+        let resExplExcept := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome) {options with stopAfterFirst := true}
         match resExplExcept with
           | .ok resExpl =>
              let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.partialOutcome
@@ -369,12 +361,13 @@ def runMultipleLitmusAux (tests : List Litmus.Test) (logProgress := false) (maxI
 def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false) (batchSize := 6) (maxIterations := some 20000)
 : List ((Litmus.Test) × (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState))))
   := Id.run do
+    let options : SearchOptions := {logProgress, multiBatchSize := batchSize, maxIterations}
     let mut res := []
     let mut remaining := tests
     while !remaining.isEmpty do
       let testBatch := remaining.take batchSize
       remaining := remaining.drop batchSize
-      res := res ++ (runMultipleLitmusAux testBatch logProgress maxIterations)
+      res := res ++ (runMultipleLitmusAux testBatch options)
     return res
 
 def buildInteractiveNumbering : Litmus.Test → List Transition → Option (List Nat)

@@ -218,6 +218,8 @@ structure SearchOptions where
  (breadthFirst : Bool := false)
  (logProgress : Bool := false)
  (maxIterations : Option Nat := none)
+ (randomGen : Option StdGen := none)
+ (guidingTrace : Option (List Transition) := none)
 
 private def searchAuxStep (storePartialTraces : Bool) (partialTrace : List Transition)
 (acceptsRemaining : ProgramState) (st : SystemState) : Array SearchState :=
@@ -282,6 +284,8 @@ match inittuple with
       let mut explored := #[]
       let mut found := []
       let mut cur_size := 0
+      let mut randGen := options.randomGen
+      let mut guide := options.guidingTrace
       let mut thousands_explored : UInt32 := 1
       --dbg_trace s!"litmus: {accepts.prettyPrint}"
       --dbg_trace s!"starting state:\n{startState}"
@@ -293,7 +297,13 @@ match inittuple with
             -- FIXME: Change cur! (??)
             -- BFS : first
             --let some unexplored_cur := unexplored[i]?
-            let idx := if options.breadthFirst then unexplored.size - 1 else i
+            let mut idx := if options.breadthFirst then unexplored.size - 1 else i
+            if let some g := randGen then
+              let (n,g') := RandomGen.next g
+              randGen := some g'
+              idx := (idx + n) % unexplored.size
+            --if let some (transition::rest) := guide then
+            --  if
             let some unexplored_cur := unexplored[idx]?
               | panic! "index error, this shouldn't happen" -- TODO: prove i is fine
             unexplored := unexplored.eraseIdx idx
@@ -358,10 +368,11 @@ def runMultipleLitmusAux (tests : List Litmus.Test) (options : SearchOptions)
       tasks := tasks.push task
     return tasks.map Task.get  |>.toList
 
-def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false) (batchSize := 6) (maxIterations := some 20000)
+def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false) (batchSize := 6) (maxIterations := some 20000) (randomSeed : optParam (Option Nat) none)
 : List ((Litmus.Test) × (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState))))
   := Id.run do
-    let options : SearchOptions := {logProgress, multiBatchSize := batchSize, maxIterations}
+    let randomGen := match randomSeed with | none => none | some n => some $ mkStdGen n
+    let options : SearchOptions := {logProgress, multiBatchSize := batchSize, maxIterations, randomGen}
     let mut res := []
     let mut remaining := tests
     while !remaining.isEmpty do

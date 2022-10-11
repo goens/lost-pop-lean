@@ -8,6 +8,25 @@ namespace Pop
 
 variable [Arch]
 
+inductive Key
+  | up : Key
+  | down : Key
+  | left : Key
+  | right : Key
+
+def Key.toNat : Key → Nat
+  | up => 72
+  | down => 80
+  | left => 75
+  | right => 77
+
+def Key.fromNat : Nat → Option Key
+  | 72 => some up
+  | 80 => some down
+  | 75 => some left
+  | 77 => some right
+  | _ => none
+
 def requestTransitionMessage : SystemState → ProgramState → Except String String
   | sysSt, progSt =>
     let available := sysSt.possibleTransitions progSt
@@ -31,6 +50,14 @@ def getTransition : SystemState → ProgramState → String → Except String (O
     | Except.error s!"Invalid index ({n}), must be between 1 and {available.length}"
   Except.ok $ some (trans, n)
 
+def formatInteractiveState (name : String) (programState : ProgramState) (systemState : SystemState) : String :=
+          "======================================\n"
+          ++ s!"{name}, program state:\n{programState.prettyPrint}\n"
+          ++ s!"scopes : {systemState.scopes.toStringHet (some systemState.threadTypes)}\n"
+          ++ "--------------------------------------\n"
+          ++ s!"Current state:\n{systemState}\n"
+          ++ "--------------------------------------\n"
+
 def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
   | (.mk initTrans initProgSt _ initSysSt name _), stdin => do
     let Except.ok start := initSysSt.applyTrace initTrans
@@ -48,13 +75,9 @@ def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except Str
       if let .error msg := exceptTransMsg  then
         return .error msg
       else if let .ok m := exceptTransMsg then
-        let msg := "======================================\n"
-          ++ s!"{name}, program state:\n{programState.prettyPrint}\n"
-          ++ s!"scopes : {systemState.scopes.toStringHet (some systemState.threadTypes)}\n"
-          ++ "--------------------------------------\n"
+        let msg := formatInteractiveState name programState systemState
           ++ s!"Current trace:\n{partialTraceNums}\n"
           ++ "--------------------------------------\n"
-          ++ s!"Current state:\n{systemState}\n"
           ++ "Possible transitions:\n" ++ "0: Undo (last transition)\n" ++ m
         let opStep ← Util.selectLoop msg (getTransition systemState programState) stdin
         if let some opTransition := opStep then
@@ -108,5 +131,41 @@ def interactiveExecution : List Litmus.Test → IO.FS.Stream → IO (Except Stri
     match exceptLitmus with
       | .ok litmus => interactiveExecutionSingle litmus stdin
       | .error msg  => return Except.error msg
+
+def replayTrace : Litmus.Test → List Transition → IO.FS.Stream → IO Unit
+  | test, transitions@(_::_), stdin => do
+    let initState ← Util.exceptIO $ test.initState.applyTrace test.initTransitions
+    let mut ahead := transitions
+    let mut behind := []
+    while true do
+      let programState ← Util.exceptIO $ test.program.consumeTrace initState behind
+      let curState ← Util.exceptIO $ initState.applyTrace behind
+      IO.println $ formatInteractiveState test.name programState curState
+      IO.println $ s!"Executed so far: {behind}\n--------------------------------------"
+      IO.println $ s!"Next: {ahead}\n--------------------------------------"
+      let input := (← stdin.getLine).trim
+      if input == "b" then
+        dbg_trace "going backward"
+        match behind with
+          | [] => continue
+          | beh =>
+            ahead := beh.last'.get!::ahead
+            behind := beh.reverse.tail.reverse
+      if input == "f" then
+        dbg_trace "going forward"
+        match ahead with
+          | [] => continue
+          | next::rest =>
+            behind := behind ++ [next]
+            ahead := rest
+      if input == "q" then
+        break
+
+  | _, [], _ => IO.println "Empty transition list"
+
+def replayNumTrace : Litmus.Test → List Nat → IO.FS.Stream → IO Unit
+  | test, transitions, stdin => match buildTransitionTrace test transitions with
+     | none => IO.println "unable to convert numeric trace into litmus test trace"
+     | some trace => replayTrace test trace stdin
 
 end Pop

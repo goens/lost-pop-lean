@@ -4,6 +4,10 @@ import Pop.Arch.PTX
 open Pop PTX
 
 def main : IO Unit := do
+/-
+  replayNumTrace Litmus.WWRWRR [2, 3, 2, 5, 2, 1, 5, 1, 4, 2, 2, 2, 3, 2, 1, 1, 2, 3, 3, 2, 1] (← IO.getStdin)
+-/
+
 let res ← Pop.interactiveExecution (Litmus.allPTX) (← IO.getStdin)
   if let .ok (trace,litmus,systemState)t := res
   then

@@ -59,6 +59,19 @@ def ProgramState.consumeTransition (prog : ProgramState) (state : SystemState) (
   if found then return res
   else panic! s!"trying to consume non-existing transition: {transition}"
 
+def ProgramState.consumeTrace (prog : ProgramState) (state : SystemState) (trace : List Transition)
+: Except String ProgramState := do
+  let mut curState := state
+  let mut curProg := prog
+  for transition in trace do
+    curProg := curProg.consumeTransition curState transition
+    let exCurState := state.applyTransition transition
+    if let .error e := exCurState then
+      throw e
+    else
+      curState := exCurState.toOption.get!
+  return curProg
+
 -- Should hold: remove · append = id
 def ProgramState.appendTransition : ProgramState → Transition → ProgramState
   | prog, trans@(.acceptRequest _ thId) => Id.run do
@@ -356,6 +369,7 @@ def buildInteractiveNumbering : Litmus.Test → List Transition → Option (List
     let mut progState := test.program
     for transition in transitions do
       if transition.isDependency then
+        -- TODO: is this where the dependencies show up?
         progState := progState.consumeTransition state transition
         continue
       let available := state.possibleTransitions progState
@@ -372,6 +386,28 @@ def buildInteractiveNumbering : Litmus.Test → List Transition → Option (List
         else
           panic! s!"error while applying transition {nextSt?}"
     return some (res.map (· + 1))
+
+-- should hold: buildInteractiveNumbering ∘ buildTransitionTrace ≃ Id, buildTransitionTrace ∘ buildInteractiveNumbering ≃ Id
+def buildTransitionTrace : Litmus.Test → List Nat → Option (List Transition)
+  | test, numTransitions => Id.run do
+    let mut res := []
+    let mut state := test.initState.applyTrace test.initTransitions |>.toOption.get!
+    let mut progState := test.program
+    for idx in numTransitions do
+      let available := state.possibleTransitions progState
+      if let some transition := available[idx - 1]? then
+        res := res ++ [transition]
+        let nextSt? := state.applyTransition transition
+        if let some nextSt := nextSt?.toOption
+          then
+            progState := progState.consumeTransition state transition
+            state := nextSt
+          else
+            panic! s!"error while applying transition {nextSt?}"
+      else
+        panic! s!"cannot find transition ({idx}) in available transitions: {available}"
+    return some res
+
 def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState))) →
 (printWitness : optParam Bool true) → (printHead : optParam Bool true) → (nameColWidth : optParam Nat 30) → String
   | test, resExcept , printWitness, printHead, nameColWidth =>

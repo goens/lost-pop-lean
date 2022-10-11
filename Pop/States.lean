@@ -434,6 +434,11 @@ def RequestArray.getReq? : RequestArray → RequestId → Option (Request)
 def RequestArray.getReq! : RequestArray → RequestId → Request
   | arr, rId => arr.val[rId.toNat]?.get!.get!
 
+def RequestArray.printReq : RequestArray → RequestId → String
+  | arr, rId => match arr.getReq? rId with
+    | none => ""
+    | some r => r.toShortString
+
 def RequestArray.map {β : Type} : RequestArray → (Request → β) → Array β
  | rarr, f => filterNonesArr $ rarr.val.map λ opreq => Option.map f opreq
 -- instance : GetElem RequestArray RequestId (Option Request) where getElem
@@ -542,6 +547,11 @@ def SystemState.beq (state₁ state₂ : SystemState)
 
 instance : BEq (SystemState) where beq := SystemState.beq
 
+def SystemState.findMaybeRemoved? (state : SystemState) (rId : RequestId) : Option Request :=
+  match state.requests.getReq? rId with
+    | some r => some r
+    | none => state.removed.find? (·.id == rId)
+
 def SystemState.oderConstraintsString (state : SystemState)
 (scope : optParam (@Scope state.scopes) state.scopes.systemScope) : String :=
   state.orderConstraints.toString scope $ filterNones $ state.requests.val.toList
@@ -552,10 +562,12 @@ def SystemState.toString : SystemState → String
     then s!"constraints: {state.oderConstraintsString}\n"
     else String.intercalate "\n" $ state.scopes.scopes.toList.map
       λ scope => s!"constraints (scope {scope}) : {state.oderConstraintsString (state.scopes.validate scope)}"
+  let satisfiedStr := state.satisfied.map
+    λ (r₁, r₂) => s!"{(state.findMaybeRemoved? r₁).get!.toShortString} with {state.requests.printReq r₂}"
   s!"requests:\n{state.requests.toString}\n"  ++
   s!"seen: {state.seen.toString}\n" ++
   s!"removed: {state.removed.toString}\n" ++
-  s!"satisfied: {state.satisfied.toString}\n" ++
+  s!"satisfied: {satisfiedStr}\n" ++
   ocString
 
 def SystemState.orderPredecessors (state : SystemState) (scope : @Scope state.scopes)

@@ -145,14 +145,12 @@ def replayTrace : Litmus.Test → List Transition → IO.FS.Stream → IO Unit
       IO.println $ s!"Next: {ahead}\n--------------------------------------"
       let input := (← stdin.getLine).trim
       if input == "b" then
-        dbg_trace "going backward"
         match behind with
           | [] => continue
           | beh =>
             ahead := beh.last'.get!::ahead
             behind := beh.reverse.tail.reverse
       if input == "f" then
-        dbg_trace "going forward"
         match ahead with
           | [] => continue
           | next::rest =>

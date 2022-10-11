@@ -64,12 +64,12 @@ def ProgramState.consumeTrace (prog : ProgramState) (state : SystemState) (trace
   let mut curState := state
   let mut curProg := prog
   for transition in trace do
-    curProg := curProg.consumeTransition curState transition
     let exCurState := state.applyTransition transition
     if let .error e := exCurState then
       throw e
     else
       curState := exCurState.toOption.get!
+    curProg := curProg.consumeTransition curState transition |>.clearDependencies curState
   return curProg
 
 -- Should hold: remove · append = id

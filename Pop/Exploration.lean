@@ -368,10 +368,6 @@ def buildInteractiveNumbering : Litmus.Test → List Transition → Option (List
     let mut state := test.initState.applyTrace test.initTransitions |>.toOption.get!
     let mut progState := test.program
     for transition in transitions do
-      if transition.isDependency then
-        -- TODO: is this where the dependencies show up?
-        progState := progState.consumeTransition state transition
-        continue
       let available := state.possibleTransitions progState
       let idx? := available.findIdx? (λ t => t == transition || (t.isAccept && t.getAcceptBasicRequest? == transition.getAcceptBasicRequest?))
       if let some i := idx? then
@@ -381,7 +377,7 @@ def buildInteractiveNumbering : Litmus.Test → List Transition → Option (List
       let nextSt? := state.applyTransition transition
       if let some nextSt := nextSt?.toOption
         then
-          progState := progState.consumeTransition state transition
+          progState := progState.consumeTransition nextSt transition |>.clearDependencies nextSt
           state := nextSt
         else
           panic! s!"error while applying transition {nextSt?}"

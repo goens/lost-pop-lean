@@ -148,11 +148,26 @@ def outcomeSubset : Litmus.Outcome → Litmus.Outcome → Bool
 def outcomeEqiv : Litmus.Outcome → Litmus.Outcome → Bool
   | out₁, out₂ => outcomeSubset out₁ out₂ && outcomeSubset out₂ out₁
 
-def SystemState.outcomePossible : SystemState → Litmus.Outcome → Bool
- | state, expectedOutcome =>
-   -- TODO: deal with 
-   --let rfpairs := 
-   outcomeSubset state.partialOutcome expectedOutcome
+def SystemState.outcomePossible : Litmus.Outcome → ProgramState → SystemState → Bool
+ | expectedOutcome, program, state => Id.run do
+   -- Commented out: this pruning should be better/stronger, but it seems to make things slower and/or be wrong
+   -- let rfpairs := expectedOutcome.toRFPairs program
+   -- for ((readTrans,readNum),opWrite) in rfpairs do
+   --   if let some (writeTrans,writeNum) := opWrite then
+   --     if let some read := readTrans.getAcceptBasicRequest? then
+   --       if let some write := writeTrans.getAcceptBasicRequest? then
+   --         let stWrites := state.requests.filter
+   --           λ req => req.address? == write.address? && some req.thread == writeTrans.thread?
+   --             && req.occurrence == writeNum && write.value? == req.value?
+   --         let stReads := state.requests.filter
+   --           λ req => req.address? == read.address? && some req.thread == readTrans.thread?
+   --             && req.occurrence == readNum
+   --         if let (some stRead, some stWrite) := (stReads[0]?, stWrites[0]?) then
+   --           let scope := state.scopes.jointScope stRead.thread stWrite.thread
+   --           if state.orderConstraints.lookup scope stWrite.id stRead.id then
+   --             return false
+   -- if nothing breaks from
+   return outcomeSubset state.partialOutcome expectedOutcome
 
 -- This should be a monad transformer or smth...
 def SystemState.takeNthStep (state : SystemState) (acceptRequests : ProgramState)
@@ -315,7 +330,7 @@ def SystemState.exhaustiveSearchLitmus
   (logProgress : optParam Bool false) (maxIterations : optParam (Option Nat) none) :
   Except String $ List ((List Transition) × SystemState) :=
     let (inittrans,progstate,expectedOutcome) := litmus
-    let pruneFun := λ ss _ => ss.outcomePossible expectedOutcome
+    let pruneFun := λ ss _ => ss.outcomePossible expectedOutcome progstate
     state.exhaustiveSearch (inittrans,progstate) pruneFun stopAfterFirst storePartialTraces numWorkers
       batchSize breadthFirst logProgress maxIterations
 

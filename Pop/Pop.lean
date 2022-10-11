@@ -79,6 +79,11 @@ def Transition.getAcceptBasicRequest? : Transition → Option BasicRequest
   | .acceptRequest br _ => some br
   | _ => none
 
+def Transition.thread? : Transition → Option ThreadId
+ | acceptRequest _ tid => some tid
+ | propagateToThread _ tid => some tid
+ | _ => none
+
 abbrev ProgramState := Array (Array (Transition))
 
 def ProgramState.allFilter (prog : ProgramState) (filterFun : Transition → Bool)

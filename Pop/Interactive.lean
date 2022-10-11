@@ -59,7 +59,7 @@ def formatInteractiveState (name : String) (programState : ProgramState) (system
           ++ "--------------------------------------\n"
 
 def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
-  | (.mk initTrans initProgSt _ initSysSt name _), stdin => do
+  | (.mk initTrans initProgSt _ initSysSt name _ _), stdin => do
     let Except.ok start := initSysSt.applyTrace initTrans
       |  do return Except.error "error initalizing litmus"
     let mut partialTrace := []

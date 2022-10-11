@@ -206,6 +206,48 @@ def SystemState.finishedNoDeadlock (state : SystemState) (unaccepted : ProgramSt
   transitions == [] && !state.hasUnsatisfiedReads
 
 
+def buildInteractiveNumbering : Litmus.Test → List Transition → Option (List Nat)
+  | test, transitions => Id.run do
+    let mut res := []
+    let mut state := test.initState.applyTrace test.initTransitions |>.toOption.get!
+    let mut progState := test.program
+    for transition in transitions do
+      let available := state.possibleTransitions progState
+      let idx? := available.findIdx? (λ t => t == transition || (t.isAccept && t.getAcceptBasicRequest? == transition.getAcceptBasicRequest?))
+      if let some i := idx? then
+        res := res ++ [i]
+      else
+        panic! s!"cannot find transition ({transition}) in available transitions: {available}"
+      let nextSt? := state.applyTransition transition
+      if let some nextSt := nextSt?.toOption
+        then
+          progState := progState.consumeTransition nextSt transition |>.clearDependencies nextSt
+          state := nextSt
+        else
+          panic! s!"error while applying transition {nextSt?}"
+    return some (res.map (· + 1))
+
+-- should hold: buildInteractiveNumbering ∘ buildTransitionTrace ≃ Id, buildTransitionTrace ∘ buildInteractiveNumbering ≃ Id
+def buildTransitionTrace : Litmus.Test → List Nat → Option (List Transition)
+  | test, numTransitions => Id.run do
+    let mut res := []
+    let mut state := test.initState.applyTrace test.initTransitions |>.toOption.get!
+    let mut progState := test.program
+    for idx in numTransitions do
+      let available := state.possibleTransitions progState
+      if let some transition := available[idx - 1]? then
+        res := res ++ [transition]
+        let nextSt? := state.applyTransition transition
+        if let some nextSt := nextSt?.toOption
+          then
+            progState := progState.consumeTransition state transition
+            state := nextSt
+          else
+            panic! s!"error while applying transition {nextSt?}"
+      else
+        panic! s!"cannot find transition ({idx}) in available transitions: {available}"
+    return some res
+
 abbrev SearchState := Triple (List Transition) ProgramState SystemState
 
 structure SearchOptions where
@@ -219,7 +261,7 @@ structure SearchOptions where
  (logProgress : Bool := false)
  (maxIterations : Option Nat := none)
  (randomGen : Option StdGen := none)
- (guidingTrace : Option (List Transition) := none)
+ (guidingTrace : List Transition := [])
 
 private def searchAuxStep (storePartialTraces : Bool) (partialTrace : List Transition)
 (acceptsRemaining : ProgramState) (st : SystemState) : Array SearchState :=
@@ -302,8 +344,12 @@ match inittuple with
               let (n,g') := RandomGen.next g
               randGen := some g'
               idx := (idx + n) % unexplored.size
-            --if let some (transition::rest) := guide then
-            --  if
+            if let transition::rest := guide then
+              if let some guideIdx := unexplored.findIdx? λ (pt,_,_)t => pt.last' == some transition then
+                --dbg_trace "guide: found next transition {transition}"
+                idx := guideIdx
+                if (unexplored.eraseIdx idx |>.findIdx? λ (pt,_,_)t => pt.last' == some transition).isNone then
+                  guide := rest
             let some unexplored_cur := unexplored[idx]?
               | panic! "index error, this shouldn't happen" -- TODO: prove i is fine
             unexplored := unexplored.eraseIdx idx
@@ -356,9 +402,10 @@ def _root_.Litmus.Test.exhaustiveSearch (test : Litmus.Test) (stopAfterFirst : o
 def runMultipleLitmusAux (tests : List Litmus.Test) (options : SearchOptions)
   : List ((Litmus.Test) × (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState)))) := Id.run do
     let mut tasks  := #[]
-    for test@(Litmus.Test.mk initTrans initProg outcome startingState _ _) in tests do
+    for test@(Litmus.Test.mk initTrans initProg outcome startingState _ _ guide) in tests do
       let task := Task.spawn λ _ =>
-        let resExplExcept := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome) {options with stopAfterFirst := true}
+        let guidingTrace := match buildTransitionTrace test guide with | none => [] | some tr => tr
+        let resExplExcept := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome) {{options with stopAfterFirst := true} with guidingTrace}
         match resExplExcept with
           | .ok resExpl =>
              let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.partialOutcome
@@ -380,48 +427,6 @@ def runMultipleLitmus (tests : List Litmus.Test) (logProgress := false) (batchSi
       remaining := remaining.drop batchSize
       res := res ++ (runMultipleLitmusAux testBatch options)
     return res
-
-def buildInteractiveNumbering : Litmus.Test → List Transition → Option (List Nat)
-  | test, transitions => Id.run do
-    let mut res := []
-    let mut state := test.initState.applyTrace test.initTransitions |>.toOption.get!
-    let mut progState := test.program
-    for transition in transitions do
-      let available := state.possibleTransitions progState
-      let idx? := available.findIdx? (λ t => t == transition || (t.isAccept && t.getAcceptBasicRequest? == transition.getAcceptBasicRequest?))
-      if let some i := idx? then
-        res := res ++ [i]
-      else
-        panic! s!"cannot find transition ({transition}) in available transitions: {available}"
-      let nextSt? := state.applyTransition transition
-      if let some nextSt := nextSt?.toOption
-        then
-          progState := progState.consumeTransition nextSt transition |>.clearDependencies nextSt
-          state := nextSt
-        else
-          panic! s!"error while applying transition {nextSt?}"
-    return some (res.map (· + 1))
-
--- should hold: buildInteractiveNumbering ∘ buildTransitionTrace ≃ Id, buildTransitionTrace ∘ buildInteractiveNumbering ≃ Id
-def buildTransitionTrace : Litmus.Test → List Nat → Option (List Transition)
-  | test, numTransitions => Id.run do
-    let mut res := []
-    let mut state := test.initState.applyTrace test.initTransitions |>.toOption.get!
-    let mut progState := test.program
-    for idx in numTransitions do
-      let available := state.possibleTransitions progState
-      if let some transition := available[idx - 1]? then
-        res := res ++ [transition]
-        let nextSt? := state.applyTransition transition
-        if let some nextSt := nextSt?.toOption
-          then
-            progState := progState.consumeTransition state transition
-            state := nextSt
-          else
-            panic! s!"error while applying transition {nextSt?}"
-      else
-        panic! s!"cannot find transition ({idx}) in available transitions: {available}"
-    return some res
 
 def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState))) →
 (printWitness : optParam Bool true) → (printHead : optParam Bool true) → (nameColWidth : optParam Nat 30) → String

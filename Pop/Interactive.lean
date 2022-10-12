@@ -52,12 +52,23 @@ def getTransition : SystemState → ProgramState → String → Except String (O
     | Except.error s!"Invalid index ({n}), must be between 1 and {available.length}"
   Except.ok $ some (trans, n)
 
-def formatInteractiveState (name : String) (programState : ProgramState) (systemState : SystemState) : String :=
+def getReqId? : SystemState → Transition → Option RequestId
+  | state, .acceptRequest _ _ => some (state.freshId.toNat - 1) -- last accepted -1
+  | _, .propagateToThread rid _ => some rid
+  | _, _ => none
+
+
+def formatInteractiveState (name : String) (programState : ProgramState) (systemState : SystemState) (highlightTransition : optParam (Option Transition) none) : String :=
+          let highlight := match highlightTransition with
+            | none => none
+            | some trans => match (trans.thread?, getReqId? systemState trans) with
+              | (some tid, some rid) => some (tid, rid)
+              | _ => none
           "======================================\n"
           ++ s!"{name}, program state:\n{programState.prettyPrint}\n"
           ++ s!"scopes : {systemState.scopes.toStringHet (some systemState.threadTypes)}\n"
           ++ "--------------------------------------\n"
-          ++ s!"Current state:\n{systemState}\n"
+          ++ s!"Current state:\n{systemState.prettyPrint (highlight := highlight)}\n"
           ++ "--------------------------------------\n"
 
 def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
@@ -81,7 +92,7 @@ def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except Str
       if let .error msg := exceptTransMsg  then
         return .error msg
       else if let .ok m := exceptTransMsg then
-        let msg := formatInteractiveState name programState systemState
+        let msg := formatInteractiveState name programState systemState (highlightTransition := partialTrace.last')
           ++ s!"Current trace:\n{partialTraceNums}\n"
           ++ "--------------------------------------\n"
           ++ "Possible transitions:\n" ++ "0: Undo (last transition)\n" ++ m

@@ -456,7 +456,7 @@ def RequestArray.empty : RequestArray :=
 def RequestArray.toString : RequestArray → String
   | arr => String.intercalate ",\n" $ List.map Request.toString $ filterNones arr.val.toList
 
-def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (colWidth := 20) : String := Id.run do
+def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (colWidth := 20) (highlight : optParam (Option $ ThreadId × RequestId) none) : String := Id.run do
   let mut threads := []
   let mut res := ""
   for thId in (List.range numThreads) do
@@ -465,12 +465,14 @@ def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (colWidth :
     res := res ++ s!" T{thId}" ++ (String.mk $ List.replicate (colWidth - 3) ' ')
     let mut thread := []
     for req in filterNones arr.val.toList do
-      if req.thread == thId then
+      if highlight == some (thId, req.id) then
+        thread := thread ++ [(Color.yellow, req.toShortString)]
+      else if req.thread == thId then
         thread := thread ++ [(Color.cyan, req.toShortString)]
       else if req.propagatedTo thId then
-        thread := thread ++ [(Color.yellow, req.toShortString)]
+        thread := thread ++ [(Color.black, req.toShortString)]
     threads := threads ++ [thread]
-  res := res ++ "\n"
+  res := res ++ "|\n" ++ (String.mk $ List.replicate (colWidth * numThreads + 2 * (numThreads - 1)) '-') ++ "\n"
   while threads.any (!·.isEmpty) do
     let mut sep := false
     for thread in threads do
@@ -481,7 +483,7 @@ def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (colWidth :
       res := res ++ match thread.head? with
         | none => (String.mk $ List.replicate colWidth ' ')
         | some (color,str) => " " ++ (colorString color str) ++ (String.mk $ List.replicate (colWidth - str.length - 1) ' ')
-    res := res ++ "\n"
+    res := res ++ "|\n"
     threads := threads.map List.tail
   return res
 
@@ -592,6 +594,18 @@ def SystemState.oderConstraintsString (state : SystemState)
 def SystemState.threads : SystemState → List ThreadId
  | s => s.scopes.system_scope
 
+def SystemState.prettyPrint (state : SystemState) (highlight : optParam (Option $ ThreadId × RequestId) none) : String :=
+  let ocString := if state.scopes.scopes.toList.length == 1
+    then s!"constraints: {state.oderConstraintsString}\n"
+    else String.intercalate "\n" $ state.scopes.scopes.toList.map
+      λ scope => s!"constraints (scope {scope}) : {state.oderConstraintsString (state.scopes.validate scope)}"
+  let satisfiedStr := state.satisfied.map
+    λ (r₁, r₂) => s!"{(state.findMaybeRemoved? r₁).get!.toShortString} with {state.requests.printReq r₂}"
+  s!"requests:\n{state.requests.prettyPrint state.threads.length (highlight := highlight)}\n"  ++
+  s!"removed: {state.removed.toString}\n" ++
+  s!"satisfied: {satisfiedStr}\n" ++
+  ocString
+
 def SystemState.toString : SystemState → String
   | state =>
   let ocString := if state.scopes.scopes.toList.length == 1
@@ -600,7 +614,7 @@ def SystemState.toString : SystemState → String
       λ scope => s!"constraints (scope {scope}) : {state.oderConstraintsString (state.scopes.validate scope)}"
   let satisfiedStr := state.satisfied.map
     λ (r₁, r₂) => s!"{(state.findMaybeRemoved? r₁).get!.toShortString} with {state.requests.printReq r₂}"
-  s!"requests:\n{state.requests.prettyPrint state.threads.length}\n"  ++
+  s!"requests:\n{state.requests}\n"  ++
   s!"seen: {state.seen.toString}\n" ++
   s!"removed: {state.removed.toString}\n" ++
   s!"satisfied: {satisfiedStr}\n" ++

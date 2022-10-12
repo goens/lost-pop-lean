@@ -217,11 +217,11 @@ def buildInteractiveNumbering : Litmus.Test → List Transition → Option (List
       if let some i := idx? then
         res := res ++ [i]
       else
-        panic! s!"cannot find transition ({transition}) in available transitions: {available}"
+        panic! s!"cannot find transition ({transition}) in {test.name}; available transitions: {available}"
       let nextSt? := state.applyTransition transition
       if let some nextSt := nextSt?.toOption
         then
-          progState := progState.consumeTransition nextSt transition |>.clearDependencies nextSt
+          progState := progState.consumeTransition state transition |>.clearDependencies nextSt
           state := nextSt
         else
           panic! s!"error while applying transition {nextSt?}"
@@ -350,7 +350,8 @@ match inittuple with
                   λ (pt,_,_)t => pt.last' == some transition
                 let firstSorted := first.qsort λ (pt,_,_)t (pt',_,_)t => Nat.ble pt'.length pt.length -- longest first!
                 unexplored := firstSorted ++ last
-                guide := rest
+                if !firstSorted.isEmpty then -- don't consume transition unless actually found something
+                  guide := rest
                 idx := 0
             let some unexplored_cur := unexplored[idx]?
               | panic! "index error, this shouldn't happen" -- TODO: prove i is fine

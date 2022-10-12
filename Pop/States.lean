@@ -383,11 +383,15 @@ def OrderConstraints.swap {V : ValidScopes} (oc : @OrderConstraints V)
 def OrderConstraints.groupsToString : List Request → List Request → String
   | [],_ => ""
   | _,[] => ""
-  | [r₁],[r₂] => s!"{r₁.toShortString} → {r₂.toShortString}"
-  | [r₁],reqs => s!"{r₁.toShortString} → " ++ "{" ++ (String.intercalate ", " $ reqs.map Request.toShortString) ++ "}"
-  | reqs,[r₂] => "{" ++ (String.intercalate ", " $ reqs.map Request.toShortString) ++ "} → " ++ r₂.toShortString
-  | reqs₁, reqs₂ => "{" ++ (String.intercalate ", " $ reqs₁.map Request.toShortString) ++
-                    "} → {" ++ (String.intercalate ", " $ reqs₂.map Request.toShortString) ++ "}"
+  | reqs₁, reqs₂ =>
+    let vars₁ := removeDuplicates $ reqs₁  |>.map Request.address?
+    let vars₂ := removeDuplicates $ reqs₂  |>.map Request.address?
+    let vars := vars₁.filter vars₂.contains
+    let colorFun := λ r => if vars.contains r.address? then
+      colorString Color.magenta r.toShortString else r.toShortString
+    let (r₁strings, r₂strings) := (reqs₁.map colorFun, reqs₂.map colorFun)
+    "{" ++ (String.intercalate ", " $ r₁strings) ++
+                    "} → {" ++ (String.intercalate ", " $ r₂strings) ++ "}"
 
 def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints V) (scope : @Scope V) (reqs : List Request) : String := Id.run do
    let reqsSorted := constraints.qtopSort scope reqs
@@ -451,6 +455,35 @@ def RequestArray.empty : RequestArray :=
 
 def RequestArray.toString : RequestArray → String
   | arr => String.intercalate ",\n" $ List.map Request.toString $ filterNones arr.val.toList
+
+def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (colWidth := 20) : String := Id.run do
+  let mut threads := []
+  let mut res := ""
+  for thId in (List.range numThreads) do
+    if thId != 0 then
+      res := res ++ "||"
+    res := res ++ s!" T{thId}" ++ (String.mk $ List.replicate (colWidth - 3) ' ')
+    let mut thread := []
+    for req in filterNones arr.val.toList do
+      if req.thread == thId then
+        thread := thread ++ [(Color.cyan, req.toShortString)]
+      else if req.propagatedTo thId then
+        thread := thread ++ [(Color.yellow, req.toShortString)]
+    threads := threads ++ [thread]
+  res := res ++ "\n"
+  while threads.any (!·.isEmpty) do
+    let mut sep := false
+    for thread in threads do
+      if sep then
+        res := res ++ "||"
+      else
+        sep := true
+      res := res ++ match thread.head? with
+        | none => (String.mk $ List.replicate colWidth ' ')
+        | some (color,str) => " " ++ (colorString color str) ++ (String.mk $ List.replicate (colWidth - str.length - 1) ' ')
+    res := res ++ "\n"
+    threads := threads.map List.tail
+  return res
 
 instance : ToString (RequestArray) where toString := RequestArray.toString
 
@@ -556,6 +589,9 @@ def SystemState.oderConstraintsString (state : SystemState)
 (scope : optParam (@Scope state.scopes) state.scopes.systemScope) : String :=
   state.orderConstraints.toString scope $ filterNones $ state.requests.val.toList
 
+def SystemState.threads : SystemState → List ThreadId
+ | s => s.scopes.system_scope
+
 def SystemState.toString : SystemState → String
   | state =>
   let ocString := if state.scopes.scopes.toList.length == 1
@@ -564,7 +600,7 @@ def SystemState.toString : SystemState → String
       λ scope => s!"constraints (scope {scope}) : {state.oderConstraintsString (state.scopes.validate scope)}"
   let satisfiedStr := state.satisfied.map
     λ (r₁, r₂) => s!"{(state.findMaybeRemoved? r₁).get!.toShortString} with {state.requests.printReq r₂}"
-  s!"requests:\n{state.requests.toString}\n"  ++
+  s!"requests:\n{state.requests.prettyPrint state.threads.length}\n"  ++
   s!"seen: {state.seen.toString}\n" ++
   s!"removed: {state.removed.toString}\n" ++
   s!"satisfied: {satisfiedStr}\n" ++
@@ -597,9 +633,6 @@ def SystemState.init (S : ValidScopes) (threadTypes : ThreadId → String): Syst
 def SystemState.default := SystemState.init ValidScopes.default (λ _ => "default")
 instance : Inhabited (SystemState) where default := SystemState.default
 
-
-def SystemState.threads : SystemState → List ThreadId
- | s => s.scopes.system_scope
 
 def SystemState.idsToReqs : (SystemState) → List RequestId → List (Request)
   | state, ids => filterNones $ ids.map (λ id => state.requests.getReq? id)

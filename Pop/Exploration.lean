@@ -343,7 +343,8 @@ match inittuple with
             if let some g := randGen then
               let (n,g') := RandomGen.next g
               randGen := some g'
-              idx := (idx + n) % unexplored.size
+              if n % 5 == 0 then -- 20%
+                idx := (idx + n) % unexplored.size
             if let transition::rest := guide then
               unless unexplored[0]!.fst.isEmpty do
                 let (first,last) := unexplored.split

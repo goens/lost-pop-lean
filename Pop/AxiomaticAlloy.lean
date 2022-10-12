@@ -171,6 +171,7 @@ def toPreds (litmus : Litmus.Test) : String :=
 
 
 def toAlloyLitmus (litmus : Litmus.Test ) : String :=
+  s!"// Litmus: {litmus.name}\n" ++
   "module litmus\n" ++
   "open ptx as ptx\n" ++
   "pred generated_litmus_test {\n" ++

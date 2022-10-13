@@ -103,6 +103,8 @@ def Color.isBright : Color → Bool
  | .cyan    => true --?
  | .white   => true
 
+instance : Inhabited Color where default := Color.black
+
 def colorString : Color → String → String :=
   λ color str =>
     let textColor := if color.isBright then Color.black else Color.white

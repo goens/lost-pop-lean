@@ -387,7 +387,7 @@ def OrderConstraints.groupsToString : List Request → List Request → String
     let vars₁ := removeDuplicates $ reqs₁  |>.map Request.address?
     let vars₂ := removeDuplicates $ reqs₂  |>.map Request.address?
     let vars := vars₁.filter vars₂.contains
-    let colorFun := λ r => if vars.contains r.address? then
+    let colorFun := λ r => if vars.contains r.address? && r.address?.isSome then
       colorString Color.magenta r.toShortString else r.toShortString
     let (r₁strings, r₂strings) := (reqs₁.map colorFun, reqs₂.map colorFun)
     "{" ++ (String.intercalate ", " $ r₁strings) ++
@@ -456,7 +456,16 @@ def RequestArray.empty : RequestArray :=
 def RequestArray.toString : RequestArray → String
   | arr => String.intercalate ",\n" $ List.map Request.toString $ filterNones arr.val.toList
 
-def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (colWidth := 20) (highlight : optParam (Option $ ThreadId × RequestId) none) : String := Id.run do
+instance : ToString (RequestArray) where toString := RequestArray.toString
+
+def RequestArray.filter : RequestArray → (Request → Bool) → List Request
+  | ra, f =>
+  let fOp : Option Request → Bool
+    | some r => f r
+    | none => false
+  filterNones $ Array.toList $ ra.val.filter fOp
+
+def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (order : @OrderConstraints V) (colWidth := 20) (highlight : optParam (Option $ ThreadId × RequestId) none) : String := Id.run do
   let mut threads := []
   let mut res := ""
   for thId in (List.range numThreads) do
@@ -464,15 +473,19 @@ def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (colWidth :
       res := res ++ "||"
     res := res ++ s!" T{thId}" ++ (String.mk $ List.replicate (colWidth - 3) ' ')
     let mut thread := []
-    for req in filterNones arr.val.toList do
+    for req in arr.filter (λ r => !(r.isWrite && r.value? == some 0)) do
       if highlight == some (thId, req.id) then
-        thread := thread ++ [(Color.yellow, req.toShortString)]
+        thread := thread ++ [(Color.yellow, req)]
       else if req.thread == thId then
-        thread := thread ++ [(Color.cyan, req.toShortString)]
+        thread := thread ++ [(Color.cyan, req)]
       else if req.propagatedTo thId then
-        thread := thread ++ [(Color.black, req.toShortString)]
+        thread := thread ++ [(Color.black, req)]
     threads := threads ++ [thread]
   res := res ++ "|\n" ++ (String.mk $ List.replicate (colWidth * numThreads + 2 * (numThreads - 1)) '-') ++ "\n"
+  threads := threads.map
+    (λ th => th.toArray.qsort
+      (λ r₁ r₂ => order.lookup (V.jointScope r₁.2.thread r₂.2.thread) r₁.2.id r₂.2.id)
+        |>.toList)
   while threads.any (!·.isEmpty) do
     let mut sep := false
     for thread in threads do
@@ -482,19 +495,10 @@ def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (colWidth :
         sep := true
       res := res ++ match thread.head? with
         | none => (String.mk $ List.replicate colWidth ' ')
-        | some (color,str) => " " ++ (colorString color str) ++ (String.mk $ List.replicate (colWidth - str.length - 1) ' ')
+        | some (color,r) => " " ++ (colorString color r.toShortString) ++ (String.mk $ List.replicate (colWidth - r.toShortString.length - 1) ' ')
     res := res ++ "|\n"
     threads := threads.map List.tail
   return res
-
-instance : ToString (RequestArray) where toString := RequestArray.toString
-
-def RequestArray.filter : RequestArray → (Request → Bool) → List Request
-  | ra, f =>
-  let fOp : Option Request → Bool
-    | some r => f r
-    | none => false
-  filterNones $ Array.toList $ ra.val.filter fOp
 
 def reqIds : (RequestArray) → List RequestId
  | arr =>
@@ -601,7 +605,8 @@ def SystemState.prettyPrint (state : SystemState) (highlight : optParam (Option 
       λ scope => s!"constraints (scope {scope}) : {state.oderConstraintsString (state.scopes.validate scope)}"
   let satisfiedStr := state.satisfied.map
     λ (r₁, r₂) => s!"{(state.findMaybeRemoved? r₁).get!.toShortString} with {state.requests.printReq r₂}"
-  s!"requests:\n{state.requests.prettyPrint state.threads.length (highlight := highlight)}\n"  ++
+  s!"requests:\n{state.requests.toString}\n\n"++
+  s!"{state.requests.prettyPrint state.threads.length state.orderConstraints (highlight := highlight)}\n"  ++
   s!"removed: {state.removed.toString}\n" ++
   s!"satisfied: {satisfiedStr}\n" ++
   ocString

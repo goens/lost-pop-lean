@@ -182,9 +182,14 @@ structure RequestSyntax where
   (varName : String)
   (value : Option Nat)
 
+structure LitmusMetadata where
+  (allowed : Litmus.AxiomaticAllowed := .unknown)
+  (guideTrace : List Nat := [])
+
+
 def createLitmus (list : List (List RequestSyntax))
-  (opScopesThreadMapping : Option $ ValidScopes × (ThreadId → String)) (name : String)
-  (axiomaticAllowed := Litmus.AxiomaticAllowed.unknown) (guideTrace : optParam (List Nat) []) : Litmus.Test :=
+  (opScopesThreadMapping : Option $ ValidScopes × (ThreadId → String))
+  (metadata : LitmusMetadata) (name : String) : Litmus.Test :=
   let validScopes := opScopesThreadMapping.map λ (s,_) => s
   let threadTypes := match opScopesThreadMapping with
     | none => λ _ => "default"
@@ -208,13 +213,14 @@ def createLitmus (list : List (List RequestSyntax))
     | none => SystemState.init (mkValidScopes fullThreads.length) threadTypes
   { initTransitions := initWrites ++ initPropagates,
     program := reqs.toArray, expected := outcomes,
-    initState, name, axiomaticAllowed, guideTrace}
+    initState, name, axiomaticAllowed := metadata.allowed, guideTrace := metadata.guideTrace}
 
 declare_syntax_cat request
 declare_syntax_cat request_seq
 declare_syntax_cat request_set
 declare_syntax_cat threads
 declare_syntax_cat system_desc
+declare_syntax_cat litmus_metadata
 
 syntax "R" ident ("//" num)? : request
 syntax "R." ident ident  ("//" num)? : request
@@ -232,12 +238,17 @@ syntax "{" threads "}" : system_desc
 syntax "{" threads "}." ident : system_desc
 syntax "{" system_desc,+ "}" : system_desc
 
-syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? ("✓")? num,* : term
-syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? "𐄂" num,* : term
+syntax ("✓")? num,* : litmus_metadata
+syntax "𐄂" num,* : litmus_metadata
+
+syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? (litmus_metadata)? : term
 syntax "`[sys|" system_desc "]" : term
 syntax "`[req|" request "]" : term
 syntax "`[req_seq|" request_seq "]" : term
 syntax "`[req_set|" request_set "]" : term
+syntax "`[metadata|" litmus_metadata "]" : term
+
+
 macro_rules
   | `(`[req| $r ]) => `(request| $r)
   | `(`[req_seq| $r ]) => `(request_seq| $r)
@@ -273,21 +284,24 @@ macro_rules
 
 -- TODO: is there a more elegant way to do this with `Option.map`?
 macro_rules
-  | `({| $r |} $[where sys := $opdesc:system_desc ]? $[$n],*) => do
-    let lst ← `([ $[$n],* ])
+  | `({| $r |} $[where sys := $opdesc:system_desc ]? $[$m:litmus_metadata]?) => do
+    let meta ← match m with
+      | none => `( { : Pop.LitmusMetadata } )
+      | some syn => `( `[metadata| $syn] )
     match opdesc with
-    | none => `( createLitmus `[req_set| $r] none (guideTrace := $lst))
-    | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]))
-  | `({| $r |} $[where sys := $opdesc:system_desc ]? ✓ $[$n:num],*) => do
+    | none => `( createLitmus `[req_set| $r] none $meta)
+    | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]) $meta)
+
+macro_rules
+  | `(`[metadata| ✓ $[$n:num],*]) => do
     let lst ← `([ $[$n],* ])
-    match opdesc with
-    | none => `( createLitmus `[req_set| $r] none (axiomaticAllowed := .yes) (guideTrace := $lst))
-    | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]) (axiomaticAllowed := .yes) (guideTrace := $lst))
-  | `({| $r |} $[where sys := $opdesc:system_desc ]? 𐄂 $[$n:num],*) => do
+    `( { allowed := (Litmus.AxiomaticAllowed.yes), guideTrace := $lst : Pop.LitmusMetadata })
+  | `(`[metadata| $[$n:num],*]) => do
     let lst ← `([ $[$n],* ])
-    match opdesc with
-    | none => `( createLitmus `[req_set| $r] none (axiomaticAllowed := .no) (guideTrace := $lst))
-    | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]) (axiomaticAllowed := .no) (guideTrace := $lst))
+    `( { guideTrace := $lst : Pop.LitmusMetadata })
+  | `(`[metadata| 𐄂 $[$n:num],*]) => do
+    let lst ← `([ $[$n],* ])
+    `( { allowed := (Litmus.AxiomaticAllowed.no), guideTrace := $lst : Pop.LitmusMetadata })
 
 open Lean
 

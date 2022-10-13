@@ -52,15 +52,16 @@ instance : ToString Scope where toString := Scope.toString
 instance : ToString Semantics where toString := Semantics.toString
 
 def Req.toString (req : Req) : String :=
-  let typeStr :=
-    match req.sem, req.scope with
-    | .rlx, .sys => ""
-    | sem, scope => s!"{scope}_{sem}"
+  match req.sem, req.scope with
+  | .rlx, .sys => ""
+  | sem, scope => s!"{scope}_{sem}"
+
+def Req.prettyPrint (req : Req) : String :=
   let predStr :=
     match req.predecessorAt with
       | [] => ""
       | preds => s!" pred @ {preds}"
-  typeStr ++ predStr
+  req.toString ++ predStr
 
 instance : ToString Req where toString := Req.toString
 
@@ -70,6 +71,7 @@ instance : ArchReq where
   instInhabited := PTX.instInhabitedReq
   isPermanentRead := λ _ => false
   instToString := PTX.instToStringReq
+  prettyPrint := Req.prettyPrint
 
 def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
   let containing := valid.containThread thread

@@ -127,7 +127,8 @@ RequestId → ThreadId → @OrderConstraints state.scopes
         --dbg_trace s!"{!(state.orderConstraints.lookup scope req.id req'.id)}"
         --dbg_trace s!"{!(state.orderConstraints.lookup scope req'.id req.id)}"
         --dbg_trace s!"{!(Arch.reorderCondition req req')}"
-        req'.propagatedTo thId &&
+        req'.thread == thId && -- change from ARM model: requests are only order in their respective threads
+        --req'.propagatedTo thId &&
         !(req'.propagatedTo req.thread) &&
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id) &&

@@ -224,23 +224,23 @@ private def _root_.Pop.SystemState.blockedOnFencePreds (state : SystemState) (fe
     res := res ++ preds
   return res
 
-def _root_.Pop.SystemState.blockedOnFence (state : SystemState) : Option RequestId := Id.run do
-  let fences := state.requests.filter Request.isFence
+def _root_.Pop.SystemState.blockedOnRequest (state : SystemState) : Option RequestId := Id.run do
+  let fences := state.requests.filter Request.isGeqAcq -- TODO: what about releases?!
   for fence in fences do
     let preds := state.blockedOnFencePreds fence
     let scope := PTX.requestScope state.scopes fence
     -- This is the change, blocking when unsatisfied reads (breaks MP_fence_cta_1fence)
-    -- let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == fence.thread
-    -- unless readsOnThread.all λ r => state.isSatisfied r.id do
-    --   --dbg_trace "blocked on Fence (R{fence.id}) with unsatisfied reads ({readsOnThread}) "
-    --   return some fence.id
+    let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == fence.thread
+    unless readsOnThread.all (λ r => state.isSatisfied r.id || r.fullyPropagated scope) do
+      --dbg_trace "blocked on Fence (R{fence.id}) with unsatisfied reads ({readsOnThread}) "
+      return some fence.id
     unless !fence.isFenceSC || preds.all λ p => p.fullyPropagated scope do
       --dbg_trace "blocked on FenceSC (R{fence.id}) with unpropagated predecessors ({preds}) to scope {scope}"
       return some fence.id
   return none
 
 def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId) : Bool :=
-    match state.blockedOnFence with
+    match state.blockedOnRequest with
       | none =>
         let scfences := state.requests.filter Request.isFenceSC
         scfences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
@@ -249,10 +249,16 @@ def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId)
         if fence.isFenceSC then
            false
         else
-           true --br.isWrite
+          if br.isWrite then
+            let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == fence.thread
+            let scope := requestScope state.scopes fence
+            readsOnThread.all (λ r => state.isSatisfied r.id || r.fullyPropagated scope)
+          else true --if br.isRead then
+  --true --TODO: when should this block?
+           -- br.isWrite
 
 def propagateConstraints (state : SystemState) (rid : RequestId) (thId : ThreadId) : Bool :=
-  if let some fenceId := state.blockedOnFence then
+  if let some fenceId := state.blockedOnRequest then
     let fence := state.requests.getReq! fenceId
     let scope := PTX.requestScope state.scopes fence
     if fence.isFenceSC && scope.threads.contains thId then
@@ -425,12 +431,17 @@ deflitmus IRIW_fences := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fen
 deflitmus IRIW_sc_acq_fence := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence. sys_acqrel; R x // 0 || W y=1 |} ✓
 deflitmus simpleRF := {| W. cta_rlx x=1 || R. cta_rlx x // 1 |}
   where sys := { {T0}, {T1} } ✓
+  1, 1, 2, 1, 1
 deflitmus MP := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |} ✓
+  1, 1, 1, 1, 2, 1, 2, 2, 1, 1
 deflitmus MP_fence1 := {| W x=1; Fence; W y=1 ||  R y // 1; R x // 0 |} ✓
+  1, 1, 1, 3, 1, 1, 1, 2, 1, 2, 1, 1
 deflitmus MP_fence2 := {| W x=1; W y=1 ||  R y //1; Fence; R x // 0 |} ✓
+  1, 2, 2, 4, 1, 1, 1, 2, 1, 1, 1, 1
 deflitmus MP_fence := {| W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0|} 𐄂
 deflitmus MP_fence_cta := {| W x=1; Fence. cta_sc; W y=1 ||  R y // 1; Fence. cta_sc; R x // 0|}
   where sys := { {T0}, {T1} } ✓
+  1, 2, 1, 2, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1
 deflitmus MP_read_cta := {| W x=1; Fence. sys_sc; W y=1 ||  R. cta_rlx y // 1; Fence. sys_sc; R x // 0|}
   where sys := { {T0}. ptx, {T1}. x86} 𐄂
 deflitmus MP_fence_consumer_weak := {| W. sys_weak x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fence. sys_sc; R. sys_weak x // 0|} -- 𐄂
@@ -440,7 +451,9 @@ deflitmus MP_fence_rel_acq := {| W x=1; Fence. sys_rel; W  y=1 ||  R y // 1; Fen
 deflitmus MP_rel_acq := {| W x=1; W. sys_rel y=1 ||  R. sys_acq y // 1; R x // 0|} 𐄂
 deflitmus MP_fence_cta_1fence := {| W x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fence. cta_sc; R x // 0|}
   where sys := { {T0}, {T1} } ✓
+  1, 1, 1, 1, 1, 2, 2, 1, 2, 2, 1, 2, 1, 1
 deflitmus N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |} ✓
+  1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 1, 1
 deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}  ✓
 deflitmus dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |} 𐄂
 deflitmus dekkers_acqrelfence := {| W x=1; Fence. sys_acqrel; R y //0 || W y=1; Fence. sys_acqrel;  R x // 0 |} ✓
@@ -467,7 +480,8 @@ deflitmus WRC_cta_1_1_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta
   where sys := { {T0}, {T1}, {T2}} ✓
   2, 2, 1, 7, 2, 6, 6, 2, 1, 7, 1, 6, 2, 5, 1, 4, 5, 1, 3, 1, 1, 1, 1, 1
 deflitmus WWRWRR := {| W. cta_rel x=1;  W. cta_rel y=1 || R. cta_acq y // 1; W. cta_rel z = 1 || R. cta_acq z // 1 ; R. cta_acq x // 0|} 𐄂
-  3, 3, 1, 5, 2, 1, 6, 5, 2, 2, 3, 1, 2, 1, 1, 1, 2, 2, 2, 2, 1
+  1, 1, 1, 1, 1, 1, 1, 2, 3, 4, 3, 1, 1, 3, 3, 2, 2, 3, 1, 1
+
 deflitmus WWRWRR_fences := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_acq; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} ✓
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 3, 1, 1, 1, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1
 deflitmus WWRWRR_fences' := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_acqrel; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} 𐄂

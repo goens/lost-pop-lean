@@ -220,7 +220,9 @@ declare_syntax_cat request_seq
 declare_syntax_cat request_set
 declare_syntax_cat threads
 declare_syntax_cat system_desc
+declare_syntax_cat metadata_item
 declare_syntax_cat litmus_metadata
+declare_syntax_cat guide_trace
 
 syntax "R" ident ("//" num)? : request
 syntax "R." ident ident  ("//" num)? : request
@@ -238,8 +240,11 @@ syntax "{" threads "}" : system_desc
 syntax "{" threads "}." ident : system_desc
 syntax "{" system_desc,+ "}" : system_desc
 
-syntax ("✓")? num,* : litmus_metadata
-syntax "𐄂" num,* : litmus_metadata
+syntax "✓" : metadata_item
+syntax "𐄂" : metadata_item
+syntax guide_trace : metadata_item
+syntax num,+ : guide_trace
+syntax metadata_item (litmus_metadata)? : litmus_metadata
 
 syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? (litmus_metadata)? : term
 syntax "`[sys|" system_desc "]" : term
@@ -247,7 +252,7 @@ syntax "`[req|" request "]" : term
 syntax "`[req_seq|" request_seq "]" : term
 syntax "`[req_set|" request_set "]" : term
 syntax "`[metadata|" litmus_metadata "]" : term
-
+syntax "`[guide_trace|" guide_trace "]" : term
 
 macro_rules
   | `(`[req| $r ]) => `(request| $r)
@@ -282,26 +287,31 @@ macro_rules
   | `(request_set| $r:request_seq ) => `([`[req_seq| $r]])
   | `(request_set| $r:request_seq || $rs:request_set) => `(`[req_seq| $r] :: `[req_set| $rs])
 
--- TODO: is there a more elegant way to do this with `Option.map`?
 macro_rules
-  | `({| $r |} $[where sys := $opdesc:system_desc ]? $[$m:litmus_metadata]?) => do
-    let meta ← match m with
-      | none => `( { : Pop.LitmusMetadata } )
-      | some syn => `( `[metadata| $syn] )
-    match opdesc with
-    | none => `( createLitmus `[req_set| $r] none $meta)
-    | some desc => `( createLitmus `[req_set| $r] (some `[sys| $desc]) $meta)
+  | `(`[guide_trace| $[$n:num],* ]) => `([ $[$n],* ])
 
 macro_rules
-  | `(`[metadata| ✓ $[$n:num],*]) => do
-    let lst ← `([ $[$n],* ])
-    `( { allowed := (Litmus.AxiomaticAllowed.yes), guideTrace := $lst : Pop.LitmusMetadata })
-  | `(`[metadata| $[$n:num],*]) => do
-    let lst ← `([ $[$n],* ])
-    `( { guideTrace := $lst : Pop.LitmusMetadata })
-  | `(`[metadata| 𐄂 $[$n:num],*]) => do
-    let lst ← `([ $[$n],* ])
-    `( { allowed := (Litmus.AxiomaticAllowed.no), guideTrace := $lst : Pop.LitmusMetadata })
+  | `(`[metadata| ✓ $[$ms:litmus_metadata]?]) => match ms with
+    | some mss => `( { `[metadata| $mss] with allowed := (Litmus.AxiomaticAllowed.yes)})
+    | none => `( { allowed := (Litmus.AxiomaticAllowed.yes) : Pop.LitmusMetadata})
+  | `(`[metadata| 𐄂 $[$ms:litmus_metadata]?]) => match ms with
+    | some mss => `( { `[metadata| $mss] with allowed := (Litmus.AxiomaticAllowed.no)})
+    | none => `( { allowed := (Litmus.AxiomaticAllowed.no) : Pop.LitmusMetadata})
+  | `(`[metadata| $g:guide_trace $[$ms:litmus_metadata]?]) => do
+    match ms with
+      | some mss => `( { `[metadata| $mss] with guideTrace := `[guide_trace| $g] })
+      | none => `( { guideTrace := `[guide_trace| $g] : Pop.LitmusMetadata})
+
+-- TODO: is there a more elegant way to do this with `Option.map`?
+macro_rules
+  | `({| $r |} $[where sys := $opdesc:system_desc ]? $[$opmeta:litmus_metadata]? ) => do
+    let desc ← match opdesc with
+    | none => `( Option.none)
+    | some desc => `( (some `[sys| $desc]))
+    let meta ← match opmeta with
+    | none => `( { : Pop.LitmusMetadata })
+    | some m => `( `[metadata| $m] )
+    `( createLitmus `[req_set| $r] $desc $meta)
 
 open Lean
 

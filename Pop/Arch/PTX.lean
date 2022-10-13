@@ -284,22 +284,19 @@ def addEdgesOnFence (state : SystemState) : SystemState := Id.run do
    return st
 
 def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
-: SystemState :=
-  let readsFrom := state.satisfied.lookup reqId
-  match readsFrom with
-    | none => state
-    | some writeId =>
-      let write := state.requests.getReq? writeId |>.get!
-      let read := state.requests.getReq? reqId |>.get!
-      --dbg_trace "checking wether to add Req.{writeId} as predecessor to T{thId}"
-      --dbg_trace "MS:{morallyStrong state.scopes read write}, prop: {!(write.propagated_to.elem thId)}"
-      -- TODO: move this to satisfyEffects
-      if (morallyStrong state.scopes read write) && !(write.propagated_to.elem thId)
-      then
-        state.updateRequest $ write.makePredecessorAt thId
-      else
-        state
-
+: SystemState := Id.run do
+  -- add predecessors as soon as RF edge formed
+  let req := state.requests.getReq! reqId
+  if !req.isWrite then
+     return state
+  else
+    let mut res := state
+    let successors := state.orderConstraints.successors (state.scopes.jointScope req.thread thId) reqId state.seen
+    for reqId' in successors do
+      if let some req' := state.requests.getReq? reqId' then
+        if req'.isRead && morallyStrong state.scopes req req' then
+          res := res.updateRequest $ req.makePredecessorAt thId
+    return res
 /-
  * A predecessor should behave *as if* it was in that same thread.
  * We add edge between predecessor and fence always (?):  maybe only for ≥release?
@@ -470,6 +467,9 @@ deflitmus WRC_no_dep := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ; R x
 deflitmus WRC_cta_1_2 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1, T2}} 𐄂
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 2, 1, 1, 1, 1
+deflitmus WRC_cta_1_2_acqrel := {| W x=1 || R. sys_rlx x // 1; Fence. sys_acqrel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acqrel; R. sys_rlx x // 0 |}
+  where sys := { {T0}, {T1, T2}} 𐄂
+  1, 3, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1
 deflitmus WRC_cta_2_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0, T1}, {T2}} ✓
   2, 2, 1, 7, 2, 6, 5, 1, 1, 4, 1, 2, 5, 4, 3, 3, 3, 1, 1, 1, 1, 1, 1

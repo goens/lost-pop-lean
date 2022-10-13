@@ -1,5 +1,6 @@
-import Pop
+import Pop.Exploration
 import Pop.Arch.ARM
+import Litmus.ARM
 
 open Pop ARM
 

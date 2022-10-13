@@ -1,13 +1,14 @@
 import Pop
 import Pop.Arch.TSO
+import Litmus.TSO
 
 open Pop x86
 
 def main : IO Unit := do
-let res ← Pop.interactiveExecution (Litmus.allTso) (← IO.getStdin)
+let res ← Pop.interactiveExecution (Litmus.allTSO) (← IO.getStdin)
   if let .ok (trace,litmus,systemState)t := res
   then
-    let outcome := systemState.outcome
+    let outcome := systemState.partialOutcome
     println! "========================="
     println! "=======  SUMMARY  ======="
     println! "========================="

@@ -1,5 +1,6 @@
 import Pop
 import Pop.Arch.ARM
+import Litmus.ARM
 
 open Pop ARM
 
@@ -7,7 +8,7 @@ def main : IO Unit := do
 let res ← Pop.interactiveExecution (Litmus.allARM) (← IO.getStdin)
   if let .ok (trace,litmus,systemState)t := res
   then
-    let outcome := systemState.outcome
+    let outcome := systemState.partialOutcome
     println! "========================="
     println! "=======  SUMMARY  ======="
     println! "========================="

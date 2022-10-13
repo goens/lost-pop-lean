@@ -9,6 +9,10 @@ lean_lib Pop {
   -- add library configuration options here
 }
 
+lean_lib Litmus {
+  -- add library configuration options here
+}
+
 @[defaultTarget]
 lean_exe pop_arm {
   root := `InteractARM

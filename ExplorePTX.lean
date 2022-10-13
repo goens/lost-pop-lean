@@ -1,5 +1,6 @@
 import Pop
 import Pop.Arch.PTX
+import Litmus.PTX
 
 open Pop PTX
 

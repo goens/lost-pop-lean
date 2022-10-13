@@ -55,7 +55,7 @@ def Req.toString (req : Req) : String :=
   let typeStr :=
     match req.sem, req.scope with
     | .rlx, .sys => ""
-    | sem, scope => s!"{sem}.{scope}"
+    | sem, scope => s!"{scope}_{sem}"
   let predStr :=
     match req.predecessorAt with
       | [] => ""
@@ -249,11 +249,11 @@ def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId)
         if fence.isFenceSC then
            false
         else
-          if br.isWrite then
+          --if br.isWrite then
             let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == fence.thread
             let scope := requestScope state.scopes fence
             readsOnThread.all (λ r => state.isSatisfied r.id || r.fullyPropagated scope)
-          else true --if br.isRead then
+          --else true --if br.isRead then
   --true --TODO: when should this block?
            -- br.isWrite
 
@@ -410,12 +410,10 @@ instance : LitmusSyntax where
   mkFence := mkFence
 
 deflitmus IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |} ✓
-  3, 3, 7, 7, 7, 4, 2, 2, 9, 9, 8, 3, 1, 1, 7, 7, 7, 7 , 6, 6, 1, 1, 1, 1, 1, 1, 1
 deflitmus IRIW_3ctas := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0}, {T1, T2}, {T3} } 𐄂
 deflitmus IRIW_4ctas := {| W x=1 ||  R. cta_rlx x // 1 ; Fence. sys_sc;  R. cta_rlx y // 0 || R. cta_rlx y // 1; Fence. sys_sc; R. sys_rlx x // 0 || W y=1 |}
   where sys := { {T0}, {T1}, {T2}, {T3} } ✓
-  3, 3, 7, 7, 7, 4, 2, 2, 9, 9, 8, 3, 1, 1, 7, 7, 7, 7 , 6, 6, 1, 1, 1, 1, 1, 1, 1
 deflitmus IRIW_3ctas_1scoped_w := {| W. cta_rlx x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0}, {T1, T2}, {T3} } ✓
 deflitmus IRIW_3ctas_1scoped_r := {| W x=1 ||  R. cta_rlx x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
@@ -428,17 +426,17 @@ deflitmus IRIW_fences := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fen
 deflitmus IRIW_sc_acq_fence := {| W x=1 ||  R x // 1; Fence; R y // 0 || R y // 1; Fence. sys_acqrel; R x // 0 || W y=1 |} ✓
 deflitmus simpleRF := {| W. cta_rlx x=1 || R. cta_rlx x // 1 |}
   where sys := { {T0}, {T1} } ✓
-  1, 1, 2, 1, 1
+Trace Hint := [Accept (R. cta_rlx x) at Thread 1, Accept (W. cta_rlx x = 1) at Thread 0, Propagate Request 2 to Thread 1, Propagate Request 1 to Thread 0, Satisfy Request 1 with Request 2]
 deflitmus MP := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |} ✓
-  1, 1, 1, 1, 2, 1, 2, 2, 1, 1
+  Trace Hint := [Accept (R y) at Thread 1, Accept (R x) at Thread 1, Accept (W x = 1) at Thread 0, Accept (W y = 1) at Thread 0, Propagate Request 3 to Thread 0, Satisfy Request 3 with Request 0, Propagate Request 4 to Thread 1, Propagate Request 5 to Thread 1, Propagate Request 2 to Thread 0, Satisfy Request 2 with Request 5]
 deflitmus MP_fence1 := {| W x=1; Fence; W y=1 ||  R y // 1; R x // 0 |} ✓
-  1, 1, 1, 3, 1, 1, 1, 2, 1, 2, 1, 1
+  Trace Hint := [Accept (R y) at Thread 1, Accept (R x) at Thread 1, Accept (W x = 1) at Thread 0, Propagate Request 3 to Thread 0, Accept (Fence. sys_sc) at Thread 0, Satisfy Request 3 with Request 0, Propagate Request 4 to Thread 1, Propagate Request 5 to Thread 1, Accept (W y = 1) at Thread 0, Propagate Request 6 to Thread 1, Propagate Request 2 to Thread 0, Satisfy Request 2 with Request 6]
 deflitmus MP_fence2 := {| W x=1; W y=1 ||  R y //1; Fence; R x // 0 |} ✓
-  1, 2, 2, 4, 1, 1, 1, 2, 1, 1, 1, 1
+  Trace Hint := [Accept (R y) at Thread 1, Accept (W x = 1) at Thread 0, Accept (W y = 1) at Thread 0, Propagate Request 4 to Thread 1, Accept (Fence. sys_sc) at Thread 1, Propagate Request 2 to Thread 0, Satisfy Request 2 with Request 4, Propagate Request 5 to Thread 0, Accept (R x) at Thread 1, Propagate Request 6 to Thread 0, Satisfy Request 6 with Request 0, Propagate Request 3 to Thread 1]
 deflitmus MP_fence := {| W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0|} 𐄂
 deflitmus MP_fence_cta := {| W x=1; Fence. cta_sc; W y=1 ||  R y // 1; Fence. cta_sc; R x // 0|}
   where sys := { {T0}, {T1} } ✓
-  1, 2, 1, 2, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1
+  Trace Hint := [Accept (R y) at Thread 1, Accept (Fence. cta_sc) at Thread 1, Accept (R x) at Thread 1, Accept (W x = 1) at Thread 0, Accept (Fence. cta_sc) at Thread 0, Accept (W y = 1) at Thread 0, Propagate Request 3 to Thread 0, Propagate Request 4 to Thread 0, Satisfy Request 4 with Request 0, Propagate Request 5 to Thread 1, Propagate Request 6 to Thread 1, Propagate Request 7 to Thread 1, Propagate Request 2 to Thread 0, Satisfy Request 2 with Request 7]
 deflitmus MP_read_cta := {| W x=1; Fence. sys_sc; W y=1 ||  R. cta_rlx y // 1; Fence. sys_sc; R x // 0|}
   where sys := { {T0}. ptx, {T1}. x86} 𐄂
 deflitmus MP_fence_consumer_weak := {| W. sys_weak x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fence. sys_sc; R. sys_weak x // 0|} -- 𐄂
@@ -448,44 +446,41 @@ deflitmus MP_fence_rel_acq := {| W x=1; Fence. sys_rel; W  y=1 ||  R y // 1; Fen
 deflitmus MP_rel_acq := {| W x=1; W. sys_rel y=1 ||  R. sys_acq y // 1; R x // 0|} 𐄂
 deflitmus MP_fence_cta_1fence := {| W x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fence. cta_sc; R x // 0|}
   where sys := { {T0}, {T1} } ✓
-  1, 1, 1, 1, 1, 2, 2, 1, 2, 2, 1, 2, 1, 1
+  Trace Hint := [Accept (R y) at Thread 1, Accept (Fence. cta_sc) at Thread 1, Accept (R x) at Thread 1, Accept (W x = 1) at Thread 0, Propagate Request 3 to Thread 0, Propagate Request 4 to Thread 0, Accept (Fence. sys_sc) at Thread 0, Satisfy Request 4 with Request 0, Propagate Request 5 to Thread 1, Propagate Request 6 to Thread 1, Accept (W y = 1) at Thread 0, Propagate Request 7 to Thread 1, Propagate Request 2 to Thread 0, Satisfy Request 2 with Request 7 ]
+
 deflitmus N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |} ✓
-  1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 1, 1
+  Trace Hint := [Accept (W y = 1) at Thread 1, Accept (R y) at Thread 1, Accept (R x) at Thread 1, Accept (W x = 1) at Thread 0, Accept (R x) at Thread 0, Accept (R y) at Thread 0, Satisfy Request 3 with Request 2, Satisfy Request 6 with Request 5, Propagate Request 4 to Thread 0, Satisfy Request 4 with Request 0, Propagate Request 5 to Thread 1, Propagate Request 7 to Thread 1, Satisfy Request 7 with Request 1, Propagate Request 2 to Thread 0]
 deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}  ✓
+  Trace Hint := [Accept (W y = 1) at Thread 1, Accept (R x) at Thread 1, Accept (W x = 1) at Thread 0, Accept (R y) at Thread 0, Propagate Request 3 to Thread 0, Satisfy Request 3 with Request 0, Propagate Request 4 to Thread 1, Propagate Request 5 to Thread 1, Satisfy Request 5 with Request 1, Propagate Request 2 to Thread 0]
 deflitmus dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |} 𐄂
 deflitmus dekkers_acqrelfence := {| W x=1; Fence. sys_acqrel; R y //0 || W y=1; Fence. sys_acqrel;  R x // 0 |} ✓
 deflitmus WRC := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|} ✓
-  2, 3, 2, 4, 2, 2, 4, 1, 3, 1, 4, 1, 2, 2, 1
+   Trace Hint := [Accept (R y) at Thread 2, Accept (W x = 1) at Thread 0, Accept (R. sys_acq x) at Thread 1, Propagate Request 2 to Thread 0, Propagate Request 3 to Thread 1, Propagate Request 4 to Thread 0, Satisfy Request 4 with Request 3, Accept (W y = 1) at Thread 1, Propagate Request 5 to Thread 0, Propagate Request 2 to Thread 1, Propagate Request 5 to Thread 2, Satisfy Request 2 with Request 5, Accept (R x) at Thread 2, Propagate Request 6 to Thread 0, Propagate Request 3 to Thread 2, Propagate Request 6 to Thread 1, Satisfy Request 6 with Request 0]
 deflitmus WRC_two_deps := {| W x=1 || R. sys_acq x // 1;dep W y = 1 || R y // 1 ;dep R x // 0|} ✓
-  1, 1, 1, 1, 4, 2, 1, 3, 1, 2, 1, 2, 1, 1, 1
-deflitmus WRC_rel := {| W. sys_rel x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|} ✓
-  2, 3, 2, 4, 2, 1, 3, 4, 1, 3, 2, 1, 3, 1, 1, 1
+  Trace Hint := [Accept (R y) at Thread 2, Accept (W x = 1) at Thread 0, Accept (R. sys_acq x) at Thread 1, Propagate Request 2 to Thread 0, Propagate Request 3 to Thread 1, Propagate Request 4 to Thread 0, Satisfy Request 4 with Request 3, Accept (W y = 1) at Thread 1, Propagate Request 5 to Thread 0, Propagate Request 2 to Thread 1, Propagate Request 5 to Thread 2, Satisfy Request 2 with Request 5, Accept (R x) at Thread 2, Propagate Request 6 to Thread 0, Propagate Request 3 to Thread 2, Propagate Request 6 to Thread 1, Satisfy Request 6 with Request 0]
+deflitmus WRC_rel := {| W. sys_rel x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|} ✓   Trace Hint := [Accept (R y) at Thread 2, Accept (W. sys_rel x = 1) at Thread 0, Accept (R. sys_acq x) at Thread 1, Propagate Request 3 to Thread 1, Propagate Request 2 to Thread 0, Propagate Request 4 to Thread 0, Satisfy Request 4 with Request 3, Accept (W y = 1) at Thread 1, Propagate Request 5 to Thread 0, Propagate Request 2 to Thread 1, Propagate Request 5 to Thread 2, Satisfy Request 2 with Request 5, Accept (R x) at Thread 2, Propagate Request 6 to Thread 0, Propagate Request 3 to Thread 2, Propagate Request 6 to Thread 1, Satisfy Request 6 with Request 0]
 deflitmus WRC_acq := {| W x=1 || R. sys_acq x // 1; W y = 1 || R. sys_acq y // 1 ;dep R x // 0|} ✓
-  2, 3, 2, 4, 2, 2, 1, 2, 4, 3, 2, 1, 3, 1, 1, 1
+   Trace Hint := [Accept (W x = 1) at Thread 0, Accept (R. sys_acq x) at Thread 1, Propagate Request 2 to Thread 1, Propagate Request 3 to Thread 0, Satisfy Request 3 with Request 2, Accept (W y = 1) at Thread 1, Accept (R. sys_acq y) at Thread 2, Propagate Request 4 to Thread 0, Propagate Request 4 to Thread 2, Propagate Request 5 to Thread 0, Propagate Request 5 to Thread 1, Satisfy Request 5 with Request 4, Accept (R x) at Thread 2, Propagate Request 6 to Thread 0, Propagate Request 2 to Thread 2, Propagate Request 6 to Thread 1, Satisfy Request 6 with Request 0]
 deflitmus WRC_no_dep := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ; R x // 0|} ✓
-  2, 2, 1, 2, 1, 8, 5, 4, 4, 2, 3, 4, 3, 2, 1, 2, 2, 1
+  Trace Hint := [Accept (R y) at Thread 2, Accept (R x) at Thread 2, Accept (W x = 1) at Thread 0, Accept (R. sys_acq x) at Thread 1, Propagate Request 2 to Thread 0, Propagate Request 3 to Thread 0, Propagate Request 3 to Thread 1, Satisfy Request 3 with Request 0, Propagate Request 4 to Thread 1, Propagate Request 4 to Thread 2, Propagate Request 5 to Thread 0, Propagate Request 5 to Thread 2, Accept (W y = 1) at Thread 1, Satisfy Request 5 with Request 4, Propagate Request 6 to Thread 0, Propagate Request 2 to Thread 1, Propagate Request 6 to Thread 2, Satisfy Request 2 with Request 6]
 deflitmus WRC_cta_1_2 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1, T2}} 𐄂
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 2, 1, 1, 1, 1
+  Trace Hint := [Accept (R. cta_rlx y) at Thread 2, Accept (Fence. sys_acq) at Thread 2, Propagate Request 2 to Thread 0, Propagate Request 2 to Thread 1, Accept (R x) at Thread 2, Propagate Request 3 to Thread 0, Propagate Request 3 to Thread 1, Propagate Request 4 to Thread 0, Propagate Request 4 to Thread 1, Accept (R x) at Thread 1, Accept (Fence. sys_rel) at Thread 1, Accept (W. cta_rlx y = 1) at Thread 1, Accept (W x = 1) at Thread 0, Satisfy Request 4 with Request 0, Propagate Request 5 to Thread 2, Propagate Request 6 to Thread 2, Propagate Request 7 to Thread 0, Propagate Request 7 to Thread 2, Satisfy Request 2 with Request 7, Propagate Request 8 to Thread 1, Propagate Request 5 to Thread 0, Propagate Request 6 to Thread 0, Propagate Request 8 to Thread 2, Satisfy Request 5 with Request 8]
 deflitmus WRC_cta_1_2_acqrel := {| W x=1 || R. sys_rlx x // 1; Fence. sys_acqrel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acqrel; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1, T2}} 𐄂
-  1, 3, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1
+  Trace Hint := [Accept (R. cta_rlx y) at Thread 2, Accept (Fence. sys_acqrel) at Thread 2, Propagate Request 2 to Thread 0, Propagate Request 2 to Thread 1, Accept (R x) at Thread 2, Propagate Request 3 to Thread 0, Propagate Request 3 to Thread 1, Propagate Request 4 to Thread 0, Propagate Request 4 to Thread 1, Accept (R x) at Thread 1, Accept (W x = 1) at Thread 0, Accept (Fence. sys_acqrel) at Thread 1, Satisfy Request 4 with Request 0, Propagate Request 5 to Thread 2, Propagate Request 6 to Thread 1, Propagate Request 5 to Thread 0, Accept (W. cta_rlx y = 1) at Thread 1, Propagate Request 6 to Thread 2, Satisfy Request 5 with Request 6, Propagate Request 7 to Thread 0, Propagate Request 7 to Thread 2, Propagate Request 8 to Thread 0, Propagate Request 8 to Thread 2, Satisfy Request 2 with Request 8]
 deflitmus WRC_cta_2_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0, T1}, {T2}} ✓
-  2, 2, 1, 7, 2, 6, 5, 1, 1, 4, 1, 2, 5, 4, 3, 3, 3, 1, 1, 1, 1, 1, 1
+  Trace Hint := [Accept (R. cta_rlx y) at Thread 2, Accept (Fence. sys_acq) at Thread 2, Propagate Request 2 to Thread 0, Propagate Request 2 to Thread 1, Accept (R x) at Thread 2, Propagate Request 3 to Thread 0, Propagate Request 3 to Thread 1, Propagate Request 4 to Thread 0, Propagate Request 4 to Thread 1, Accept (R x) at Thread 1, Accept (Fence. sys_rel) at Thread 1, Accept (W. cta_rlx y = 1) at Thread 1, Accept (W x = 1) at Thread 0, Satisfy Request 4 with Request 0, Propagate Request 5 to Thread 0, Propagate Request 5 to Thread 2, Propagate Request 6 to Thread 0, Propagate Request 6 to Thread 2, Propagate Request 7 to Thread 0, Propagate Request 7 to Thread 2, Satisfy Request 2 with Request 7, Propagate Request 8 to Thread 1, Propagate Request 8 to Thread 2, Satisfy Request 5 with Request 8]
 deflitmus WRC_cta_2_1' := {| W. cta_rlx x=1 || R. cta_rlx x // 1; Fence. sys_rel; W. sys_rlx y = 1 || R. sys_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0, T1}, {T2}} 𐄂
-  1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 2, 1, 2, 2, 1, 2, 2, 2
 deflitmus WRC_cta_1_1_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1}, {T2}} ✓
-  2, 2, 1, 7, 2, 6, 6, 2, 1, 7, 1, 6, 2, 5, 1, 4, 5, 1, 3, 1, 1, 1, 1, 1
+   Trace Hint := [Accept (R. cta_rlx y) at Thread 2, Accept (Fence. sys_acq) at Thread 2, Propagate Request 2 to Thread 0, Propagate Request 2 to Thread 1, Accept (R x) at Thread 2, Propagate Request 3 to Thread 0, Propagate Request 3 to Thread 1, Propagate Request 4 to Thread 0, Propagate Request 4 to Thread 1, Accept (R x) at Thread 1, Accept (Fence. sys_rel) at Thread 1, Accept (W. cta_rlx y = 1) at Thread 1, Accept (W x = 1) at Thread 0, Satisfy Request 4 with Request 0, Propagate Request 5 to Thread 2, Propagate Request 6 to Thread 2, Propagate Request 7 to Thread 0, Propagate Request 7 to Thread 2, Satisfy Request 2 with Request 7, Propagate Request 8 to Thread 1, Propagate Request 5 to Thread 0, Propagate Request 6 to Thread 0, Propagate Request 8 to Thread 2, Satisfy Request 5 with Request 8]
 deflitmus WWRWRR := {| W. cta_rel x=1;  W. cta_rel y=1 || R. cta_acq y // 1; W. cta_rel z = 1 || R. cta_acq z // 1 ; R. cta_acq x // 0|} 𐄂
-  1, 1, 1, 1, 1, 1, 1, 2, 3, 4, 3, 1, 1, 3, 3, 2, 2, 3, 1, 1
 
 deflitmus WWRWRR_fences := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_acq; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} ✓
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 3, 1, 1, 1, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1
 deflitmus WWRWRR_fences' := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_acqrel; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} 𐄂
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 3, 1, 1, 1, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1
 deflitmus WWRWRR_scoped := {| W. cta_rel x=1;  W. cta_rel y=1 || R. cta_acq y // 1; W. cta_rel z = 1 || R. cta_acq z // 1 ; R. cta_acq x // 0|}
   where sys := { {T0}, {T1, T2}} 𐄂
 deflitmus three_vars_ws := {| W x = 1; Fence. sys_acqrel; W y = 1 || W y = 2; Fence. sys_acqrel; W z = 1 || R z // 1; Fence. sys_acqrel; R x // 0 |} ✓

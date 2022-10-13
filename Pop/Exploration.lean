@@ -408,8 +408,7 @@ def runMultipleLitmusAux (tests : List Litmus.Test) (options : SearchOptions)
     let mut tasks  := #[]
     for test@(Litmus.Test.mk initTrans initProg outcome startingState _ _ guide) in tests do
       let task := Task.spawn λ _ =>
-        let guidingTrace := match buildTransitionTrace test guide with | none => [] | some tr => tr
-        let resExplExcept := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome) {{options with stopAfterFirst := true} with guidingTrace}
+        let resExplExcept := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome) {{options with stopAfterFirst := true} with guidingTrace := guide}
         match resExplExcept with
           | .ok resExpl =>
              let resLitmus := Util.removeDuplicates $ resExpl.map λ (_,st) => st.partialOutcome
@@ -448,7 +447,7 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
          | none => ([], none)
      let ptString := match opState with
        | none => ""
-       | some state => toString $ pt.map (Transition.prettyPrint state)
+       | some _ => toString $ pt.map Transition.toString
      let axiomatic := test.axiomaticAllowed.toString
      let ptNums := buildInteractiveNumbering test pt
      let uncolored := s!"| {test.name}" ++ (String.mk $ List.replicate (nameColWidth - test.name.length - 3) ' ') ++

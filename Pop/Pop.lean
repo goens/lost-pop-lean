@@ -18,9 +18,9 @@ inductive Transition
 instance : Inhabited (Transition) where default := Transition.acceptRequest default 0
 
 def Transition.toString : Transition → String
- | acceptRequest req tid => s!"Accept (T{tid}): {req.prettyPrint}"
+ | acceptRequest req tid => s!"Accept ({req.toString}) at Thread {tid}"
  | propagateToThread reqid tid => s!"Propagate Request {reqid} to Thread {tid}"
- | satisfyRead readid writeid => s!"Satisify Read Request {readid} with Write Request {writeid}"
+ | satisfyRead readid writeid => s!"Satisfy Request {readid} with Request {writeid}"
  | dependency req => s!"Dependency on {req}"
 instance : ToString (Transition) where toString := Transition.toString
 
@@ -29,23 +29,6 @@ def Transition.prettyPrintReq : Transition → Option String
   | dependency (some n) => some s!"dep (req{n})"
   | dependency none => some "dep"
   | _ => none
-
-def Transition.prettyPrint : SystemState → Transition → String
- | state, transition => match transition.prettyPrintReq with
-   | some str => s!"Accept ({str})"
-   | none =>
-     let reqs := state.removed.foldl RequestArray.insert state.requests
-     match transition with
-     | propagateToThread reqid tid =>
-       match reqs.getReq? reqid with
-         | some req => s!"Propagate Req{req.id} ({req.basic_type.prettyPrint}) to Thread {tid}"
-         | none => s!"Propagate (UNKNOWN REQUEST {reqid}) to Thread {tid}"
-     | satisfyRead readid writeid =>
-       match (reqs.getReq? readid, reqs.getReq? writeid) with
-       | (some read, some write) => s!"Satisfy Req{readid} ({read.basic_type.prettyPrint})"
-         ++ s!" with Req{writeid} ({write.basic_type.prettyPrint})"
-       | _ => s!"Satisfy (UNKNOWN REQUESTS {readid} and/or {writeid})"
-     | _ => panic! "unknown case when pretty-printing {transition}"
 
 def Transition.isAccept : Transition → Bool
  | acceptRequest _ _ => true
@@ -83,6 +66,24 @@ def Transition.thread? : Transition → Option ThreadId
  | acceptRequest _ tid => some tid
  | propagateToThread _ tid => some tid
  | _ => none
+
+def Transition.prettyPrint : SystemState → Transition → String
+ | state, transition => match transition.prettyPrintReq with
+   | some str => s!"Accept ({str})"
+   | none =>
+     let reqs := state.removed.foldl RequestArray.insert state.requests
+     match transition with
+     | propagateToThread reqid tid =>
+       match reqs.getReq? reqid with
+         | some req => s!"Propagate Req{req.id} ({req.basic_type.prettyPrint}) to Thread {tid}"
+         | none => s!"Propagate (UNKNOWN REQUEST {reqid}) to Thread {tid}"
+     | satisfyRead readid writeid =>
+       match (reqs.getReq? readid, reqs.getReq? writeid) with
+       | (some read, some write) => s!"Satisfy Req{readid} ({read.basic_type.prettyPrint})"
+         ++ s!" with Req{writeid} ({write.basic_type.prettyPrint})"
+       | _ => s!"Satisfy (UNKNOWN REQUESTS {readid} and/or {writeid})"
+     | _ => panic! "unknown case when pretty-printing {transition}"
+
 
 abbrev ProgramState := Array (Array (Transition))
 

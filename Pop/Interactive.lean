@@ -72,22 +72,19 @@ def formatInteractiveState (name : String) (programState : ProgramState) (system
           ++ "--------------------------------------\n"
 
 def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
-  | test@(.mk initTrans initProgSt _ initSysSt name _ guideNumTrace), stdin => do
+  | .mk initTrans initProgSt _ initSysSt name _ guideTrace, stdin => do
     let Except.ok start := initSysSt.applyTrace initTrans
       |  do return Except.error "error initalizing litmus"
     let mut partialTrace := []
     let mut partialTraceNums := []
     let mut programState := initProgSt
     let mut finished := false
-    let guideTrace := buildTransitionTrace test guideNumTrace
     while !finished do
       let systemState <- Util.exceptIO $ start.applyTrace partialTrace
       if systemState.finishedNoDeadlock programState then
         finished := true
         break
-      let guide := match guideTrace with
-        | none => none
-        | some tr => if partialTrace == tr.toArray[:partialTrace.length].toArray.toList then tr[partialTrace.length]? else none
+      let guide := if partialTrace == guideTrace.toArray[:partialTrace.length].toArray.toList then guideTrace[partialTrace.length]? else none
       let exceptTransMsg  := requestTransitionMessage systemState programState (guide := guide)
       if let .error msg := exceptTransMsg  then
         return .error msg

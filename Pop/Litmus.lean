@@ -40,7 +40,7 @@ structure Test where
  (initState : SystemState)
  (name : String)
  (axiomaticAllowed : AxiomaticAllowed)
- (guideTrace : List Nat)
+ (guideTrace : List Transition)
 
 def Test.numThreads (test : Test) : Nat := test.program.size
 def Test.numInstructions (test : Test) : Nat := Array.sum $ test.program.map (λ th => th.size)
@@ -182,9 +182,18 @@ structure RequestSyntax where
   (varName : String)
   (value : Option Nat)
 
+-- TODO: I should refactor createLitmus to use something like this, but more robust (passing the maps)
+def mkRequestSimple : RequestSyntax → ThreadId → String → Option Transition
+  | syn => match syn.varName with
+    | "x" => Pop.mkRequest (syn.reqKind, syn.reqType, 0, syn.value)
+    | "y" => Pop.mkRequest (syn.reqKind, syn.reqType, 1, syn.value)
+    | "z" => Pop.mkRequest (syn.reqKind, syn.reqType, 2, syn.value)
+    | "" => Pop.mkRequest (syn.reqKind, syn.reqType, 42, syn.value)
+    | v => panic! s!"Unsupported variable in guide: {v}"
+
 structure LitmusMetadata where
   (allowed : Litmus.AxiomaticAllowed := .unknown)
-  (guideTrace : List Nat := [])
+  (guideTrace : List Transition := [])
 
 
 def createLitmus (list : List (List RequestSyntax))
@@ -222,7 +231,8 @@ declare_syntax_cat threads
 declare_syntax_cat system_desc
 declare_syntax_cat metadata_item
 declare_syntax_cat litmus_metadata
-declare_syntax_cat guide_trace
+declare_syntax_cat guide_trace (behavior := both)
+declare_syntax_cat transition (behavior := both)
 
 syntax "R" ident ("//" num)? : request
 syntax "R." ident ident  ("//" num)? : request
@@ -242,8 +252,11 @@ syntax "{" system_desc,+ "}" : system_desc
 
 syntax "✓" : metadata_item
 syntax "𐄂" : metadata_item
-syntax guide_trace : metadata_item
-syntax num,+ : guide_trace
+syntax "Trace Hint := " guide_trace : metadata_item
+syntax &"Accept" "(" request ")" " at " &"Thread " num : transition
+syntax &"Propagate " &"Request " num " to " &"Thread " num : transition
+syntax &"Satisfy " &"Request " num " with " &"Request " num : transition
+syntax "[" transition,+ "]" : guide_trace
 syntax metadata_item (litmus_metadata)? : litmus_metadata
 
 syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? (litmus_metadata)? : term
@@ -253,6 +266,7 @@ syntax "`[req_seq|" request_seq "]" : term
 syntax "`[req_set|" request_set "]" : term
 syntax "`[metadata|" litmus_metadata "]" : term
 syntax "`[guide_trace|" guide_trace "]" : term
+syntax "`[transition|" transition "]" : term
 
 macro_rules
   | `(`[req| $r ]) => `(request| $r)
@@ -288,7 +302,13 @@ macro_rules
   | `(request_set| $r:request_seq || $rs:request_set) => `(`[req_seq| $r] :: `[req_set| $rs])
 
 macro_rules
-  | `(`[guide_trace| $[$n:num],* ]) => `([ $[$n],* ])
+  | `(`[transition| Accept ($r) at Thread $n]) => `(mkRequestSimple `[req|$r] $n "default")
+  | `(`[transition| Propagate Request $r to Thread $t]) => `(Pop.Transition.propagateToThread $r $t)
+  | `(`[transition| Satisfy Request $r with Request $w]) => `(Pop.Transition.satisfyRead $r $w)
+
+macro_rules
+--  | `(`[guide_trace| $[$n:num],* ]) => `([ $[$n],* ])
+  | `(`[guide_trace| [ $[$ts:transition],* ] ]) => `( filterNones [ $[`[transition|$ts]],* ])
 
 macro_rules
   | `(`[metadata| ✓ $[$ms:litmus_metadata]?]) => match ms with
@@ -297,7 +317,7 @@ macro_rules
   | `(`[metadata| 𐄂 $[$ms:litmus_metadata]?]) => match ms with
     | some mss => `( { `[metadata| $mss] with allowed := (Litmus.AxiomaticAllowed.no)})
     | none => `( { allowed := (Litmus.AxiomaticAllowed.no) : Pop.LitmusMetadata})
-  | `(`[metadata| $g:guide_trace $[$ms:litmus_metadata]?]) => do
+  | `(`[metadata| Trace Hint := $g:guide_trace $[$ms:litmus_metadata]?]) => do
     match ms with
       | some mss => `( { `[metadata| $mss] with guideTrace := `[guide_trace| $g] })
       | none => `( { guideTrace := `[guide_trace| $g] : Pop.LitmusMetadata})

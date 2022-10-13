@@ -36,6 +36,7 @@ class ArchReq where
   (instBEq : BEq type)
   (instInhabited : Inhabited type)
   (instToString : ToString type)
+  (prettyPrint : type → String := instToString.toString)
   (isPermanentRead : type → Bool)
 
 variable [ArchReq]
@@ -64,16 +65,22 @@ inductive BasicRequest
 instance : Inhabited BasicRequest where default := BasicRequest.fence default
 
 def BasicRequest.toString : BasicRequest → String
-  | BasicRequest.read  rr _ => s!"R {rr.addr.prettyPrint}" ++ match rr.val with | none => "" | some v => s!"({v})"
-  | BasicRequest.write  wr _ => s!"W {wr.addr.prettyPrint}" ++ match wr.val with | none => "" | some v => s!"({v})"
-  | BasicRequest.fence _ => "fence"
+  | BasicRequest.read  rr ty =>
+    let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
+    s!"R{tyStr} {rr.addr.prettyPrint}" ++ match rr.val with | none => "" | some v => s!" // {v}"
+  | BasicRequest.write  wr ty =>
+    let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
+    s!"W{tyStr} {wr.addr.prettyPrint}" ++ match wr.val with | none => "" | some v => s!" = {v}"
+  | BasicRequest.fence ty =>
+    let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
+    s!"Fence{tyStr}"
 
 def BasicRequest.prettyPrint : BasicRequest → String
   | BasicRequest.read rr ty =>
     let valStr := match rr.val with
       | none => ""
       | some val => s!"({val})"
-    let tyStr := match s!"{ty}" with
+    let tyStr := match s!"{ArchReq.prettyPrint ty}" with
       | "" => ""
       | str => s!".{str}"
     s!"R{tyStr} {rr.addr.prettyPrint}{valStr}"
@@ -81,12 +88,12 @@ def BasicRequest.prettyPrint : BasicRequest → String
     let valStr := match wr.val with
      | none => ""
      | some val => s!"({val})"
-    let tyStr := match s!"{ty}" with
+    let tyStr := match s!"{ArchReq.prettyPrint ty}" with
       | "" => ""
       | str => s!".{str}"
     s!"W{tyStr} {wr.addr.prettyPrint}{valStr}"
   | BasicRequest.fence ty =>
-    let tyStr := match s!"{ty}" with
+    let tyStr := match s!"{ArchReq.prettyPrint ty}" with
       | "" => ""
       | str => s!".{str}"
     s!"Fence{tyStr}"

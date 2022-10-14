@@ -292,6 +292,20 @@ def OrderConstraints.successors {V : ValidScopes} (S : @Scope V) (req : RequestI
   let sc_oc := constraints.lookup S -- hope this gets optimized accordingly...
   reqs.filter (λ x => sc_oc req x)
 
+ def OrderConstraints.transitiveSuccessors {V : ValidScopes} (S : @Scope V) (req : RequestId)
+   (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
+   let sc_oc := constraints.lookup S 
+   Id.run do
+     let mut succ := []
+     let mut succ' := [req]
+     while succ != succ' do
+       succ := succ'
+       succ' := reqs.filter
+         λ x => succ'.any
+           λ s => x == s || sc_oc s x
+     return succ'
+
+
 def OrderConstraints.between {V : ValidScopes} (S : @Scope V) (req₁ req₂ : RequestId)
   (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
   let preds₁ := constraints.predecessors S req₁ reqs

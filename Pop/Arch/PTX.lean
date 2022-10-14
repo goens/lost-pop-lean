@@ -153,8 +153,6 @@ end Pop
 
 namespace PTX
 
-infixl:85 "b⇒" => λ a b => !a || b
-
 /-
   SC fence only considers its scope for order constraints.
   Scopes for rel, acq, acqrel (i.e. non-SC) fences:
@@ -179,23 +177,19 @@ def scopesMatch : ValidScopes → Request → Request → Bool
   -- If neither is an SC fence, then we consider their joint scope
   else scopeInclusive V r_old r_new
 
-def reorder : ValidScopes → Request → Request → Bool
+def order : ValidScopes → Request → Request → Bool
   | V, r_old, r_new =>
   -- TODO: we are not sure if this might make our model stronger than necessary
   let fences := (r_old.isFence && r_new.isFence)
-                       b⇒ (r_old.thread != r_new.thread)
-  -- Removing 'satisfied': PTX doesn't keep any reads
-  -- Removing 'relacq': redundant with RF/FR edges; we don't see the point
-  -- TODO: is SC fence also rel/acq?
-  -- TODO: Discuss this
+                       && (r_old.thread == r_new.thread)
   /-
   r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
   -/
-  let acqafter := r_old.isGeqAcq b⇒ (r_new.thread != r_old.thread)
-  let acqread :=  r_new.isGeqAcq b⇒ (r_new.thread != r_old.thread && r_old.isRead)
+  let acqafter := r_old.isGeqAcq && (r_new.thread == r_old.thread)
+  let acqread :=  r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
    -- TODO: why also for diff. threads? should this be handled with predeecessors?
-  let newrel := !r_new.isGeqRel
-  let relwrite := r_old.isGeqRel b⇒ (r_new.thread != r_old.thread && r_new.isWrite)
+  let newrel := r_new.isGeqRel
+  let relwrite := r_old.isGeqRel && (r_new.thread == r_old.thread || !r_new.isWrite)
   -- TODO: what about acqrel and (w -> r)?
   -- dbg_trace "[reorder] {r_old} {r_new}"
   -- dbg_trace "[reorder] fences : {fences}"
@@ -205,8 +199,8 @@ def reorder : ValidScopes → Request → Request → Bool
   -- dbg_trace "[reorder] acqbefore : {acqafter}"
   -- dbg_trace "[reorder] newrel : {newrel}"
   -- dbg_trace "[reorder] !scopes match: {!scopesMatch V r_old r_new}"
-  !scopesMatch V r_old r_new ||
-  (acqafter  && newrel && fences && acqread && relwrite)
+  scopesMatch V r_old r_new &&
+  (acqafter || newrel || fences || acqread || relwrite)
 
 -- On SC fence we propagate predecessors to the SC fence's scope. We enforce
 -- this by not accepting, propagating or satisfying any other requests unless
@@ -316,7 +310,7 @@ instance : Arch where
   req := instArchReq
   acceptConstraints := acceptConstraints
   propagateConstraints := propagateConstraints
-  reorderCondition := reorder
+  orderCondition := order
   requestScope := requestScope
   acceptEffects := acceptEffects
   propagateEffects := propagateEffects

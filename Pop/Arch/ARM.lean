@@ -39,16 +39,16 @@ private def _root_.Pop.Request.isWriteRel : Request → Bool :=
 
 infixl:85 "b⇒" => λ a b => !a || b
 
-def reorder : ValidScopes → Request → Request → Bool
+def order : ValidScopes → Request → Request → Bool
   | _, r_old, r_new =>
-  let relacq₁ := (r_old.isReadAcq && r_new.isWriteRel) b⇒ (r_old.address? != r_new.address?)
-  let relacq₂ := !r_new.isWriteRel
-  let relacq₃ := r_old.isReadAcq b⇒ (r_new.thread != r_old.thread)
-  let relacq₄ := (r_new.isReadAcq && r_old.isWriteRel) b⇒ (r_new.thread != r_old.thread)
-  let orig₁ := !r_new.isFence && !r_old.isFence
+  let relacq₁ := (r_old.isReadAcq && r_new.isWriteRel) && (r_old.address? == r_new.address?)
+  let relacq₂ := r_new.isWriteRel
+  let relacq₃ := r_old.isReadAcq && (r_new.thread == r_old.thread)
+  let relacq₄ := (r_new.isReadAcq && r_old.isWriteRel) && (r_new.thread == r_old.thread)
+  let orig₁ := r_new.isFence || r_old.isFence
   let orig₂ := (r_new.isMem && r_old.isMem && !r_new.isSatisfied && !r_old.isSatisfied)
-                b⇒ (r_new.address? != r_old.address?)
-  relacq₁ && relacq₂ && relacq₃ && relacq₄ && orig₁ && orig₂
+                && (r_new.address? == r_old.address?)
+  (relacq₁ || relacq₂ || relacq₃ || relacq₄ || orig₁ || orig₂)
 
 def satisfyRead (state : SystemState) (r_read_addr : RequestId) (r_write_addr : RequestId)
   : Bool :=
@@ -59,7 +59,7 @@ def satisfyRead (state : SystemState) (r_read_addr : RequestId) (r_write_addr : 
 
 instance : Arch where
   req := instArchReq
-  reorderCondition :=  reorder
+  orderCondition :=  order
 
 namespace Litmus
 

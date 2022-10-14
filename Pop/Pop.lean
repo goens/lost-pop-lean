@@ -133,7 +133,7 @@ RequestId → ThreadId → @OrderConstraints state.scopes
         !(req'.propagatedTo req.thread) &&
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id) &&
-        !(Arch.reorderCondition state.scopes req req')
+        (Arch.orderCondition state.scopes req req')
       let seen := state.idsToReqs $ state.seen
       --dbg_trace s!"seen: {seen}"
       let newReqs := seen.filter (λ r => conditions r || newrf r)
@@ -152,7 +152,7 @@ def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Reques
     req.isMem && req'.isMem && req.address? == req'.address? &&
     !(state.orderConstraints.lookup scope req.id req'.id) &&
     !(state.orderConstraints.lookup scope req'.id req.id)
-  let newReqs := seen.filter λ req'  => !(Arch.reorderCondition state.scopes req' req) || newrf req'
+  let newReqs := seen.filter λ req'  => (Arch.orderCondition state.scopes req' req) || newrf req'
   let newConstraints := newReqs.map λ req' => (req'.id, req.id)
   --dbg_trace s!"seen: {seen}, new: {newReqs}"
   state.orderConstraints.addSubscopes scope newConstraints

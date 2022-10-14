@@ -692,7 +692,7 @@ class Arch where
   (propagateEffects : SystemState → RequestId → ThreadId → SystemState := λ st _ _ => st)
   (satisfyReadConstraints : SystemState → RequestId → RequestId → Bool := λ _ _ _ => true)
   (satisfyReadEffects : SystemState → RequestId → RequestId → SystemState := λ st _ _ => st)
-  (reorderCondition : ValidScopes → Request → Request → Bool)
+  (orderCondition : ValidScopes → Request → Request → Bool)
   (requestScope : (valid : ValidScopes) → Request → @Scope valid := λ v _ => v.systemScope)
 
 -- private def maxThread : ThreadId → List ThreadId → ThreadId

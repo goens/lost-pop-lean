@@ -135,7 +135,8 @@ def Request.isGeqAcq (req : Request) : Bool :=
 def Request.isAcqRelKind (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.rel ||
   req.basic_type.type.sem == PTX.Semantics.acq ||
-  req.basic_type.type.sem == PTX.Semantics.acqrel
+  req.basic_type.type.sem == PTX.Semantics.acqrel ||
+  req.basic_type.type.sem == PTX.Semantics.sc
 
 def Request.predecessorAt (req : Request) : List ThreadId :=
   req.basic_type.type.predecessorAt
@@ -221,7 +222,7 @@ private def _root_.Pop.SystemState.blockedOnFencePreds (state : SystemState) (fe
   return res
 
 def _root_.Pop.SystemState.blockedOnRequest (state : SystemState) : Option RequestId := Id.run do
-  let fences := state.requests.filter Request.isGeqAcq -- TODO: what about releases?!
+  let fences := state.requests.filter Request.isAcqRelKind
   for fence in fences do
     let preds := state.blockedOnFencePreds fence
     let scope := PTX.requestScope state.scopes fence

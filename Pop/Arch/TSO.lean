@@ -16,7 +16,7 @@ instance : ArchReq where
   instBEq := x86.instBEqReq
   instInhabited := x86.instInhabitedReq
   instToString := x86.instToStringReq
-  isPermanentRead := λ _ => true
+  isPermanentRead := λ _ => false
 
 def order : ValidScopes → Request → Request → Bool
   | _, r₁, r₂ =>

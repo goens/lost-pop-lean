@@ -4,6 +4,7 @@ import Pop.Util
 
 -- For now specifically for PTX
 import Pop.Arch.PTX
+import Litmus.PTX
 
 open Pop
 
@@ -180,5 +181,4 @@ def toAlloyLitmus (litmus : Litmus.Test ) : String :=
   "}\n" ++ "run generated_litmus_test for 10"
 
 
-#eval toAlloyLitmus PTX.Litmus.IRIW
 

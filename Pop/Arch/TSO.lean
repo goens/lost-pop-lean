@@ -16,7 +16,7 @@ instance : ArchReq where
   instBEq := x86.instBEqReq
   instInhabited := x86.instInhabitedReq
   instToString := x86.instToStringReq
-  isPermanentRead := λ _ => false
+  isPermanentRead := λ _ => true
 
 def reorder : ValidScopes → Request → Request → Bool
   | _, r₁, r₂ => if r₁.isFence || r₂.isFence
@@ -24,7 +24,7 @@ def reorder : ValidScopes → Request → Request → Bool
   else
   let sc_per_loc := r₁.address? != r₂.address?
   --dbg_trace s!"sc_per_loc: {sc_per_loc}"
-  let ppo := (r₁.thread != r₂.thread) || !(r₂.isWrite && r₁.isRead)
+  let ppo := (r₁.thread != r₂.thread) || (r₁.isWrite && r₂.isRead)
   --dbg_trace s!"ppo: {sc_per_loc}"
   if sc_per_loc then ppo else false
   -- TODO: satisfied but not deleted?
@@ -33,7 +33,6 @@ def propagate : SystemState → RequestId → ThreadId → Bool
   | st, reqId, _ =>
     let sscope := st.scopes.systemScope
     let pred := st.orderPredecessors sscope reqId
-    dbg_trace "X86 propagate constraint: all {pred} fully propagated? {st.idsToReqs pred |>.all λ req => req.fullyPropagated sscope}"
     st.idsToReqs pred |>.all λ req => req.fullyPropagated sscope
 
 instance : Arch where

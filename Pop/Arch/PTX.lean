@@ -241,18 +241,16 @@ def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId)
       | none =>
         let scfences := state.requests.filter Request.isFenceSC
         scfences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
-      | some fenceId =>
-        let fence := state.requests.getReq! fenceId
-        if fence.isFenceSC then
-           false
+      | some reqId =>
+        let req := state.requests.getReq! reqId
+        if req.isFenceSC then
+          false
+        else if req.thread != tid then
+          true
         else
-          --if br.isWrite then
-            let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == fence.thread
-            let scope := requestScope state.scopes fence
-            readsOnThread.all (λ r => state.isSatisfied r.id || r.fullyPropagated scope)
-          --else true --if br.isRead then
-  --true --TODO: when should this block?
-           -- br.isWrite
+          let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == tid
+          let scope := requestScope state.scopes req
+          readsOnThread.all (λ r => state.isSatisfied r.id || r.fullyPropagated scope)
 
 def propagateConstraints (state : SystemState) (rid : RequestId) (thId : ThreadId) : Bool :=
   if let some fenceId := state.blockedOnRequest then

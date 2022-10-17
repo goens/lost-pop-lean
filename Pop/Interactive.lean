@@ -125,8 +125,16 @@ def selectLitmus :  List Litmus.Test → String → Except String Litmus.Test
 
 def selectLitmusLoop : List Litmus.Test → IO.FS.Stream → IO (Except String Litmus.Test)
   | tests, stdin => do
-    let litmusStrings :=  tests.map λ test =>
-      s!"{test.name} : " ++ test.program.prettyPrint ++
+    let litmusHintColors := tests.map λ test =>
+      let resHint := test.initState.applyTrace (test.initTransitions ++ test.guideTrace)
+      match resHint with
+        | .error _ => Util.Color.black
+        | .ok finalState => if (outcomeSubset test.expected finalState.partialOutcome && test.axiomaticAllowed == .no) then
+          Util.Color.red else
+          Util.Color.black
+    let litmusStrings :=  tests.zip litmusHintColors |>.map λ (test, color) =>
+      Util.colorString color s!"{test.name} : "
+      ++ test.program.prettyPrint ++
       (if test.initState.scopes.isUnscoped then ""
       else s!"\n  where sys := {test.initState.scopes.scopes}")
     let indices := List.range (litmusStrings.length) |>.map (· +1)

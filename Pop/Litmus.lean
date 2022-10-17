@@ -25,6 +25,7 @@ inductive AxiomaticAllowed
   | yes
   | no
   | unknown
+  deriving BEq
 
 def AxiomaticAllowed.toString : AxiomaticAllowed → String
   | yes => "✓"

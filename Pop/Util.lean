@@ -216,6 +216,8 @@ theorem List.sublist_trans [BEq α] (a b c : List α) : sublist a b → sublist 
   sorry  -- TODO
 -/
 
+def uncurry {α β γ : Type} (f : α → β → γ) (ab : α × β) : γ := match ab with | (a,b) => f a b
+
 structure Triple (α β γ : Type) where
  fst : α
  snd : β

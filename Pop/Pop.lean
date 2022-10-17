@@ -136,12 +136,14 @@ RequestId → ThreadId → @OrderConstraints state.scopes
         (Arch.orderCondition state.scopes req req')
       let seen := state.idsToReqs $ state.seen
       --dbg_trace s!"seen: {seen}"
-      let newReqs := seen.filter (λ r => conditions r || newrf r)
+      let newReqs := seen.filter λ r => conditions r
+      let newRFReqs := seen.filter λ r => newrf r
       let newConstraints := newReqs.map λ req' => (req.id, req'.id) -- incoming req. goes before others
+      let newRFConstraints := newRFReqs.map λ req' => (req.id, req'.id)
       -- TODO: why does this not break things with RF? Look into simpleRF PTX Litmus test, an order can cause R to not have any write to read from
       --dbg_trace s!"new constraints: {newConstraints}"
       --dbg_trace s!"scope: {scope}"
-      state.orderConstraints.addSubscopes scope newConstraints
+      state.orderConstraints.addSubscopes scope newConstraints |>.addSubscopes state.scopes.systemScope newRFConstraints
 
 def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Request)
 : @OrderConstraints state.scopes :=
@@ -149,13 +151,12 @@ def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Reques
   let scope := Arch.requestScope state.scopes req
   let newrf := λ req' : Request =>
     req.id != req'.id &&
-    req.isMem && req'.isMem && req.address? == req'.address? &&
-    !(state.orderConstraints.lookup scope req.id req'.id) &&
-    !(state.orderConstraints.lookup scope req'.id req.id)
-  let newReqs := seen.filter λ req'  => (Arch.orderCondition state.scopes req' req) || newrf req'
+    req.isMem && req'.isMem && req.address? == req'.address?
+  let newReqs := seen.filter λ req'  => (Arch.orderCondition state.scopes req' req)
+  let newRFReqs := seen.filter newrf |>.map λ req' => (req'.id, req.id)
   let newConstraints := newReqs.map λ req' => (req'.id, req.id)
   --dbg_trace s!"seen: {seen}, new: {newReqs}"
-  state.orderConstraints.addSubscopes scope newConstraints
+  state.orderConstraints.addSubscopes scope newConstraints |>.addSubscopes state.scopes.systemScope newRFReqs
 
 def SystemState.freshId : SystemState → RequestId
   | state =>

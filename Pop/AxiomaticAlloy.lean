@@ -13,21 +13,13 @@ open Pop
 
 
 def toSizes (litmus : Litmus.Test) : String :=
-  let usedScopes := Util.filterNones $ List.join $
-    (List.range litmus.program.size).map
-      λ thId => litmus.program[thId]!.toList.map
-        λ transition =>
-          match transition.getAcceptBasicRequest? with
-            | none => none
-            | some br => some $ PTX.getThreadScope
-                litmus.initState.scopes thId br.type.scope |>.threads
   s!"  # ptx/Thread = {litmus.initState.threads.length}\n" ++
   s!"  # ptx/Read = {litmus.program.allReads.length}\n" ++
   s!"  # ptx/Write = {litmus.program.allWrites.length}\n" ++
   s!"  # ptx/Fence = {litmus.program.allFences.length}\n" ++
-  s!"  # ptx/Barrier = 0\n" ++ -- Not considering these for now
+  s!"  # ptx/Barrier = 0\n" --++ -- Not considering these for now
   -- Add the number of threads to scopes, as we don't consider them to be scopes
-  s!"  # ptx/Scope = {usedScopes.uniqueSet.length + litmus.program.size}\n"
+  --s!"  # ptx/Scope = {litmus.initState.scopes.scopes.toList.length + litmus.program.size}\n"
 
 def transToAlloy : Transition → String
   | .acceptRequest br _ =>

@@ -221,48 +221,64 @@ private def _root_.Pop.SystemState.blockedOnFencePreds (state : SystemState) (fe
     res := res ++ preds
   return res
 
-def _root_.Pop.SystemState.blockedOnRequest (state : SystemState) : Option RequestId := Id.run do
+def reqRFEstablishedScope (state : SystemState) (scope : @Pop.Scope state.scopes) (r : Request) : Bool :=
+    let precidingWrites := filterNones $ state.orderConstraints.predecessors scope r.id state.seen |>.map
+        λ predId => match state.requests.getReq? predId with
+          | none => none
+          | some req => if req.isWrite then
+              some req else
+              none
+    state.isSatisfied r.id || (r :: precidingWrites).all (·.fullyPropagated scope)
+
+
+def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List RequestId := Id.run do
   let fences := state.requests.filter Request.isAcqRelKind
+  let mut res := []
   for fence in fences do
     let preds := state.blockedOnFencePreds fence
     let scope := PTX.requestScope state.scopes fence
     -- This is the change, blocking when unsatisfied reads (breaks MP_fence_cta_1fence)
     let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == fence.thread
-    unless readsOnThread.all (λ r => state.isSatisfied r.id || r.fullyPropagated scope) do
-      --dbg_trace "blocked on Fence (R{fence.id}) with unsatisfied reads ({readsOnThread}) "
-      return some fence.id
+    unless readsOnThread.all (reqRFEstablishedScope state scope) do
+      --dbg_trace "blocked on Fence (R{fence.id}) with unsatisfied reads ({readsOnThread.map λ r => (r,reqRFEstablishedScope state scope r)}) "
+      res := res ++ [fence.id]
+      continue
     unless !fence.isFenceSC || preds.all λ p => p.fullyPropagated scope do
       --dbg_trace "blocked on FenceSC (R{fence.id}) with unpropagated predecessors ({preds}) to scope {scope}"
-      return some fence.id
-  return none
+       res := res ++ [fence.id]
+  return res
 
-def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId) : Bool :=
-    match state.blockedOnRequest with
-      | none =>
+
+def acceptConstraintsAux (state : SystemState) (br : BasicRequest) (tid : ThreadId) (reqs : List RequestId) : Bool :=
+    match reqs with
+      | [] =>
         let scfences := state.requests.filter Request.isFenceSC
         scfences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
-      | some reqId =>
+      | reqId::rest =>
         let req := state.requests.getReq! reqId
         if req.isFenceSC then
           false
         else if req.thread != tid then
-          true
+          acceptConstraintsAux state br tid rest
         else
           let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == tid
           let scope := requestScope state.scopes req
-          readsOnThread.all (λ r => state.isSatisfied r.id || r.fullyPropagated scope)
+          readsOnThread.all (reqRFEstablishedScope state scope) && acceptConstraintsAux state br tid rest
+            --(r.fullyPropagated scope && (precedingWrites state r scope).all λ pred => pred.fullyPropagated scope)
+
+def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId) : Bool :=
+    acceptConstraintsAux state br tid state.blockedOnRequests
 
 def propagateConstraints (state : SystemState) (rid : RequestId) (thId : ThreadId) : Bool :=
-  if let some fenceId := state.blockedOnRequest then
-    let fence := state.requests.getReq! fenceId
-    let scope := PTX.requestScope state.scopes fence
-    if fence.isFenceSC && scope.threads.contains thId then
-      let preds := state.blockedOnFencePreds fence |>.map Request.id
-      let req := state.requests.getReq! rid
-      preds.contains rid || (req.isRead && req.thread == fence.thread)
-    else true
-  else
-    true
+  state.blockedOnRequests.all
+    λ fenceId =>
+      let fence := state.requests.getReq! fenceId
+      let scope := PTX.requestScope state.scopes fence
+      if fence.isFenceSC && scope.threads.contains thId then
+        let preds := state.blockedOnFencePreds fence |>.map Request.id
+        let req := state.requests.getReq! rid
+        preds.contains rid || (req.isRead && req.thread == fence.thread)
+      else true
 
 -- on a (rel/acq/acqrel) fence we add an edge from each pred to this fence
 -- according to the scopes-match table

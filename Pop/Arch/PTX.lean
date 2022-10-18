@@ -12,6 +12,14 @@ inductive Scope
   | sys
   deriving Inhabited, BEq, Repr
 
+def Scope.intersection : Scope → Scope → Scope
+  | .cta, _ => cta
+  | .gpu, .cta => cta
+  | .gpu, _ => .gpu
+  | .sys, s => s
+
+infixl:85 "∩" => Scope.intersection
+
 inductive Semantics
   | sc
   | acqrel
@@ -109,6 +117,9 @@ namespace Pop
 def Request.sem (req : Request) : PTX.Semantics :=
   req.basic_type.type.sem
 
+def Request.markedScope (req : Request) : PTX.Scope :=
+  req.basic_type.type.scope
+
 -- some shortcuts
 def Request.isFenceSC (req : Request) : Bool :=
   req.isFence && req.basic_type.type.sem == PTX.Semantics.sc
@@ -161,8 +172,24 @@ namespace PTX
     | Fence → W |   ∩   |
     | R → Fence |   ∩   |
     | Fence → R | Fence |
-    TODO: also do this for rel/acq reads/writes
 -/
+def scopeIntersectionAcqRel : (V : ValidScopes) → Request → Request → @Pop.Scope V
+  | V, r_old, r_new => Id.run do
+  assert! r_old.thread == r_new.thread
+  let old_scope := PTX.requestScope V r_old
+  let new_scope := PTX.requestScope V r_new
+  let joint_scope := getThreadScope V r_old.thread (r_old.markedScope ∩ r_new.markedScope)
+  -- TODO: what if r_old is *also* acqRelKind?
+  if r_old.isWrite && r_new.isAcqRelKind then
+    return new_scope
+  if r_old.isAcqRelKind && r_new.isWrite then
+    return joint_scope
+  if r_old.isRead && r_new.isAcqRelKind then
+    return joint_scope
+  if r_old.isAcqRelKind && r_new.isRead then
+    return old_scope
+  panic! "unknown case in scope intersection of {r_old} and {r_new}"
+
 def scopesMatch : ValidScopes → Request → Request → Bool
   | V, r_old, r_new =>
   -- For SC Fences we only consider their scope, and not the other request's
@@ -221,14 +248,16 @@ private def _root_.Pop.SystemState.blockedOnFencePreds (state : SystemState) (fe
     res := res ++ preds
   return res
 
-def reqRFEstablishedScope (state : SystemState) (scope : @Pop.Scope state.scopes) (r : Request) : Bool :=
+def reqRFEstablishedScope (state : SystemState) (fenceLike : Request) (r : Request) : Bool :=
+    let scope := scopeIntersectionAcqRel state.scopes fenceLike r
     let precidingWrites := filterNones $ state.orderConstraints.predecessors scope r.id state.seen |>.map
         λ predId => match state.requests.getReq? predId with
           | none => none
           | some req => if req.isWrite then
               some req else
               none
-    state.isSatisfied r.id || (r :: precidingWrites).all (·.fullyPropagated scope)
+    --let rscope := state.scopes.intersection (PTX.requestScope state.scopes r) scope
+    state.isSatisfied r.id || (r :: precidingWrites).all (λ w => w.fullyPropagated scope)
 
 
 def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List RequestId := Id.run do
@@ -239,15 +268,12 @@ def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List Reques
     let scope := PTX.requestScope state.scopes fence
     -- This is the change, blocking when unsatisfied reads (breaks MP_fence_cta_1fence)
     let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == fence.thread
-    unless readsOnThread.all (reqRFEstablishedScope state scope) do
-      --dbg_trace "blocked on Fence (R{fence.id}) with unsatisfied reads ({readsOnThread.map λ r => (r,reqRFEstablishedScope state scope r)}) "
+    unless readsOnThread.all (reqRFEstablishedScope state fence) do
       res := res ++ [fence.id]
       continue
     unless !fence.isFenceSC || preds.all λ p => p.fullyPropagated scope do
-      --dbg_trace "blocked on FenceSC (R{fence.id}) with unpropagated predecessors ({preds}) to scope {scope}"
        res := res ++ [fence.id]
   return res
-
 
 def acceptConstraintsAux (state : SystemState) (br : BasicRequest) (tid : ThreadId) (reqs : List RequestId) : Bool :=
     match reqs with
@@ -262,8 +288,8 @@ def acceptConstraintsAux (state : SystemState) (br : BasicRequest) (tid : Thread
           acceptConstraintsAux state br tid rest
         else
           let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == tid
-          let scope := requestScope state.scopes req
-          readsOnThread.all (reqRFEstablishedScope state scope) && acceptConstraintsAux state br tid rest
+          --dbg_trace "req {reqId} blocks accept of {br} through reads {readsOnThread}? {readsOnThread.all (reqRFEstablishedScope state req)}"
+          readsOnThread.all (reqRFEstablishedScope state req) && acceptConstraintsAux state br tid rest
             --(r.fullyPropagated scope && (precedingWrites state r scope).all λ pred => pred.fullyPropagated scope)
 
 def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId) : Bool :=

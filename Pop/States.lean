@@ -249,6 +249,9 @@ def ValidScopes.jointScope : (V : ValidScopes) → ThreadId → ThreadId → (@S
    | some scope => {threads := scope, valid := sorry}
    | none => panic! s!"can't find the joint scope of {t₁} and {t₂} in {valid.scopes}"-- can we get rid of this case distinction?
 
+def ValidScopes.intersection : (V : ValidScopes) → @Scope V → @Scope V → @Scope V
+  | V, s1, s2 => V.validate $ s1.threads.intersection s2.threads
+
 def Request.propagatedTo (r : Request) (t : ThreadId) : Bool := r.propagated_to.elem t
 
 def Request.fullyPropagated {V : ValidScopes}  (r : Request) (s : optParam (@Scope V) V.systemScope) : Bool :=
@@ -274,6 +277,8 @@ def OrderConstraints.empty {V : ValidScopes} (numReqs : optParam Nat 10) : @Orde
  Std.mkHashMap (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.mkHashMap (capacity := numReqs))
  }
 
+-- TODO: make scope an optional parameter and just do the intersection by default?
+-- Would need to move around things in Arch typeclass...
 def OrderConstraints.lookup {V : ValidScopes} (ordc : @OrderConstraints V)
   (S : @Scope V) (req₁ req₂ : RequestId) : Bool :=
   let sc_ordc := ordc.val.find? S.threads

@@ -374,7 +374,7 @@ partial def mkSysAux (mapping : String → Option ThreadId) (desc : TSyntax `sys
     | `(system_desc| { $ts:threads }.$ty) => return (← mkCTA mapping ts, [(threadsGetAllNames ts |>.toList, ty.getId.toString)])
     | `(system_desc| { $[$sds:system_desc],* }) => do
       let (sdsTrees, names) := (← sds.mapM $ mkSysAux mapping).toList.unzip
-      let join := setJoin $ sdsTrees.map ListTree.listType
+      let join := blesort $ setJoin $ sdsTrees.map ListTree.listType
       return (← ListTree.mkParent join sdsTrees, names.join)
     | _ => Except.error "unexpected syntax in system description"
 

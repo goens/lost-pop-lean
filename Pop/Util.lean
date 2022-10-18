@@ -73,6 +73,13 @@ def setJoinPair [BEq α] (l₁ l₂ : List α) : List α :=
 def setJoin [BEq α] (ls : List (List α)) : List α :=
   ls.foldl (init := []) setJoinPair
 
+def _root_.List.intersection [BEq α] (ls ls' : List α) : List α :=
+  match ls with
+    | [] => []
+    | l::rest => if ls'.contains l
+      then l::(intersection rest ls')
+      else intersection rest ls'
+
 inductive Color
   | red : Color
   | green : Color

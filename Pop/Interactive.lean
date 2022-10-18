@@ -128,7 +128,9 @@ def selectLitmusLoop : List Litmus.Test → IO.FS.Stream → IO (Except String L
     let litmusHintColors := tests.map λ test =>
       let resHint := test.initState.applyTrace (test.initTransitions ++ test.guideTrace)
       match resHint with
-        | .error _ => Util.Color.black
+        | .error _ => if test.axiomaticAllowed == .yes then
+          Util.Color.yellow else
+          Util.Color.black
         | .ok finalState => match (outcomeSubset test.expected finalState.partialOutcome, test.axiomaticAllowed) with
           | (true, .no) => Util.Color.red
           | (false, .yes) => Util.Color.yellow

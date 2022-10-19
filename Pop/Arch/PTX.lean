@@ -178,21 +178,10 @@ def scopeIntersection : (V : ValidScopes) → Request → Request → @Pop.Scope
     let old_scope := PTX.requestScope V r_old
     let new_scope := PTX.requestScope V r_new
     let intersection := V.intersection old_scope new_scope
-    -- TODO: what if r_old is *also* acqRelKind?
-    if r_old.isFenceSC then
-      return old_scope
-    if r_new.isFenceSC then
+    if r_new.isGeqRel then
       return new_scope
-    if r_old.isWrite && r_new.isFenceLike then
-      return new_scope
-    if r_old.isFenceLike && r_new.isRead then
+    if r_old.isGeqAcq then
       return old_scope
-    /- These two cases are redundant
-    if r_old.isFenceLike && r_new.isWrite then
-      return intersection
-    if r_old.isRead && r_new.isFenceLike then
-      return intersection
-     -/
     return intersection
 
 def scopesMatch : ValidScopes → Request → Request → Bool

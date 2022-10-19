@@ -219,14 +219,13 @@ def order : ValidScopes → Request → Request → Bool
   let newrel := r_new.isGeqRel
   let relwrite := r_old.isGeqRel && (r_new.thread == r_old.thread || !r_new.isWrite)
   -- TODO: what about acqrel and (w -> r)?
-  -- dbg_trace "[reorder] {r_old} {r_new}"
-  -- dbg_trace "[reorder] fences : {fences}"
-  -- dbg_trace "[reorder] satisfied : {satisfied}"
-  -- dbg_trace "[reorder] relacq : {relacq}"
-  -- dbg_trace "[reorder] relafter : {relbefore}"
-  -- dbg_trace "[reorder] acqbefore : {acqafter}"
-  -- dbg_trace "[reorder] newrel : {newrel}"
-  -- dbg_trace "[reorder] !scopes match: {!scopesMatch V r_old r_new}"
+   -- dbg_trace "[reorder] {r_old} {r_new}"
+   -- dbg_trace "[reorder] fences : {fences}"
+   -- dbg_trace "[reorder] acqafter : {acqafter}"
+   -- dbg_trace "[reorder] acqread : {acqread}"
+   -- dbg_trace "[reorder] newrel : {newrel}"
+   -- dbg_trace "[reorder] relwrite : {relwrite}"
+   -- dbg_trace "[reorder] scopes match: {scopesMatch V r_old r_new}"
   scopesMatch V r_old r_new &&
   (acqafter || newrel || fences || acqread || relwrite)
 
@@ -242,14 +241,12 @@ private def _root_.Pop.SystemState.blockedOnFencePreds (state : SystemState) (fe
     return res
   else
     let preds := state.requests.filter
-      λ r => r.predecessorAt.contains fence.thread ||
-             -- TODO: why this second constraint?
-             r.propagatedTo fence.thread && r.id != fence.id
+      λ r => r.predecessorAt.contains fence.thread
     res := res ++ preds
   return res
 
 def reqRFEstablishedScope (state : SystemState) (fenceLike : Request) (r : Request) : Bool :=
-    let scope := scopeIntersectionAcqRel state.scopes fenceLike r
+    let scope := scopeIntersectionAcqRel state.scopes r fenceLike
     let precidingWrites := filterNones $ state.orderConstraints.predecessors scope r.id state.seen |>.map
         λ predId => match state.requests.getReq? predId with
           | none => none

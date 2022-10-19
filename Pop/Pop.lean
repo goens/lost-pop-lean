@@ -99,8 +99,6 @@ def ProgramState.allWrites (prog : ProgramState) : List Transition :=
 def ProgramState.allFences (prog : ProgramState) : List Transition :=
   prog.allFilter Transition.isFenceAccept
 
-def Request.scope : (V : ValidScopes) → Request → @Scope V := Arch.requestScope
-
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool := Arch.acceptConstraints
 
 def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope state.scopes →
@@ -139,7 +137,8 @@ RequestId → ThreadId → @OrderConstraints state.scopes
       --dbg_trace s!"seen: {seen}"
       let newReqs := seen.filter λ r => conditions r
       let newRFReqs := seen.filter λ r => newrf r
-      let newConstraints := newReqs.map λ req' => (state.scopes.intersection (req.scope state.scopes) (req'.scope state.scopes),
+      -- TODO: maybe worth refactoring for API: make the arch give us the intersection, not (just) a single scope
+      let newConstraints := newReqs.map λ req' => (Arch.scopeIntersection state.scopes req req',
                                                   (req.id, req'.id )) -- incoming req. goes before others
       let newRFConstraints := newRFReqs.map λ req' => (req.id, req'.id)
       -- TODO: why does this not break things with RF? Look into simpleRF PTX Litmus test, an order can cause R to not have any write to read from
@@ -155,15 +154,15 @@ RequestId → ThreadId → @OrderConstraints state.scopes
 
 def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Request)
 : @OrderConstraints state.scopes :=
-  let seen := state.idsToReqs state.seen |>.filter (Request.propagatedTo . req.thread)
+  let propagated := state.idsToReqs state.seen |>.filter (Request.propagatedTo . req.thread)
   let newrf := λ req' : Request =>
     req.id != req'.id &&
     req.isMem && req'.isMem && req.address? == req'.address?
-  let newReqs := seen.filter λ req'  => (Arch.orderCondition state.scopes req' req)
-  let newRFReqs := seen.filter newrf |>.map λ req' => (req'.id, req.id)
-  let newConstraints := newReqs.map λ req' => (state.scopes.intersection (req.scope state.scopes) (req'.scope state.scopes),
+  let newReqs := propagated.filter λ req'  => (Arch.orderCondition state.scopes req' req)
+  let newRFReqs := propagated.filter newrf |>.map λ req' => (req'.id, req.id)
+  let newConstraints := newReqs.map λ req' => (Arch.scopeIntersection state.scopes req' req,
                                               (req'.id, req.id))
-  --dbg_trace s!"seen: {seen}, new: {newReqs}"
+  --dbg_trace s!"accepted {req}; propagated: {propagated}, new: {newReqs}, constraints: {newConstraints}"
   let newOc := Id.run do
     let mut oc := state.orderConstraints
     for (sc,cons) in newConstraints do

@@ -712,7 +712,7 @@ class Arch where
   (satisfyReadConstraints : SystemState → RequestId → RequestId → Bool := λ _ _ _ => true)
   (satisfyReadEffects : SystemState → RequestId → RequestId → SystemState := λ st _ _ => st)
   (orderCondition : ValidScopes → Request → Request → Bool)
-  (requestScope : (valid : ValidScopes) → Request → @Scope valid := λ v _ => v.systemScope)
+  (scopeIntersection : (valid : ValidScopes) → Request → Request → @Scope valid := λ v _ _ => v.systemScope)
 
 -- private def maxThread : ThreadId → List ThreadId → ThreadId
 --   | curmax, n::rest => if curmax < n then maxThread n rest else maxThread curmax rest

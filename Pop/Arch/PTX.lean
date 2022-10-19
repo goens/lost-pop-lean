@@ -99,7 +99,7 @@ def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
       else panic! "invalid gpu scope (not enough scopes)"
     else panic! "invalid gpu scope"
 
-def requestScope (valid : ValidScopes) (req : Request) : @Pop.Scope valid :=
+private def requestScope (valid : ValidScopes) (req : Request) : @Pop.Scope valid :=
   getThreadScope valid req.thread req.basic_type.type.scope
 
 def scopeInclusive (V : ValidScopes) (r₁ r₂ : Request) : Bool :=
@@ -143,14 +143,14 @@ def Request.isGeqAcq (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.acqrel ||
   req.basic_type.type.sem == PTX.Semantics.sc
 
-def Request.isAcqRelKind (req : Request) : Bool :=
+def Request.isFenceLike (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.rel ||
   req.basic_type.type.sem == PTX.Semantics.acq ||
   req.basic_type.type.sem == PTX.Semantics.acqrel ||
   req.basic_type.type.sem == PTX.Semantics.sc
 
-def Request.predecessorAt (req : Request) : List ThreadId :=
-  req.basic_type.type.predecessorAt
+def Request.isPredecessorAt (req : Request) (thId : ThreadId) : Bool :=
+  req.basic_type.type.predecessorAt.contains thId
 
 def Request.makePredecessorAt (req : Request) (thId : ThreadId) : Request :=
   let predList := req.basic_type.type.predecessorAt
@@ -173,37 +173,32 @@ namespace PTX
     | R → Fence |   ∩   |
     | Fence → R | Fence |
 -/
-def scopeIntersectionAcqRel : (V : ValidScopes) → Request → Request → @Pop.Scope V
+def scopeIntersection : (V : ValidScopes) → Request → Request → @Pop.Scope V
   | V, r_old, r_new => Id.run do
-  assert! r_old.thread == r_new.thread
-  let old_scope := PTX.requestScope V r_old
-  let new_scope := PTX.requestScope V r_new
-  let joint_scope := getThreadScope V r_old.thread (r_old.markedScope ∩ r_new.markedScope)
-  -- TODO: what if r_old is *also* acqRelKind?
-  if r_old.isWrite && r_new.isAcqRelKind then
-    return new_scope
-  if r_old.isAcqRelKind && r_new.isWrite then
-    return joint_scope
-  if r_old.isRead && r_new.isAcqRelKind then
-    return joint_scope
-  if r_old.isAcqRelKind && r_new.isRead then
-    return old_scope
-  panic! "unknown case in scope intersection of {r_old} and {r_new}"
+    let old_scope := PTX.requestScope V r_old
+    let new_scope := PTX.requestScope V r_new
+    let intersection := V.intersection old_scope new_scope
+    -- TODO: what if r_old is *also* acqRelKind?
+    if r_old.isFenceSC then
+      return old_scope
+    if r_new.isFenceSC then
+      return new_scope
+    if r_old.isWrite && r_new.isFenceLike then
+      return new_scope
+    if r_old.isFenceLike && r_new.isRead then
+      return old_scope
+    /- These two cases are redundant
+    if r_old.isFenceLike && r_new.isWrite then
+      return intersection
+    if r_old.isRead && r_new.isFenceLike then
+      return intersection
+     -/
+    return intersection
 
 def scopesMatch : ValidScopes → Request → Request → Bool
   | V, r_old, r_new =>
-  -- For SC Fences we only consider their scope, and not the other request's
-  if r_old.isFenceSC then
-    (requestScope V r_old).threads.contains r_new.thread
-  else if r_new.isFenceSC then
-    (requestScope V r_new).threads.contains r_old.thread
-  -- by above, not SC ⇒ rel, acq or acqrel
-  else if r_old.isWrite && r_new.isAcqRelKind then
-    (requestScope V r_new).threads.contains r_old.thread
-  else if r_new.isAcqRelKind && r_new.isRead then
-    (requestScope V r_old).threads.contains r_new.thread
-  -- If neither is an SC fence, then we consider their joint scope
-  else scopeInclusive V r_old r_new
+    let scope := scopeIntersection V r_old r_new |>.threads
+    scope.contains r_old.thread && scope.contains r_new.thread
 
 def order : ValidScopes → Request → Request → Bool
   | V, r_old, r_new =>
@@ -213,11 +208,12 @@ def order : ValidScopes → Request → Request → Bool
   /-
   r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
   -/
-  let acqafter := r_old.isGeqAcq && (r_new.thread == r_old.thread)
+  let acqafter := false -- r_old.isGeqAcq && (r_new.thread == r_old.thread)
   let acqread :=  r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
    -- TODO: why also for diff. threads? should this be handled with predeecessors?
   let newrel := r_new.isGeqRel
-  let relwrite := r_old.isGeqRel && (r_new.thread == r_old.thread || !r_new.isWrite)
+  let relwrite := r_old.isGeqRel && r_new.thread == r_old.thread && r_new.isWrite
+  let pred := r_old.isPredecessorAt r_new.thread && r_new.isFenceLike
   -- TODO: what about acqrel and (w -> r)?
    -- dbg_trace "[reorder] {r_old} {r_new}"
    -- dbg_trace "[reorder] fences : {fences}"
@@ -227,7 +223,7 @@ def order : ValidScopes → Request → Request → Bool
    -- dbg_trace "[reorder] relwrite : {relwrite}"
    -- dbg_trace "[reorder] scopes match: {scopesMatch V r_old r_new}"
   scopesMatch V r_old r_new &&
-  (acqafter || newrel || fences || acqread || relwrite)
+  (acqafter || newrel || fences || acqread || relwrite || pred)
 
 -- On SC fence we propagate predecessors to the SC fence's scope. We enforce
 -- this by not accepting, propagating or satisfying any other requests unless
@@ -241,12 +237,12 @@ private def _root_.Pop.SystemState.blockedOnFencePreds (state : SystemState) (fe
     return res
   else
     let preds := state.requests.filter
-      λ r => r.predecessorAt.contains fence.thread
+      λ r => r.isPredecessorAt fence.thread
     res := res ++ preds
   return res
 
 def reqRFEstablishedScope (state : SystemState) (fenceLike : Request) (r : Request) : Bool :=
-    let scope := scopeIntersectionAcqRel state.scopes r fenceLike
+    let scope := scopeIntersection state.scopes r fenceLike
     let precidingWrites := filterNones $ state.orderConstraints.predecessors scope r.id state.seen |>.map
         λ predId => match state.requests.getReq? predId with
           | none => none
@@ -258,7 +254,7 @@ def reqRFEstablishedScope (state : SystemState) (fenceLike : Request) (r : Reque
 
 
 def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List RequestId := Id.run do
-  let fences := state.requests.filter Request.isAcqRelKind
+  let fences := state.requests.filter Request.isGeqAcq -- release doesn't block
   let mut res := []
   for fence in fences do
     let preds := state.blockedOnFencePreds fence
@@ -303,20 +299,6 @@ def propagateConstraints (state : SystemState) (rid : RequestId) (thId : ThreadI
         preds.contains rid || (req.isRead && req.thread == fence.thread)
       else true
 
--- on a (rel/acq/acqrel) fence we add an edge from each pred to this fence
--- according to the scopes-match table
-def addEdgesOnFence (state : SystemState) : SystemState := Id.run do
-  let fences := state.requests.filter λ r => r.isFence &&
-    !(r.fullyPropagated (requestScope state.scopes r))
-  let mut st := state
-  for fence in fences do
-    let scope := requestScope st.scopes fence
-    let preds := state.requests.filter λ r => r.predecessorAt.contains fence.thread
-    let newConstraintPairs := preds.map Request.id |>.zip (List.replicate preds.length fence.id)
-    let oc' := st.orderConstraints.addSubscopes scope newConstraintPairs
-    st := { st with orderConstraints := oc' }
-   return st
-
 def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
 : SystemState := Id.run do
   -- add predecessors as soon as RF edge formed
@@ -337,22 +319,16 @@ def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
  * Add predecessor only at RF (not at propagate)
 -/
 def acceptEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId) :=
-  let propState := propagateEffects state reqId thId
-  if (state.requests.getReq! reqId).isFence then addEdgesOnFence propState else propState
-
-def satisfyReadEffects : SystemState → RequestId → RequestId → SystemState
-  | state, _, _ => addEdgesOnFence state
-  -- TODO: also add fence-pred edges here
+  propagateEffects state reqId thId
 
 instance : Arch where
   req := instArchReq
   acceptConstraints := acceptConstraints
   propagateConstraints := propagateConstraints
   orderCondition := order
-  requestScope := requestScope
+  scopeIntersection := scopeIntersection
   acceptEffects := acceptEffects
   propagateEffects := propagateEffects
-  satisfyReadEffects := satisfyReadEffects
 
 namespace Litmus
 def mkRead (scope_sem : String ) (addr : Address) (_ : String) : BasicRequest :=

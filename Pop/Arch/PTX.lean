@@ -198,9 +198,9 @@ def order : ValidScopes → Request → Request → Bool
   r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
   -/
   let acqafter := false -- r_old.isGeqAcq && (r_new.thread == r_old.thread)
-  let acqread :=  r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
+  let acqread :=  false -- r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
    -- TODO: why also for diff. threads? should this be handled with predeecessors?
-  let newrel := r_new.isGeqRel
+  let newrel := r_new.isGeqRel && r_new.thread == r_old.thread
   let relwrite := r_old.isGeqRel && r_new.thread == r_old.thread && r_new.isWrite
   let pred := r_old.isPredecessorAt r_new.thread && r_new.isFenceLike
   -- TODO: what about acqrel and (w -> r)?
@@ -260,8 +260,8 @@ def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List Reques
 def acceptConstraintsAux (state : SystemState) (br : BasicRequest) (tid : ThreadId) (reqs : List RequestId) : Bool :=
     match reqs with
       | [] =>
-        let scfences := state.requests.filter Request.isFenceSC
-        scfences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
+        let fences := state.requests.filter Request.isGeqAcq
+        fences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
       | reqId::rest =>
         let req := state.requests.getReq! reqId
         if req.isFenceSC then
@@ -278,6 +278,11 @@ def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId)
     acceptConstraintsAux state br tid state.blockedOnRequests
 
 def propagateConstraints (state : SystemState) (rid : RequestId) (thId : ThreadId) : Bool :=
+  let req_thread := state.requests.getReq! rid |>.thread
+  let prev := state.requests.filter λ p => p.thread == req_thread
+  state.scopes.containThread req_thread |>.all
+    (λ scope => prev.all
+      (λ p => !(state.orderConstraints.lookup scope p.id rid) || p.fullyPropagated scope)) &&
   state.blockedOnRequests.all
     λ fenceId =>
       let fence := state.requests.getReq! fenceId

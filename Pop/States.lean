@@ -173,6 +173,7 @@ instance {V : ValidScopes} : LE (@Scope V) where
 structure Request where
   id : RequestId
   propagated_to : List ThreadId
+  predecessor_at : List ThreadId
   thread : ThreadId
   basic_type : BasicRequest
   occurrence : Nat
@@ -181,8 +182,8 @@ structure Request where
   deriving BEq
 
 def Request.default : Request :=
-  {id := 0, propagated_to := [], thread := 0, occurrence := 0,
-   basic_type := BasicRequest.fence Inhabited.default}
+  {id := 0, propagated_to := [], predecessor_at := [], thread := 0,
+   occurrence := 0, basic_type := BasicRequest.fence Inhabited.default}
 instance : Inhabited (Request) where default := Request.default
 
 def Request.toString : Request → String
@@ -257,6 +258,12 @@ def Request.propagatedTo (r : Request) (t : ThreadId) : Bool := r.propagated_to.
 def Request.fullyPropagated {V : ValidScopes}  (r : Request) (s : optParam (@Scope V) V.systemScope) : Bool :=
   let propToList := s.threads.map (λ t => Request.propagatedTo r t)
   propToList.foldl (init:= true) (. && .)
+
+def Request.isPredecessorAt (req : Request) (thId : ThreadId) : Bool :=
+  req.predecessor_at.contains thId
+
+def Request.makePredecessorAt (req : Request) (thId : ThreadId) : Request :=
+  if req.isPredecessorAt thId then req else { req with predecessor_at := thId :: req.predecessor_at}
 
 /-
  We have scoped order constraints, i.e. a different set of order constraints
@@ -469,6 +476,9 @@ def RequestArray.printReq : RequestArray → RequestId → String
     | none => ""
     | some r => r.toShortString
 
+def RequestArray.seen : RequestArray → List RequestId
+  | arr => List.range arr.val.size
+
 def RequestArray.map {β : Type} : RequestArray → (Request → β) → Array β
  | rarr, f => filterNonesArr $ rarr.val.map λ opreq => Option.map f opreq
 -- instance : GetElem RequestArray RequestId (Option Request) where getElem
@@ -590,21 +600,17 @@ def RequestArray.remove : RequestArray → RequestId → RequestArray
 
 structure SystemState where
   requests : RequestArray
-  seen : List RequestId
   removed : List (Request)
   scopes : ValidScopes
   satisfied : List SatisfiedRead
   threadTypes : ThreadId → String
   orderConstraints : @OrderConstraints scopes
-  seenCoherent : ∀ id : RequestId, id ∈ seen → id ∈ reqIds requests
   removedCoherent : ∀ id : RequestId, id ∈ (removed.map Request.id) → id ∈ reqIds requests
-  satisfiedCoherent : ∀ id₁ id₂ : RequestId, (id₁,id₂) ∈ satisfied → id₁ ∈ seen ∧ id₂ ∈ seen
 
 def SystemState.beq (state₁ state₂ : SystemState)
   -- (samesystem : state₁.system = state₂.system)
   : Bool :=
   state₁.requests == state₂.requests &&
-  state₁.seen == state₂.seen &&
   state₁.removed == state₂.removed &&
   state₁.satisfied == state₂.satisfied &&
   -- this will be expensive!
@@ -646,7 +652,6 @@ def SystemState.toString : SystemState → String
   let satisfiedStr := state.satisfied.map
     λ (r₁, r₂) => s!"{(state.findMaybeRemoved? r₁).get!.toShortString} with {state.requests.printReq r₂}"
   s!"requests:\n{state.requests}\n"  ++
-  s!"seen: {state.seen.toString}\n" ++
   s!"removed: {state.removed.toString}\n" ++
   s!"satisfied: {satisfiedStr}\n" ++
   ocString
@@ -668,18 +673,18 @@ theorem empty2Coherent (seen : List RequestId) :
   contradiction
 
 def SystemState.init (S : ValidScopes) (threadTypes : ThreadId → String): SystemState :=
-  { requests := RequestArray.empty, seen := [], removed := [],
+  { requests := RequestArray.empty, removed := [],
     scopes := S, satisfied := [], orderConstraints := OrderConstraints.empty,
-    seenCoherent := emptyCoherent RequestArray.empty,
-    removedCoherent := emptyCoherent RequestArray.empty,
-    satisfiedCoherent := empty2Coherent [], threadTypes
+    removedCoherent := emptyCoherent RequestArray.empty, threadTypes
   }
 
 def SystemState.default := SystemState.init ValidScopes.default (λ _ => "default")
 instance : Inhabited (SystemState) where default := SystemState.default
 
+def SystemState.seen : SystemState → List RequestId
+  | state => state.requests.seen
 
-def SystemState.idsToReqs : (SystemState) → List RequestId → List (Request)
+def SystemState.idsToReqs : SystemState → List RequestId → List (Request)
   | state, ids => filterNones $ ids.map (λ id => state.requests.getReq? id)
 
 def SystemState.isSatisfied : SystemState → RequestId → Bool
@@ -694,8 +699,8 @@ def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Boo
 def SystemState.updateRequest : SystemState → Request → SystemState
   | state, request =>
    let requests' := state.requests.insert request
-   SystemState.mk requests' state.seen state.removed state.scopes state.satisfied
-   state.threadTypes state.orderConstraints sorry sorry sorry
+   SystemState.mk requests' state.removed state.scopes state.satisfied
+   state.threadTypes state.orderConstraints sorry
    --{requests := requests', seen := state.seen, removed := state.removed,
    -- scopes := state.scopes, satisfied := state.satisfied,
    -- orderConstraints := state.orderConstraints,

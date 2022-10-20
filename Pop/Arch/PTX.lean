@@ -32,7 +32,6 @@ inductive Semantics
 structure Req where
   (scope : Scope)
   (sem : Semantics)
-  (predecessorAt : List ThreadId)
   deriving BEq
 
 def Req.isStrong (req : Req) : Bool :=
@@ -41,7 +40,7 @@ def Req.isStrong (req : Req) : Bool :=
   | _ => true
 
 instance : Inhabited Req where default :=
-  { scope := Scope.sys, sem := Semantics.sc, predecessorAt := []}
+  { scope := Scope.sys, sem := Semantics.sc}
 
 def Scope.toString : Scope → String
   | .cta => "cta"
@@ -64,13 +63,6 @@ def Req.toString (req : Req) : String :=
   | .rlx, .sys => ""
   | sem, scope => s!"{scope}_{sem}"
 
-def Req.prettyPrint (req : Req) : String :=
-  let predStr :=
-    match req.predecessorAt with
-      | [] => ""
-      | preds => s!" pred @ {preds}"
-  req.toString ++ predStr
-
 instance : ToString Req where toString := Req.toString
 
 instance : ArchReq where
@@ -79,7 +71,6 @@ instance : ArchReq where
   instInhabited := PTX.instInhabitedReq
   isPermanentRead := λ _ => false
   instToString := PTX.instToStringReq
-  prettyPrint := Req.prettyPrint
 
 def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
   let containing := valid.containThread thread
@@ -148,18 +139,6 @@ def Request.isFenceLike (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.acq ||
   req.basic_type.type.sem == PTX.Semantics.acqrel ||
   req.basic_type.type.sem == PTX.Semantics.sc
-
-def Request.isPredecessorAt (req : Request) (thId : ThreadId) : Bool :=
-  req.basic_type.type.predecessorAt.contains thId
-
-def Request.makePredecessorAt (req : Request) (thId : ThreadId) : Request :=
-  let predList := req.basic_type.type.predecessorAt
-  --dbg_trace "Making {req} a predecessor at T{thId}"
-  if predList.contains thId then
-    req
-  else
-    let updateFun := λ t => { t with predecessorAt := thId::predList : PTX.Req}
-    { req with basic_type := req.basic_type.updateType updateFun}
 
 end Pop
 
@@ -329,7 +308,7 @@ def mkRead (scope_sem : String ) (addr : Address) (_ : String) : BasicRequest :=
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
   match scope_sem.splitOn "_" with
     | [""] => BasicRequest.read rr
-              {scope := Scope.sys, sem := Semantics.rlx, predecessorAt := []}
+              {scope := Scope.sys, sem := Semantics.rlx}
     | [scopeStr, semStr] =>
       let scope := match scopeStr with
         | "cta" => Scope.cta
@@ -346,7 +325,7 @@ def mkRead (scope_sem : String ) (addr : Address) (_ : String) : BasicRequest :=
           dbg_trace "(read) invalid PTX semantics: {semStr}"
           Semantics.weak
       BasicRequest.read rr
-      {scope := scope, sem := sem, predecessorAt := []}
+      {scope := scope, sem := sem}
     | _ =>
       dbg_trace "malformed PTX read request: W.{scope_sem}"
       BasicRequest.read rr default
@@ -355,7 +334,7 @@ def mkWrite (scope_sem : String) (addr : Address) (val : Value) (_ : String) : B
   let wr : WriteRequest := { addr := addr, val := val}
   match scope_sem.splitOn "_" with
     | [""] => BasicRequest.write wr
-              {scope := Scope.sys, sem := Semantics.rlx, predecessorAt := []}
+              {scope := Scope.sys, sem := Semantics.rlx}
     | [scopeStr, semStr] =>
       let scope := match scopeStr with
         | "cta" => Scope.cta
@@ -371,7 +350,7 @@ def mkWrite (scope_sem : String) (addr : Address) (val : Value) (_ : String) : B
         | _ =>
           dbg_trace "(write) invalid PTX semantics: {semStr}"
           Semantics.weak
-      BasicRequest.write wr {scope := scope, sem := sem, predecessorAt := []}
+      BasicRequest.write wr {scope := scope, sem := sem}
     | _ =>
       dbg_trace "malformed PTX read request: W.{scope_sem}"
       BasicRequest.write wr default
@@ -379,7 +358,7 @@ def mkWrite (scope_sem : String) (addr : Address) (val : Value) (_ : String) : B
 def mkFence (scope_sem : String) (_ : String) : BasicRequest :=
   match scope_sem.splitOn "_" with
     | [""] => BasicRequest.fence
-              {scope := Scope.sys, sem := Semantics.sc, predecessorAt := []}
+              {scope := Scope.sys, sem := Semantics.sc}
     | [scopeStr, semStr] =>
       let scope := match scopeStr with
         | "cta" => Scope.cta
@@ -396,7 +375,7 @@ def mkFence (scope_sem : String) (_ : String) : BasicRequest :=
         | _ =>
           dbg_trace "(fence) invalid PTX semantics: {semStr}"
           Semantics.sc
-      BasicRequest.fence {scope := scope, sem := sem, predecessorAt := []}
+      BasicRequest.fence {scope := scope, sem := sem}
     | _ =>
       dbg_trace "malformed PTX read request: Fence.{scope_sem}"
       BasicRequest.fence default

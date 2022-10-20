@@ -119,31 +119,19 @@ RequestId → ThreadId → @OrderConstraints state.scopes
         req.isMem && req'.isMem && req.address? == req'.address? &&
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id)
+      -- TODO: With our new separation, where the order constraints are only intra-thread, do we still need this?
       let conditions := λ req' : Request =>
-        --dbg_trace s!"{req.id}, {req'.id} newrf?: {newrf req'}"
-        --dbg_trace s!"{req.id}, {req'.id} : "
-        --dbg_trace s!"{req'.propagatedTo thId}"
-        --dbg_trace s!"{!(req'.propagatedTo req.thread)}"
-        --dbg_trace s!"{!(state.orderConstraints.lookup scope req.id req'.id)}"
-        --dbg_trace s!"{!(state.orderConstraints.lookup scope req'.id req.id)}"
-        --dbg_trace s!"{!(Arch.reorderCondition req req')}"
         req'.thread == thId && -- change from ARM model: requests are only order in their respective threads
         --req'.propagatedTo thId &&
         !(req'.propagatedTo req.thread) &&
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id) &&
         (Arch.orderCondition state.scopes req req')
-      let seen := state.idsToReqs $ state.seen
-      --dbg_trace s!"seen: {seen}"
-      let newReqs := seen.filter λ r => conditions r
-      let newRFReqs := seen.filter λ r => newrf r
-      -- TODO: maybe worth refactoring for API: make the arch give us the intersection, not (just) a single scope
+      let newReqs := state.requests.filter λ r => conditions r
+      let newRFReqs := state.requests.filter λ r => newrf r
       let newConstraints := newReqs.map λ req' => (Arch.scopeIntersection state.scopes req req',
                                                   (req.id, req'.id )) -- incoming req. goes before others
       let newRFConstraints := newRFReqs.map λ req' => (req.id, req'.id)
-      -- TODO: why does this not break things with RF? Look into simpleRF PTX Litmus test, an order can cause R to not have any write to read from
-      --dbg_trace s!"new constraints: {newConstraints}"
-      --dbg_trace s!"scope: {scope}"
       -- add individual constraints
       let newOc := Id.run do
         let mut oc := state.orderConstraints
@@ -183,7 +171,7 @@ def SystemState.freshId : SystemState → RequestId
 def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState × RequestId
   | state, reqType, tId =>
   let prelimReq : Request :=
-    {propagated_to := [tId], thread := tId,
+    {propagated_to := [tId], thread := tId, predecessor_at := [],
      basic_type := reqType, id := state.freshId, occurrence := 0} -- should never stay as 0
   let previous := state.requests.filter λ r => prelimReq.equivalent r
   let removed := state.removed.filter λ r => prelimReq.equivalent r
@@ -191,15 +179,12 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
   let req := { prelimReq with occurrence := (occurrences.maximum + 1) }
   --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
   let requests' := state.requests.insert req
-  let seen' := blesort $ state.seen ++ [req.id]
   let orderConstraints' := state.updateOrderConstraintsAccept req
-  ({ requests := requests', scopes := state.scopes, seen := seen',
+  ({ requests := requests', scopes := state.scopes,
      threadTypes := state.threadTypes,
      orderConstraints := orderConstraints',
      removed := state.removed, satisfied := state.satisfied,
-     seenCoherent := sorry
      removedCoherent := sorry
-     satisfiedCoherent := sorry
   }, req.id)
 
 def SystemState.canUnapplyRequest : SystemState → RequestId → Bool
@@ -215,10 +200,9 @@ def SystemState.canUnapplyRequest : SystemState → RequestId → Bool
 def SystemState.unapplyAcceptRequest : SystemState → RequestId → SystemState
 -- TODO: PR for multiple updates?
   | state, rId => {requests := state.requests.remove rId,
-                   seen := state.seen, removed := state.removed, orderConstraints := state.orderConstraints,
-                   threadTypes := state.threadTypes,
-                   scopes := state.scopes, satisfied := state.satisfied,
-                   seenCoherent := sorry, removedCoherent :=sorry, satisfiedCoherent := sorry}
+                   removed := state.removed, orderConstraints := state.orderConstraints,
+                   threadTypes := state.threadTypes, scopes := state.scopes,
+                   satisfied := state.satisfied, removedCoherent :=sorry}
 
 -- def SystemState.canUnapplyPropagate : SystemState → RequestId → ThreadId → Bool
 --   | state, reqId, thId =>
@@ -266,10 +250,8 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
     let orderConstraints' := state.updateOrderConstraintsPropagate scope reqId thId
     { requests := requests', orderConstraints := orderConstraints',
       threadTypes := state.threadTypes,
-      seen := state.seen, removed := state.removed, satisfied := state.satisfied,
-      seenCoherent := sorry, removedCoherent := sorry,
-      satisfiedCoherent := state.satisfiedCoherent
-    }
+      removed := state.removed, satisfied := state.satisfied,
+      removedCoherent := sorry}
 
 def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Bool
   | state, readId, writeId =>
@@ -314,9 +296,7 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
         -/
        { requests := requests', orderConstraints := orderConstraints',
          removed := state.removed, satisfied := satisfied',
-         threadTypes := state.threadTypes,
-         seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,
-         satisfiedCoherent := sorry
+         threadTypes := state.threadTypes, removedCoherent := sorry
        }
        | false =>
        let removed' := (read'::state.removed).toArray.qsort
@@ -324,9 +304,7 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
        let requests' := state.requests.remove readId
        { requests := requests', orderConstraints := state.orderConstraints,
          removed := removed', satisfied := satisfied',
-         threadTypes := state.threadTypes,
-         seen := state.seen, seenCoherent := sorry, removedCoherent := sorry,
-         satisfiedCoherent := sorry
+         threadTypes := state.threadTypes, removedCoherent := sorry,
        }
    | _, _ => unreachable!
 

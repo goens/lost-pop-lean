@@ -176,8 +176,8 @@ def order : ValidScopes → Request → Request → Bool
   /-
   r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
   -/
-  let acqafter := false -- r_old.isGeqAcq && (r_new.thread == r_old.thread)
-  let acqread :=  false -- r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
+  let acqafter := r_old.isGeqAcq && (r_new.thread == r_old.thread)
+  let acqread :=  r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
    -- TODO: why also for diff. threads? should this be handled with predeecessors?
   let newrel := r_new.isGeqRel && r_new.thread == r_old.thread
   let relwrite := r_old.isGeqRel && r_new.thread == r_old.thread && r_new.isWrite

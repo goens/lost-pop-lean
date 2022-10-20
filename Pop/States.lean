@@ -187,7 +187,7 @@ def Request.default : Request :=
 instance : Inhabited (Request) where default := Request.default
 
 def Request.toString : Request → String
-  | req => s!" Request {req.id} {req.basic_type.prettyPrint} : [propagated to {req.propagated_to}, origin thread : {req.thread}]"
+  | req => s!" Request {req.id} {req.basic_type.prettyPrint} : [propagated to {req.propagated_to}, origin thread : {req.thread}, pred. at : {req.predecessor_at}]"
 instance : ToString (Request) where toString := Request.toString
 
 def Request.toShortString : Request → String

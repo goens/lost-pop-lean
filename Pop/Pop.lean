@@ -118,7 +118,8 @@ RequestId → ThreadId → @OrderConstraints state.scopes
 
 def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Request)
 : @OrderConstraints state.scopes :=
-  let threadreqs := state.idsToReqs state.seen |>.filter (·.thread == req.thread)
+  let threadreqs := state.idsToReqs state.seen |>.filter
+    λ r => r.thread == req.thread || r.isPredecessorAt req.thread
   let newOc := Id.run do
     let mut oc := state.orderConstraints
     for req' in threadreqs do

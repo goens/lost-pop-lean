@@ -104,13 +104,6 @@ def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId →
 def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope state.scopes →
 RequestId → ThreadId → @OrderConstraints state.scopes
   | scope, reqId, thId =>
-  /-
-    add a constraint req, req' iff:
-    * req' already propagated to thId
-    * req' not propagated to req'.thread
-    * req, req' not already ordered
-    * req, req' can't be reoredered
-    -/
   match state.requests.getReq? reqId with
     | none => state.orderConstraints
     | some req =>
@@ -119,43 +112,25 @@ RequestId → ThreadId → @OrderConstraints state.scopes
         req.isMem && req'.isMem && req.address? == req'.address? &&
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id)
-      -- TODO: With our new separation, where the order constraints are only intra-thread, do we still need this?
-      let conditions := λ req' : Request =>
-        req'.thread == thId && -- change from ARM model: requests are only order in their respective threads
-        --req'.propagatedTo thId &&
-        !(req'.propagatedTo req.thread) &&
-        !(state.orderConstraints.lookup scope req.id req'.id) &&
-        !(state.orderConstraints.lookup scope req'.id req.id) &&
-        (Arch.orderCondition state.scopes req req')
-      let newReqs := state.requests.filter λ r => conditions r
       let newRFReqs := state.requests.filter λ r => newrf r
-      let newConstraints := newReqs.map λ req' => (Arch.scopeIntersection state.scopes req req',
-                                                  (req.id, req'.id )) -- incoming req. goes before others
       let newRFConstraints := newRFReqs.map λ req' => (req.id, req'.id)
-      -- add individual constraints
-      let newOc := Id.run do
-        let mut oc := state.orderConstraints
-        for (sc,cons) in newConstraints do
-          oc := oc.addSubscopes sc [cons]
-        oc
-      newOc.addSubscopes state.scopes.systemScope newRFConstraints
+      state.orderConstraints.addSubscopes state.scopes.systemScope newRFConstraints
 
 def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Request)
 : @OrderConstraints state.scopes :=
-  let propagated := state.idsToReqs state.seen |>.filter (Request.propagatedTo . req.thread)
+  let threadreqs := state.idsToReqs state.seen |>.filter (·.thread == req.thread)
+  let newOc := Id.run do
+    let mut oc := state.orderConstraints
+    for req' in threadreqs do
+      unless Arch.orderCondition state.scopes req' req do continue
+      let sc := Arch.scopeIntersection state.scopes req' req
+      oc := oc.addSubscopes sc [(req'.id, req.id)]
+    oc
   let newrf := λ req' : Request =>
     req.id != req'.id &&
     req.isMem && req'.isMem && req.address? == req'.address?
-  let newReqs := propagated.filter λ req'  => (Arch.orderCondition state.scopes req' req)
+  let propagated := state.idsToReqs state.seen |>.filter (Request.propagatedTo · req.thread)
   let newRFReqs := propagated.filter newrf |>.map λ req' => (req'.id, req.id)
-  let newConstraints := newReqs.map λ req' => (Arch.scopeIntersection state.scopes req' req,
-                                              (req'.id, req.id))
-  --dbg_trace s!"accepted {req}; propagated: {propagated}, new: {newReqs}, constraints: {newConstraints}"
-  let newOc := Id.run do
-    let mut oc := state.orderConstraints
-    for (sc,cons) in newConstraints do
-      oc := oc.addSubscopes sc [cons]
-    oc
   newOc.addSubscopes state.scopes.systemScope newRFReqs
 
 def SystemState.freshId : SystemState → RequestId
@@ -215,6 +190,21 @@ def SystemState.unapplyAcceptRequest : SystemState → RequestId → SystemState
 def Request.isPropagated : Request → ThreadId → Bool
   | req, thId => req.propagated_to.elem thId
 
+def requestBlocksPropagateRequest : SystemState → ThreadId → Request → Request → Bool
+  | state, thId, propagate, block => Id.run do
+    if block.id == propagate.id then
+      return false
+    if propagate.thread == block.thread then
+      for scope in state.scopes.containThread propagate.thread do
+        if state.orderConstraints.lookup scope block.id propagate.id && !(block.fullyPropagated scope) then
+          return true
+      return false
+    else
+      let scope := state.scopes.jointScope thId propagate.thread
+      if state.orderConstraints.lookup scope block.id propagate.id && !(block.propagatedTo thId) then
+        return true
+      return false
+
 def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | state, reqId, thId =>
   let arch := Arch.propagateConstraints state reqId thId
@@ -222,17 +212,9 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | none => false
   | some req =>
     let unpropagated := !req.isPropagated thId
-    let scope := state.scopes.jointScope thId req.thread
-    let pred := state.orderPredecessors scope reqId
-    let properPred := pred.removeAll [req.id]
-    --dbg_trace s!"R{req.id}.pred = {properPred}"
-    let reqOps := state.requests.val.filter (λ req => match req with | none => false | some r => properPred.elem r.id)
-    let reqs := filterNones reqOps.toList
-    -- TODO: when here?
-    --let predPropagated := reqs.map (λ r => r.fullyPropagated scope)
-    let predPropagated := reqs.map (λ r => r.propagatedTo thId)
-    --dbg_trace s!"R{req.id} unpropagated (T{thId}): {unpropagated}, predPropagated: {predPropagated}"
-    arch && unpropagated && predPropagated.foldl (. && .) true
+    let blockingReqs := state.requests.filter (requestBlocksPropagateRequest state thId req)
+    --dbg_trace "can {req} propagate to thread {thId}?\n blockingReqs = {blockingReqs}"
+    arch && unpropagated && blockingReqs.isEmpty
 
 def Request.propagate : Request → ThreadId → Request
   | req, thId =>

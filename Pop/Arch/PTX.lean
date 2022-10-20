@@ -239,7 +239,7 @@ def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List Reques
 def acceptConstraintsAux (state : SystemState) (br : BasicRequest) (tid : ThreadId) (reqs : List RequestId) : Bool :=
     match reqs with
       | [] =>
-        let fences := state.requests.filter Request.isGeqAcq
+        let fences := state.requests.filter Request.isFenceSC
         fences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
       | reqId::rest =>
         let req := state.requests.getReq! reqId

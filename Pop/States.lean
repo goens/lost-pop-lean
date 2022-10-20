@@ -306,7 +306,7 @@ def OrderConstraints.successors {V : ValidScopes} (S : @Scope V) (req : RequestI
 
  def OrderConstraints.transitiveSuccessors {V : ValidScopes} (S : @Scope V) (req : RequestId)
    (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
-   let sc_oc := constraints.lookup S 
+   let sc_oc := constraints.lookup S
    Id.run do
      let mut succ := []
      let mut succ' := [req]
@@ -316,7 +316,6 @@ def OrderConstraints.successors {V : ValidScopes} (S : @Scope V) (req : RequestI
          λ x => succ'.any
            λ s => x == s || sc_oc s x
      return succ'
-
 
 def OrderConstraints.between {V : ValidScopes} (S : @Scope V) (req₁ req₂ : RequestId)
   (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
@@ -347,33 +346,6 @@ def OrderConstraints.compare {V₁ V₂ : ValidScopes} ( oc₁ : @OrderConstrain
       let reqPairs := List.join $ requests.map λ r₁ => requests.foldl (init := []) λ reqs r₂ => (r₁,r₂)::reqs
       let keys := List.join $ scopes.map λ s => reqPairs.foldl (init := []) λ ks (r₁,r₂) => (s,r₁,r₂)::ks
       keys.all λ (s,r₁,r₂) => (oc₁.lookup s.1 r₁ r₂ == oc₂.lookup s.2 r₁ r₂)
-
--- Maybe I don't need this (at least for now)
-/-
-def OrderConstraints.purgeScope {V : ValidScopes} (constraints : @OrderConstraints V)
-  (scope : @Scope V) (req : RequestId) : @OrderConstraints V :=
-match constraints.val.find? V.system_scope with
-| none => constraints
-| some ss_oc =>
-let allReqPairs := ss_oc.toArray.map λ (pair,_) => pair
-let reqPairs := allReqPairs.filter λ (r₁, r₂) => r₁ == req || r₂ == req
-let val' := constraints.val.toArray.foldl λ scope sc_oc => Id.run do
-let sc_oc' := reqPairs.foldl (init := sc_oc) λ oc reqs => oc.insert reqs false
-return sc_oc'
-{ constraints with val := val'}
-
-def OrderConstraints.purge {V : ValidScopes} (constraints : @OrderConstraints V)
-  (req : RequestId) : @OrderConstraints V :=
-  match constraints.val.find? V.system_scope with
-    | none => constraints
-    | some ss_oc =>
-      let allReqPairs := ss_oc.toArray.map λ (pair,_) => pair
-      let reqPairs := allReqPairs.filter λ (r₁, r₂) => r₁ == req || r₂ == req
-      let val' := constraints.val.toArray.foldl λ scope sc_oc => Id.run do
-        let sc_oc' := reqPairs.foldl (init := sc_oc) λ oc reqs => oc.insert reqs false
-        return sc_oc'
-      { constraints with val := val'}
--/
 
 def OrderConstraints.addSingleScope {V : ValidScopes} (constraints : @OrderConstraints V)
   (scope : @Scope V) (reqs : List (RequestId × RequestId)) (val := true) : @OrderConstraints V :=
@@ -718,23 +690,5 @@ class Arch where
   (satisfyReadEffects : SystemState → RequestId → RequestId → SystemState := λ st _ _ => st)
   (orderCondition : ValidScopes → Request → Request → Bool)
   (scopeIntersection : (valid : ValidScopes) → Request → Request → @Scope valid := λ v _ _ => v.systemScope)
-
--- private def maxThread : ThreadId → List ThreadId → ThreadId
---   | curmax, n::rest => if curmax < n then maxThread n rest else maxThread curmax rest
---   | max, [] => max
-
--- def Scopes.numThreads : ValidScopes → ThreadId :=
---   let helperFun : ThreadId → List (List ThreadId) → ThreadId :=
---     λ cmax rest => match rest with
---       | l
--- def Scopes.valid : Scopes → List ThreadId → Boolean :=
-
--- def Scope.subscopes : Scope → List Scope
---  |
-
-
--- def Scope.isSubscrope : Scope → Scope → Boolean :=
--- instance : LE Scope
-
 
 end Pop

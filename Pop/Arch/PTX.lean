@@ -183,13 +183,13 @@ def order : ValidScopes → Request → Request → Bool
   let relwrite := r_old.isGeqRel && r_new.thread == r_old.thread && r_new.isWrite
   let pred := r_old.isPredecessorAt r_new.thread && r_new.isFenceLike
   -- TODO: what about acqrel and (w -> r)?
-   -- dbg_trace "[reorder] {r_old} {r_new}"
-   -- dbg_trace "[reorder] fences : {fences}"
-   -- dbg_trace "[reorder] acqafter : {acqafter}"
-   -- dbg_trace "[reorder] acqread : {acqread}"
-   -- dbg_trace "[reorder] newrel : {newrel}"
-   -- dbg_trace "[reorder] relwrite : {relwrite}"
-   -- dbg_trace "[reorder] scopes match: {scopesMatch V r_old r_new}"
+   -- dbg_trace "[order] {r_old} {r_new}"
+   -- dbg_trace "[order] fences : {fences}"
+   -- dbg_trace "[order] acqafter : {acqafter}"
+   -- dbg_trace "[order] acqread : {acqread}"
+   -- dbg_trace "[order] newrel : {newrel}"
+   -- dbg_trace "[order] relwrite : {relwrite}"
+   -- dbg_trace "[order] scopes match: {scopesMatch V r_old r_new}"
   scopesMatch V r_old r_new &&
   (acqafter || newrel || fences || acqread || relwrite || pred)
 
@@ -218,11 +218,12 @@ def reqRFEstablishedScope (state : SystemState) (fenceLike : Request) (r : Reque
               some req else
               none
     --let rscope := state.scopes.intersection (PTX.requestScope state.scopes r) scope
+    --dbg_trace "RF Established scope {fenceLike.id}? {(r :: precidingWrites).map (λ w => (w.id, w.fullyPropagated scope))}"
     state.isSatisfied r.id || (r :: precidingWrites).all (λ w => w.fullyPropagated scope)
 
 
 def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List RequestId := Id.run do
-  let fences := state.requests.filter Request.isGeqAcq -- release doesn't block
+  let fences := state.requests.filter Request.isFenceLike
   let mut res := []
   for fence in fences do
     let preds := state.blockedOnFencePreds fence
@@ -236,42 +237,52 @@ def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List Reques
        res := res ++ [fence.id]
   return res
 
-def acceptConstraintsAux (state : SystemState) (br : BasicRequest) (tid : ThreadId) (reqs : List RequestId) : Bool :=
+def propagateConstraintsAux (state : SystemState) (req : Request) (reqs : List RequestId) : Bool :=
     match reqs with
       | [] =>
-        let fences := state.requests.filter Request.isFenceSC
-        fences.all λ r =>  r.thread != tid || r.fullyPropagated (requestScope state.scopes r)
-      | reqId::rest =>
-        let req := state.requests.getReq! reqId
-        if req.isFenceSC then
+        let th_scope := state.scopes.jointScope req.thread req.thread
+        let fences := state.requests.filter λ f => f.isFenceSC && f.thread == req.thread && state.orderConstraints.lookup th_scope f.id req.id
+        fences.all λ r =>  r.fullyPropagated (requestScope state.scopes r)
+      | blockId::rest =>
+        let th_scope := state.scopes.jointScope req.thread req.thread
+        let block := state.requests.getReq! blockId
+        if block.isFenceSC && block.id != req.id then
           false
-        else if req.thread != tid then
-          acceptConstraintsAux state br tid rest
+        else if block.thread != req.thread then
+          propagateConstraintsAux state req rest
         else
-          let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == tid
-          --dbg_trace "req {reqId} blocks accept of {br} through reads {readsOnThread}? {readsOnThread.all (reqRFEstablishedScope state req)}"
-          readsOnThread.all (reqRFEstablishedScope state req) && acceptConstraintsAux state br tid rest
+          let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == req.thread && r.id != req.id && !(state.orderConstraints.lookup th_scope block.id r.id)
+          --dbg_trace "req {blockId} blocks propagate of {req.id} through reads {readsOnThread}? {readsOnThread.all (reqRFEstablishedScope state block)}"
+          -- [1, 1, 2, 2, 1, 1, 1, 5, 3, 1, 3, 3, 4, 1, 1, 1]
+          readsOnThread.all (reqRFEstablishedScope state block) && propagateConstraintsAux state req rest
             --(r.fullyPropagated scope && (precedingWrites state r scope).all λ pred => pred.fullyPropagated scope)
 
-def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId) : Bool :=
-    acceptConstraintsAux state br tid state.blockedOnRequests
+--def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId) : Bool :=
+--    acceptConstraintsAux state br tid state.blockedOnRequests
 
-def propagateConstraints (state : SystemState) (rid : RequestId) (thId : ThreadId) : Bool :=
-  let req_thread := state.requests.getReq! rid |>.thread
-  let prev := state.requests.filter λ p => p.thread == req_thread
-  state.scopes.containThread req_thread |>.all
+def propagateConstraints (state : SystemState) (rid : RequestId) (_ : ThreadId) : Bool :=
+  let req := state.requests.getReq! rid
+  -- TODO: is this redundant with the propagateConstraintsAux?
+  let prev := state.requests.filter λ p => p.thread == req.thread && p.id != rid
+  let prev_propagated := state.scopes.containThread req.thread |>.all
     (λ scope => prev.all
-      (λ p => !(state.orderConstraints.lookup scope p.id rid) || p.fullyPropagated scope)) &&
-  state.blockedOnRequests.all
-    λ fenceId =>
-      let fence := state.requests.getReq! fenceId
-      let scope := PTX.requestScope state.scopes fence
-      if fence.isFenceSC && scope.threads.contains thId then
-        let preds := state.blockedOnFencePreds fence |>.map Request.id
-        let req := state.requests.getReq! rid
-        preds.contains rid || (req.isRead && req.thread == fence.thread)
-      else true
+      (λ p => !(state.orderConstraints.lookup scope p.id rid) || p.fullyPropagated scope))
+  let blocking := state.blockedOnRequests.removeAll (prev.map Request.id)
+  let not_blocked := propagateConstraintsAux state req blocking
+  --dbg_trace "propagate {rid}, prev: {prev}, propagated? {prev_propagated}, {blocking} not blocked? {not_blocked}"
+  prev_propagated && not_blocked
+   -- state.blockedOnRequests.all
+   -- λ fenceId =>
+   --   let fence := state.requests.getReq! fenceId
+   --   let scope := PTX.requestScope state.scopes fence
+   --   if fence.isFenceSC && scope.threads.contains thId then
+   --     let preds := state.blockedOnFencePreds fence |>.map Request.id
+   --     let req := state.requests.getReq! rid
+   --     preds.contains rid || (req.isRead && req.thread == fence.thread)
+   --   else true
 
+-- TODO: somehow when we make a predecessor we need to add the edges immediately as well
+-- see: WRC_acqrel [1, 3, 3, 2, 1, 1, 2, 3, 1, 3, 1, 2] should have an edge 6[W. sys_rel y = 1] -> 5[R. sys_acq x]
 def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
 : SystemState := Id.run do
   -- add predecessors as soon as RF edge formed
@@ -285,6 +296,7 @@ def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
       if let some req' := state.requests.getReq? reqId' then
         if req'.isRead && morallyStrong state.scopes req req' then
           res := res.updateRequest $ req.makePredecessorAt thId
+    -- update order constraints accordingly:
     return res
 /-
  * A predecessor should behave *as if* it was in that same thread.
@@ -296,7 +308,6 @@ def acceptEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId) :=
 
 instance : Arch where
   req := instArchReq
-  acceptConstraints := acceptConstraints
   propagateConstraints := propagateConstraints
   orderCondition := order
   scopeIntersection := scopeIntersection

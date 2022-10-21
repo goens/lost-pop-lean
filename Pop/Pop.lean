@@ -116,6 +116,21 @@ RequestId → ThreadId → @OrderConstraints state.scopes
       let newRFConstraints := newRFReqs.map λ req' => (req.id, req'.id)
       state.orderConstraints.addSubscopes state.scopes.systemScope newRFConstraints
 
+-- for predecessors
+def SystemState.updateOrderConstraintsAfterPropagate (state : SystemState) : RequestId → @OrderConstraints state.scopes
+  | reqId =>
+  match state.requests.getReq? reqId with
+    | none => state.orderConstraints
+    | some req => Id.run do
+        let predreqs := state.idsToReqs state.seen |>.filter
+          λ r => r.isPredecessorAt req.thread
+        let mut oc := state.orderConstraints
+        for req' in predreqs do
+          unless Arch.orderCondition state.scopes req' req do continue
+          let sc := Arch.scopeIntersection state.scopes req' req
+          oc := oc.addSubscopes sc [(req'.id, req.id)]
+        oc
+
 def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Request)
 : @OrderConstraints state.scopes :=
   let threadreqs := state.idsToReqs state.seen |>.filter
@@ -297,7 +312,8 @@ def SystemState.applyTransition! : SystemState → Transition → SystemState
      let (acceptedState,acceptedReq) := state.applyAcceptRequest req tId
      (Arch.acceptEffects acceptedState acceptedReq tId)
    | state, .propagateToThread reqId tId =>
-     (Arch.propagateEffects · reqId tId) $ state.propagate reqId tId
+     let state' := (Arch.propagateEffects · reqId tId) $ state.propagate reqId tId
+     {state' with orderConstraints := state'.updateOrderConstraintsAfterPropagate reqId}
    | state, satisfyRead readId writeId =>
      (Arch.satisfyReadEffects · readId writeId) $ state.satisfy readId writeId
    | state, dependency _ => state

@@ -106,7 +106,7 @@ def Color.toNat : Color → Nat
 def Color.isBright : Color → Bool
  | .black => false
  | .red     => false
- | .green   => false
+ | .green   => true
  | .yellow  => true
  | .blue    => false
  | .magenta => true --?

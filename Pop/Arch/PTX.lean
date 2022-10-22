@@ -177,6 +177,7 @@ def order : ValidScopes → Request → Request → Bool
   r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
   -/
   let acqafter := r_old.isGeqAcq && (r_new.thread == r_old.thread)
+  let samemem_reads := r_old.address? == r_new.address? && r_old.isRead && r_new.isRead
   let acqread :=  r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
    -- TODO: why also for diff. threads? should this be handled with predeecessors?
   let newrel := r_new.isGeqRel && (r_new.thread == r_old.thread || r_old.isPredecessorAt r_new.thread)
@@ -191,7 +192,7 @@ def order : ValidScopes → Request → Request → Bool
    -- dbg_trace "[order] relwrite : {relwrite}"
    -- dbg_trace "[order] scopes match: {scopesMatch V r_old r_new}"
   scopesMatch V r_old r_new &&
-  (acqafter || newrel || fences || acqread || relwrite || pred)
+  (acqafter || newrel || fences || acqread || relwrite || pred || samemem_reads)
 
 -- On SC fence we propagate predecessors to the SC fence's scope. We enforce
 -- this by not accepting, propagating or satisfying any other requests unless

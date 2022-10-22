@@ -107,16 +107,19 @@ RequestId → ThreadId → @OrderConstraints state.scopes
   match state.requests.getReq? reqId with
     | none => state.orderConstraints
     | some req =>
-      let newrf := λ req' : Request =>
+      let newobs := λ req' : Request =>
         req.id != req'.id && req'.propagatedTo thId &&
-        req.isMem && req'.isMem && req.address? == req'.address? &&
+        -- TODO: this seems to be too weak?
+        (req.isWrite && req'.isMem || req.isMem && req'.isWrite) &&
+        --req.isMem && req'.isMem &&
+        req.address? == req'.address? &&
         (req.thread == thId || req'.thread == thId) && -- don't sync somewhere else
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id)
-      let newRFReqs := state.requests.filter λ r => newrf r
-      let newRFConstraints := newRFReqs.map λ req' => (req.id, req'.id)
+      let newObsReqs := state.requests.filter λ r => newobs r
+      let newObsConstraints := newObsReqs.map λ req' => (req.id, req'.id)
         --dbg_trace "adding {newRFConstraints} on propagate"
-      state.orderConstraints.addSubscopes state.scopes.systemScope newRFConstraints
+      state.orderConstraints.addSubscopes state.scopes.systemScope newObsConstraints
 
 -- for predecessors
 def SystemState.updateOrderConstraintsAfterPropagate (state : SystemState) : ThreadId → @OrderConstraints state.scopes
@@ -144,12 +147,15 @@ def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Reques
       let sc := Arch.scopeIntersection state.scopes req' req
       oc := oc.addSubscopes sc [(req'.id, req.id)]
     oc
-  let newrf := λ req' : Request =>
+  let newobs := λ req' : Request =>
     req.id != req'.id &&
-    req.isMem && req'.isMem && req.address? == req'.address?
+    -- TODO: this seems to be too weak?
+    (req.isMem && req'.isWrite || req.isWrite && req'.isMem) &&
+    --req.isMem && req'.isMem &&
+    req.address? == req'.address?
   let propagated := state.idsToReqs state.seen |>.filter (Request.propagatedTo · req.thread)
-  let newRFReqs := propagated.filter newrf |>.map λ req' => (req'.id, req.id)
-  newOc.addSubscopes state.scopes.systemScope newRFReqs
+  let newObsReqs := propagated.filter newobs |>.map λ req' => (req'.id, req.id)
+  newOc.addSubscopes state.scopes.systemScope newObsReqs
 
 def SystemState.freshId : SystemState → RequestId
   | state =>

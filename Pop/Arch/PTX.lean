@@ -281,30 +281,36 @@ def propagateConstraints (state : SystemState) (rid : RequestId) (_ : ThreadId) 
    --     preds.contains rid || (req.isRead && req.thread == fence.thread)
    --   else true
 
+def addNewPredecessors (state : SystemState) (write read : Request) (thId : ThreadId) : SystemState := Id.run do
+  if write.isWrite && read.isRead &&
+  morallyStrong state.scopes write read && read.thread == thId then -- only reads at that thread
+    return state.updateRequest $ write.makePredecessorAt thId
+  else
+    return state
+
 -- TODO: somehow when we make a predecessor we need to add the edges immediately as well
 -- see: WRC_acqrel [1, 3, 3, 2, 1, 1, 2, 3, 1, 3, 1, 2] should have an edge 6[W. sys_rel y = 1] -> 5[R. sys_acq x]
 def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
 : SystemState := Id.run do
   -- add predecessors as soon as RF edge formed
   let req := state.requests.getReq! reqId
-  if !req.isWrite then
-     return state
-  else
-    let mut res := state
-    let successors := state.orderConstraints.successors (state.scopes.jointScope req.thread thId) reqId state.seen
-    for reqId' in successors do
-      if let some req' := state.requests.getReq? reqId' then
-        if req'.isRead && morallyStrong state.scopes req req' && req'.thread == thId then -- only reads at that thread
-          res := res.updateRequest $ req.makePredecessorAt thId
-    -- update order constraints accordingly:
-    return res
+  let mut res := state
+  let successors := state.orderConstraints.successors (state.scopes.jointScope req.thread thId) reqId state.seen
+  for reqId' in successors do
+    if let some req' := state.requests.getReq? reqId' then
+      res := addNewPredecessors res req req' thId
+  return res
 /-
  * A predecessor should behave *as if* it was in that same thread.
  * We add edge between predecessor and fence always (?):  maybe only for ≥release?
  * Add predecessor only at RF (not at propagate)
 -/
-def acceptEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId) :=
-  propagateEffects state reqId thId
+def acceptEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId) := Id.run do
+  let writesOnThread := state.requests.filter λ w => w.isWrite && w.propagatedTo thId
+  let mut st := state
+  for write in writesOnThread do
+    st := addNewPredecessors st write (state.requests.getReq! reqId) thId
+  return st
 
 instance : Arch where
   req := instArchReq

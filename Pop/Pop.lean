@@ -110,26 +110,28 @@ RequestId → ThreadId → @OrderConstraints state.scopes
       let newrf := λ req' : Request =>
         req.id != req'.id && req'.propagatedTo thId &&
         req.isMem && req'.isMem && req.address? == req'.address? &&
+        (req.thread == thId || req'.thread == thId) && -- don't sync somewhere else
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id)
       let newRFReqs := state.requests.filter λ r => newrf r
       let newRFConstraints := newRFReqs.map λ req' => (req.id, req'.id)
+        --dbg_trace "adding {newRFConstraints} on propagate"
       state.orderConstraints.addSubscopes state.scopes.systemScope newRFConstraints
 
 -- for predecessors
-def SystemState.updateOrderConstraintsAfterPropagate (state : SystemState) : RequestId → @OrderConstraints state.scopes
-  | reqId =>
-  match state.requests.getReq? reqId with
-    | none => state.orderConstraints
-    | some req => Id.run do
-        let predreqs := state.idsToReqs state.seen |>.filter
-          λ r => r.isPredecessorAt req.thread
-        let mut oc := state.orderConstraints
-        for req' in predreqs do
-          unless Arch.orderCondition state.scopes req' req do continue
-          let sc := Arch.scopeIntersection state.scopes req' req
-          oc := oc.addSubscopes sc [(req'.id, req.id)]
-        oc
+def SystemState.updateOrderConstraintsAfterPropagate (state : SystemState) : ThreadId → @OrderConstraints state.scopes
+  | thId => Id.run do
+    let predreqs := state.requests.filter λ r => r.isPredecessorAt thId
+    let threadreqs := state.requests.filter λ r => r.thread == thId
+    let mut oc := state.orderConstraints
+    for req in predreqs do
+      for req' in threadreqs do
+        let sc := Arch.scopeIntersection state.scopes req req'
+        if oc.lookup sc req.id req'.id then continue
+        unless Arch.orderCondition state.scopes req req' do continue
+        --dbg_trace "adding {(req.id, req'.id)} after propagate"
+        oc := oc.addSubscopes sc [(req.id, req'.id)]
+    oc
 
 def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Request)
 : @OrderConstraints state.scopes :=
@@ -217,9 +219,8 @@ def requestBlocksPropagateRequest : SystemState → ThreadId → Request → Req
       return false
     else
       let scope := state.scopes.jointScope thId propagate.thread
-      if state.orderConstraints.lookup scope block.id propagate.id && !(block.propagatedTo thId) then
-        return true
-      return false
+      --dbg_trace "{block.id} blocks {propagate.id}? {state.orderConstraints.lookup scope block.id propagate.id} && {!(block.propagatedTo thId)}"
+      return state.orderConstraints.lookup scope block.id propagate.id && !(block.propagatedTo thId)
 
 def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | state, reqId, thId =>
@@ -262,14 +263,14 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
       else if (blesort read.propagated_to) != (blesort write.propagated_to) then false
       else
         let scope := state.scopes.jointScope read.thread write.thread
-        -- dbg_trace "can {writeId} satisfy {readId}?"
+        --dbg_trace "can {writeId} satisfy {readId}?"
         -- TODO: can/should we relax this?
         let oc := state.orderConstraints.lookup scope writeId readId
         let betweenIds := state.orderConstraints.between scope write.id read.id (reqIds state.requests)
-        -- dbg_trace s!"between {readId} and {writeId}: {betweenIds}"
+        --dbg_trace s!"between {writeId} and {readId}: {betweenIds}"
         let between := state.idsToReqs betweenIds
         let writesToAddrBetween := between.filter λ r =>
-          r.isWrite && r.address? == write.address? && !(state.isSatisfied r.id)
+          r.address? == write.address? && !(state.isSatisfied r.id)
         arch && oc && writesToAddrBetween.length == 0
     | _, _ => panic! s!"unknown request ({readId} or {writeId})"
 
@@ -313,7 +314,7 @@ def SystemState.applyTransition! : SystemState → Transition → SystemState
      (Arch.acceptEffects acceptedState acceptedReq tId)
    | state, .propagateToThread reqId tId =>
      let state' := (Arch.propagateEffects · reqId tId) $ state.propagate reqId tId
-     {state' with orderConstraints := state'.updateOrderConstraintsAfterPropagate reqId}
+     {state' with orderConstraints := state'.updateOrderConstraintsAfterPropagate tId}
    | state, satisfyRead readId writeId =>
      (Arch.satisfyReadEffects · readId writeId) $ state.satisfy readId writeId
    | state, dependency _ => state

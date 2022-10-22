@@ -179,7 +179,7 @@ def order : ValidScopes → Request → Request → Bool
   let acqafter := r_old.isGeqAcq && (r_new.thread == r_old.thread)
   let acqread :=  r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
    -- TODO: why also for diff. threads? should this be handled with predeecessors?
-  let newrel := r_new.isGeqRel && r_new.thread == r_old.thread
+  let newrel := r_new.isGeqRel && (r_new.thread == r_old.thread || r_old.isPredecessorAt r_new.thread)
   let relwrite := r_old.isGeqRel && r_new.thread == r_old.thread && r_new.isWrite
   let pred := r_old.isPredecessorAt r_new.thread && r_new.isFenceLike
   -- TODO: what about acqrel and (w -> r)?
@@ -294,7 +294,7 @@ def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
     let successors := state.orderConstraints.successors (state.scopes.jointScope req.thread thId) reqId state.seen
     for reqId' in successors do
       if let some req' := state.requests.getReq? reqId' then
-        if req'.isRead && morallyStrong state.scopes req req' then
+        if req'.isRead && morallyStrong state.scopes req req' && req'.thread == thId then -- only reads at that thread
           res := res.updateRequest $ req.makePredecessorAt thId
     -- update order constraints accordingly:
     return res

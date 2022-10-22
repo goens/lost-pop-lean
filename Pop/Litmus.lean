@@ -60,6 +60,7 @@ def addressValuePretty : Address × Value → String
 def Outcome.prettyPrint : Litmus.Outcome → String
   | outcome =>
   let threads : List Litmus.Outcome := outcome.groupBy (·.thread == ·.thread)
+    |>.toArray.qsort (λ t₁ t₂ => Nat.ble t₁.head!.thread t₂.head!.thread) |>.toList
   let threadStrings := threads.map
     λ th => String.intercalate "; " $ th.map (λ readOut => addressValuePretty $ (readOut.address, readOut.value))
   String.intercalate " || " threadStrings

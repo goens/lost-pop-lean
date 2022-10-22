@@ -145,7 +145,7 @@ def outcomeSubset : Litmus.Outcome → Litmus.Outcome → Bool
   | out₁, out₂ =>
   out₁.all λ readOutcome => out₂.contains readOutcome
 
-def outcomeEqiv : Litmus.Outcome → Litmus.Outcome → Bool
+def outcomeEquiv : Litmus.Outcome → Litmus.Outcome → Bool
   | out₁, out₂ => outcomeSubset out₁ out₂ && outcomeSubset out₂ out₁
 
 def SystemState.outcomePossible : Litmus.Outcome → ProgramState → SystemState → Bool
@@ -437,7 +437,7 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
      --  (reslit, pts)
      let outcome_res := match resExcept with
        | .error _ => "?"
-       | .ok (reslit,_) => if reslit.any λ out => outcomeEqiv out test.expected
+       | .ok (reslit,_) => if reslit.any λ out => outcomeEquiv out test.expected
          then "✓"
          else "𐄂"
      let (pt, opState) := match resExcept with

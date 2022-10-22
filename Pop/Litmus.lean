@@ -17,7 +17,10 @@ structure ReadOutcome where
   address : Address
   value : Value
   occurrence : Nat
-  deriving BEq
+  deriving BEq, Inhabited
+
+def ReadOutcome.toString (out : ReadOutcome) : String := s!"{out.occurrence}-th read {out.address} at thread {out.thread} with value {out.value}"
+instance : ToString ReadOutcome where toString := ReadOutcome.toString
 
 abbrev Outcome := List ReadOutcome
 
@@ -130,8 +133,10 @@ def mkReadOutcomeTriple : String × String × Address × Value → ThreadId → 
   | _, _ => none
 
 def mkOutcome : List (ThreadId × Address × Value) → Litmus.Outcome
-  | readOutcomes => readOutcomes.countOcurrences.map
-    λ ((thId,addr,val),num) =>
+  | readOutcomes =>
+    let (th_addr_pairs, vals) := readOutcomes.map (λ (th, addr, val) => ((th,addr),val)) |>.unzip
+    th_addr_pairs.countOcurrences.zip vals |>.map
+    λ (((thId,addr),num),val) =>
       { thread := thId, address := addr, value := val, occurrence := num}
 
 def initZeroesUnpropagatedTransitions : List Address → List (Transition)

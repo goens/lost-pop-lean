@@ -263,24 +263,10 @@ def propagateConstraintsAux (state : SystemState) (req : Request) (reqs : List R
 
 def propagateConstraints (state : SystemState) (rid : RequestId) (_ : ThreadId) : Bool :=
   let req := state.requests.getReq! rid
-  -- TODO: is this redundant with the propagateConstraintsAux?
   let prev := state.requests.filter λ p => p.thread == req.thread && p.id != rid
-  let prev_propagated := state.scopes.containThread req.thread |>.all
-    (λ scope => prev.all
-      (λ p => !(state.orderConstraints.lookup scope p.id rid) || p.fullyPropagated scope))
   let blocking := state.blockedOnRequests.removeAll (prev.map Request.id)
-  let not_blocked := propagateConstraintsAux state req blocking
-  --dbg_trace "propagate {rid}, prev: {prev}, propagated? {prev_propagated}, {blocking} not blocked? {not_blocked}"
-  prev_propagated && not_blocked
-   -- state.blockedOnRequests.all
-   -- λ fenceId =>
-   --   let fence := state.requests.getReq! fenceId
-   --   let scope := PTX.requestScope state.scopes fence
-   --   if fence.isFenceSC && scope.threads.contains thId then
-   --     let preds := state.blockedOnFencePreds fence |>.map Request.id
-   --     let req := state.requests.getReq! rid
-   --     preds.contains rid || (req.isRead && req.thread == fence.thread)
-   --   else true
+  --dbg_trace "propagate {rid}, prev: {prev}, {blocking} not blocked? {propagateConstraintsAux state req blocking}"
+  propagateConstraintsAux state req blocking
 
 def addNewPredecessors (state : SystemState) (write read : Request) (thId : ThreadId) : SystemState := Id.run do
   if write.isWrite && read.isRead &&

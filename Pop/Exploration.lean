@@ -454,7 +454,9 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
                    s!"| {axiomatic}         | {outcome_res}   |"
      let resStr := if axiomatic != "?" && outcome_res != "?" && axiomatic != outcome_res
        then colorString .red uncolored
-       else if outcome_res == "?" || axiomatic == "?"
+       else if (outcome_res == "?" && axiomatic == "𐄂" || axiomatic == "?")
+       then colorString .cyan uncolored
+       else if outcome_res == "?" && axiomatic == "✓"
        then colorString .yellow uncolored
        else uncolored
      let witnessStr := if outcome_res == "✓" && printWitness && ptNums.isSome

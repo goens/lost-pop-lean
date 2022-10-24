@@ -242,13 +242,14 @@ def ValidScopes.isUnscoped (V : ValidScopes) : Bool :=
 def ValidScopes.systemScope {V : ValidScopes } : @Scope V :=
   {threads := V.system_scope, valid := sorry}
 
-def ValidScopes.threadScope {V : ValidScopes } (t :  ThreadId) (h : [t] ∈ V.scopes) : (@Scope V) :=
-  {threads := [t], valid := h}
-
 def ValidScopes.jointScope : (V : ValidScopes) → ThreadId → ThreadId → (@Scope V)
  | valid, t₁, t₂ => match valid.scopes.meet t₁ t₂ with
    | some scope => {threads := scope, valid := sorry}
    | none => panic! s!"can't find the joint scope of {t₁} and {t₂} in {valid.scopes}"-- can we get rid of this case distinction?
+
+
+def ValidScopes.reqThreadScope (V : ValidScopes ) (req : Request) : (@Scope V) :=
+   V.jointScope req.thread req.thread
 
 def ValidScopes.intersection : (V : ValidScopes) → @Scope V → @Scope V → @Scope V
   | V, s1, s2 => V.validate $ s1.threads.intersection s2.threads

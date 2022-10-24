@@ -218,6 +218,8 @@ def requestBlocksPropagateRequest : SystemState → ThreadId → Request → Req
   | state, thId, propagate, block => Id.run do
     if block.id == propagate.id then
       return false
+    if !block.isMem then -- fences don't propagate
+      return false
     if propagate.thread == block.thread then
       for scope in state.scopes.containThread propagate.thread do
         if state.orderConstraints.lookup scope block.id propagate.id && !(block.fullyPropagated scope) then
@@ -234,6 +236,8 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   match state.requests.getReq? reqId with
   | none => false
   | some req =>
+    if !req.isMem then -- fences don't propagate
+      false else
     let unpropagated := !req.isPropagated thId
     let blockingReqs := state.requests.filter (requestBlocksPropagateRequest state thId req)
     --dbg_trace "can {req} propagate to thread {thId}?\n blockingReqs = {blockingReqs}"

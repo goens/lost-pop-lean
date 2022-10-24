@@ -171,13 +171,13 @@ def scopesMatch : ValidScopes → Request → Request → Bool
 def order : ValidScopes → Request → Request → Bool
   | V, r_old, r_new =>
   -- TODO: we are not sure if this might make our model stronger than necessary
-  let fences := (r_old.isFence && r_new.isFence)
+  let fences := (r_old.isFence || r_new.isFence)
                        && (r_old.thread == r_new.thread)
   /-
   r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
   -/
-  let acqafter := r_old.isGeqAcq && (r_new.thread == r_old.thread)
   let samemem_reads := r_old.address? == r_new.address? && r_old.isRead && r_new.isRead
+  let acqafter := r_old.isGeqAcq && (r_new.thread == r_old.thread)
   let acqread :=  r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
    -- TODO: why also for diff. threads? should this be handled with predeecessors?
   let newrel := r_new.isGeqRel && (r_new.thread == r_old.thread || r_old.isPredecessorAt r_new.thread)
@@ -194,22 +194,6 @@ def order : ValidScopes → Request → Request → Bool
   scopesMatch V r_old r_new &&
   (acqafter || newrel || fences || acqread || relwrite || pred || samemem_reads)
 
--- On SC fence we propagate predecessors to the SC fence's scope. We enforce
--- this by not accepting, propagating or satisfying any other requests unless
--- this is propagated. This is the check we use for that. Returns the first
--- SC fence that it finds that it's blocked on (it should never be more than
--- one anyway)
-private def _root_.Pop.SystemState.blockedOnFencePreds (state : SystemState) (fence : Request) : List Request := Id.run do
-  let mut res := []
-  let scope := PTX.requestScope state.scopes fence
-  if fence.fullyPropagated scope then
-    return res
-  else
-    let preds := state.requests.filter
-      λ r => r.isPredecessorAt fence.thread
-    res := res ++ preds
-  return res
-
 def reqRFEstablishedScope (state : SystemState) (fenceLike : Request) (r : Request) : Bool :=
     let scope := scopeIntersection state.scopes r fenceLike
     let precidingWrites := filterNones $ state.orderConstraints.predecessors scope r.id state.seen |>.map
@@ -222,51 +206,60 @@ def reqRFEstablishedScope (state : SystemState) (fenceLike : Request) (r : Reque
     --dbg_trace "RF Established scope {fenceLike.id}? {(r :: precidingWrites).map (λ w => (w.id, w.fullyPropagated scope))}"
     state.isSatisfied r.id || (r :: precidingWrites).all (λ w => w.fullyPropagated scope)
 
-
-def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List RequestId := Id.run do
+-- On SC fence we propagate predecessors to the SC fence's scope. We enforce
+-- this by not accepting, propagating or satisfying any other requests unless
+-- this is propagated. This is the check we use for that. Returns the first
+-- SC fence that it finds that it's blocked on (it should never be more than
+-- one anyway)
+def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List Request := Id.run do
   let fences := state.requests.filter Request.isFenceLike
   let mut res := []
   for fence in fences do
-    let preds := state.blockedOnFencePreds fence
-    let scope := PTX.requestScope state.scopes fence
-    -- This is the change, blocking when unsatisfied reads (breaks MP_fence_cta_1fence)
-    let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == fence.thread
+    let preds := state.requests.filter λ r => r.isPredecessorAt fence.thread
+    let memopsOnThread := state.requests.filter λ r => r.isMem &&  r.thread == fence.thread &&
+                          state.orderConstraints.lookup (state.scopes.reqThreadScope fence) r.id fence.id
+
+    -- All fences block on reads (this implies acq does not block on preds)
+    let readsOnThread := memopsOnThread.filter Request.isRead
     unless readsOnThread.all (reqRFEstablishedScope state fence) do
-      res := res ++ [fence.id]
+      res := res ++ [fence]
       continue
-    unless !fence.isFenceSC || preds.all λ p => p.fullyPropagated scope do
-       res := res ++ [fence.id]
+    -- Rel fences also block on writes/preds
+    let writesAndPreds := preds ++ memopsOnThread.filter Request.isWrite
+    let fenceScope := PTX.requestScope state.scopes fence
+    --dbg_trace "≥ Rel fence: writesAndPreds = {writesAndPreds}, not yet fully prop? {writesAndPreds.map λ w => !(w.fullyPropagated fenceScope)}"
+    --dbg_trace "{fence}.isGeqRel = {fence.isGeqRel}"
+    if fence.isGeqRel && writesAndPreds.any (λ w => !(w.fullyPropagated fenceScope)) then
+      res := res ++ [fence]
+      continue
   return res
 
-def propagateConstraintsAux (state : SystemState) (req : Request) (reqs : List RequestId) : Bool :=
-    match reqs with
-      | [] =>
-        let th_scope := state.scopes.jointScope req.thread req.thread
-        let fences := state.requests.filter λ f => f.isFenceSC && f.thread == req.thread && state.orderConstraints.lookup th_scope f.id req.id
-        fences.all λ r =>  r.fullyPropagated (requestScope state.scopes r)
-      | blockId::rest =>
-        let th_scope := state.scopes.jointScope req.thread req.thread
-        let block := state.requests.getReq! blockId
-        if block.isFenceSC && block.id != req.id then
-          false
-        else if block.thread != req.thread then
-          propagateConstraintsAux state req rest
-        else
-          let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == req.thread && r.id != req.id && !(state.orderConstraints.lookup th_scope block.id r.id)
-          --dbg_trace "req {blockId} blocks propagate of {req.id} through reads {readsOnThread}? {readsOnThread.all (reqRFEstablishedScope state block)}"
-          -- [1, 1, 2, 2, 1, 1, 1, 5, 3, 1, 3, 3, 4, 1, 1, 1]
-          readsOnThread.all (reqRFEstablishedScope state block) && propagateConstraintsAux state req rest
-            --(r.fullyPropagated scope && (precedingWrites state r scope).all λ pred => pred.fullyPropagated scope)
-
---def acceptConstraints (state : SystemState) (br : BasicRequest) (tid : ThreadId) : Bool :=
---    acceptConstraintsAux state br tid state.blockedOnRequests
+def propagateConstraintsAux (state : SystemState) (req : Request) (blocking : List Request) : Bool :=
+  if blocking.isEmpty then
+    true else
+  if !req.isMem then -- fences don't propagate
+    false else
+  if req.isRead then -- acq blocks subsequent reads
+    !blocking.any Request.isGeqAcq else
+  -- req is Write
+  if blocking.any Request.isGeqAcq then
+    false else
+  -- req is Write && (all) fence(s) is (are) rel
+  blocking.any λ block =>
+    let scope := scopeIntersection state.scopes req block
+    let preds := state.requests.filter λ r => r.isPredecessorAt block.thread
+    let memopsOnThread := state.requests.filter λ r => r.isMem &&  r.thread == block.thread &&
+                          state.orderConstraints.lookup (state.scopes.reqThreadScope block) r.id block.id
+    (preds ++ memopsOnThread).all λ p => p.fullyPropagated scope
+    -- (reads/writes/pred prop to scope)
 
 def propagateConstraints (state : SystemState) (rid : RequestId) (_ : ThreadId) : Bool :=
-  let req := state.requests.getReq! rid
-  let prev := state.requests.filter λ p => p.thread == req.thread && p.id != rid
-  let blocking := state.blockedOnRequests.removeAll (prev.map Request.id)
-  --dbg_trace "propagate {rid}, prev: {prev}, {blocking} not blocked? {propagateConstraintsAux state req blocking}"
-  propagateConstraintsAux state req blocking
+    let req := state.requests.getReq! rid
+    let blocking := state.blockedOnRequests.filter
+        λ r => r.thread == req.thread &&
+        state.orderConstraints.lookup (state.scopes.reqThreadScope req) r.id req.id
+    --dbg_trace "propagate {rid}, \n{blocking} not blocked? {propagateConstraintsAux state req blocking}"
+    propagateConstraintsAux state req blocking
 
 def addNewPredecessors (state : SystemState) (write read : Request) (thId : ThreadId) : SystemState := Id.run do
   if write.isWrite && read.isRead &&

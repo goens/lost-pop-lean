@@ -194,46 +194,47 @@ def order : ValidScopes → Request → Request → Bool
   scopesMatch V r_old r_new &&
   (acqafter || newrel || fences || acqread || relwrite || pred || samemem_reads)
 
-def reqRFEstablishedScope (state : SystemState) (fenceLike : Request) (r : Request) : Bool :=
-    let scope := scopeIntersection state.scopes r fenceLike
-    let precidingWrites := filterNones $ state.orderConstraints.predecessors scope r.id state.seen |>.map
-        λ predId => match state.requests.getReq? predId with
-          | none => none
-          | some req => if req.isWrite then
-              some req else
-              none
-    --let rscope := state.scopes.intersection (PTX.requestScope state.scopes r) scope
-    --dbg_trace "RF Established scope {fenceLike.id}? {(r :: precidingWrites).map (λ w => (w.id, w.fullyPropagated scope))}"
-    state.isSatisfied r.id || (r :: precidingWrites).all (λ w => w.fullyPropagated scope)
+def allReadsDone (state : SystemState) (fenceLike : Request) : Bool :=
+    let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == fenceLike.thread &&
+                          state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id
 
--- On SC fence we propagate predecessors to the SC fence's scope. We enforce
--- this by not accepting, propagating or satisfying any other requests unless
--- this is propagated. This is the check we use for that. Returns the first
--- SC fence that it finds that it's blocked on (it should never be more than
--- one anyway)
+    -- All fences block on reads (this implies acq does not block on preds)
+    readsOnThread.all λ r =>
+        let scope := scopeIntersection state.scopes r fenceLike
+        let precidingWrites := filterNones $ state.orderConstraints.predecessors scope r.id state.seen |>.map
+            λ predId => match state.requests.getReq? predId with
+              | none => none
+              | some req => if req.isWrite then
+                  some req else
+                  none
+        --let rscope := state.scopes.intersection (PTX.requestScope state.scopes r) scope
+        --dbg_trace "RF Established scope {fenceLike.id}? {(r :: precidingWrites).map (λ w => (w.id, w.fullyPropagated scope))}"
+        state.isSatisfied r.id || (r :: precidingWrites).all (λ w => w.fullyPropagated scope)
+
+def memPredsDone (state : SystemState) (fenceLike : Request) : Bool :=
+    let preds := state.requests.filter λ r => r.isPredecessorAt fenceLike.thread
+    let memopsOnThread := state.requests.filter λ r => r.isMem &&  r.thread == fenceLike.thread &&
+                          state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id
+    let fenceScope := PTX.requestScope state.scopes fenceLike
+    (memopsOnThread ++ preds).all λ w => w.fullyPropagated fenceScope
+
 def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List Request := Id.run do
   let fences := state.requests.filter Request.isFenceLike
   let mut res := []
   for fence in fences do
-    let preds := state.requests.filter λ r => r.isPredecessorAt fence.thread
-    let memopsOnThread := state.requests.filter λ r => r.isMem &&  r.thread == fence.thread &&
-                          state.orderConstraints.lookup (state.scopes.reqThreadScope fence) r.id fence.id
-
     -- All fences block on reads (this implies acq does not block on preds)
-    let readsOnThread := memopsOnThread.filter Request.isRead
-    unless readsOnThread.all (reqRFEstablishedScope state fence) do
+    unless allReadsDone state fence do
       res := res ++ [fence]
       continue
     -- Rel fences also block on writes/preds
-    let writesAndPreds := preds ++ memopsOnThread.filter Request.isWrite
-    let fenceScope := PTX.requestScope state.scopes fence
-    --dbg_trace "≥ Rel fence: writesAndPreds = {writesAndPreds}, not yet fully prop? {writesAndPreds.map λ w => !(w.fullyPropagated fenceScope)}"
-    --dbg_trace "{fence}.isGeqRel = {fence.isGeqRel}"
-    if fence.isGeqRel && writesAndPreds.any (λ w => !(w.fullyPropagated fenceScope)) then
+    if fence.isGeqRel && !(memPredsDone state fence) then
       res := res ++ [fence]
       continue
   return res
 
+  /-
+  r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
+  -/
 def propagateConstraintsAux (state : SystemState) (req : Request) (blocking : List Request) : Bool :=
   if blocking.isEmpty then
     true else

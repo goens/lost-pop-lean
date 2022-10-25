@@ -8,7 +8,7 @@ open Std.HashMap
 open Util
 
 namespace Litmus
-open Util Pop
+open Util Pop Lean
 
 variable [Arch]
 
@@ -44,14 +44,14 @@ structure Test where
  (initState : SystemState)
  (name : String)
  (axiomaticAllowed : AxiomaticAllowed)
- (guideTrace : List Transition)
+ (guideTraces : List $ List Transition)
 
 def Test.numThreads (test : Test) : Nat := test.program.size
 def Test.numInstructions (test : Test) : Nat := Array.sum $ test.program.map (λ th => th.size)
 def Test.numScopes (test : Test)  : Nat := test.initState.scopes.scopes.toList.length
 def Test.weightedSize (test : Test)  : Nat := test.numThreads * 100 + test.numInstructions * 10 + test.numScopes
 
-instance : Inhabited Test where default := { initTransitions := [], program := #[], expected := [], initState := default, name := "default", axiomaticAllowed := .unknown, guideTrace := []}
+instance : Inhabited Test where default := { initTransitions := [], program := #[], expected := [], initState := default, name := "default", axiomaticAllowed := .unknown, guideTraces := []}
 
 def addressValuePretty : Address × Value → String
   | (_, none) => "invalid outcome!"
@@ -105,9 +105,122 @@ def Outcome.toRFPairs (outcome : Outcome) (prog : ProgramState)
    let simple := outcome.map λ r => (r.thread,r.address,r.value)
    simpleOutcomeToRFPairs simple prog
 
+declare_syntax_cat request
+declare_syntax_cat request_seq
+declare_syntax_cat request_set
+declare_syntax_cat threads
+declare_syntax_cat system_desc
+declare_syntax_cat metadata_item
+declare_syntax_cat litmus_metadata
+declare_syntax_cat litmus_def
+declare_syntax_cat guide_trace (behavior := both)
+declare_syntax_cat transition (behavior := both)
+
+syntax "R" ident ("//" num)? : request
+syntax "R." ident ident  ("//" num)? : request
+syntax "W" ident "=" num : request
+syntax "W." ident ident "=" num : request
+syntax "Fence"   : request
+syntax "Fence." ident  : request
+syntax request ";" request_seq : request_seq
+syntax request ";dep" request_seq : request_seq
+syntax request : request_seq
+syntax request_seq "||" request_set : request_set
+syntax request_seq : request_set
+syntax ident,+ : threads
+syntax "{" threads "}" : system_desc
+syntax "{" threads "}." ident : system_desc
+syntax "{" system_desc,+ "}" : system_desc
+
+syntax "✓" : metadata_item
+syntax "𐄂" : metadata_item
+syntax &"Accept" "(" request ")" " at " &"Thread " num : transition
+syntax &"Propagate " &"Request " num " to " &"Thread " num : transition
+syntax &"Satisfy " &"Request " num " with " &"Request " num : transition
+syntax "[" transition,+ "]" : guide_trace
+syntax metadata_item (litmus_metadata)? : litmus_metadata
+
+syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? (litmus_metadata)? : litmus_def
+syntax "`[litmus|" litmus_def ident "]" : term
+syntax "`[sys|" system_desc "]" : term
+syntax "`[req|" request "]" : term
+syntax "`[req_seq|" request_seq "]" : term
+syntax "`[req_set|" request_set "]" : term
+syntax "`[metadata|" ident "|" litmus_metadata "]" : term
+syntax "`[guide_trace|" guide_trace "]" : term
+syntax "`[transition|" transition "]" : term
+
+
+-- Define an attribute to add up all Litmus tests
+-- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/.E2.9C.94.20Stateful.2FAggregating.20Macros.3F/near/301067121
+abbrev NameExt := SimplePersistentEnvExtension (Name × Name) (NameMap Name)
+
+private def mkExt (name attr : Name) (descr : String) : IO NameExt := do
+  let addEntryFn | m, (n3, n4) => m.insert n3 n4
+  let ext ← registerSimplePersistentEnvExtension {
+    name, addEntryFn
+    addImportedFn := mkStateFromImportedEntries addEntryFn {}
+  }
+  registerBuiltinAttribute {
+    name := attr
+    descr
+    add := fun declName stx attrKind => do
+      let s := ext.getState (← getEnv)
+      let ns ← stx[1].getArgs.mapM fun stx => do
+        let n := stx.getId
+        if s.contains n then throwErrorAt stx "litmus test {n} already declared"
+        pure n
+      modifyEnv $ ns.foldl fun env n =>
+        ext.addEntry env (n, declName)
+  }
+  pure ext
+
+
+private def mkElab (ext : NameExt) (ty : Lean.Expr) : Elab.Term.TermElabM Lean.Expr := do
+  let mut stx := #[]
+  for (_, n4) in ext.getState (← getEnv) do
+    stx := stx.push $ ← `($(mkIdent n4):ident)
+  let listStx := (← `([$stx,*]))
+  let sorted ← `(Array.toList $ Array.qsort ($listStx).toArray (λ x y => Nat.ble x.weightedSize y.weightedSize))
+  Elab.Term.elabTerm sorted (some ty)
+
+syntax (name := litmusTest) "litmusTest " ident+ : attr
+initialize litmusExtension : NameExt ←
+  mkExt `Pop.litmusExtension `litmusTest
+    (descr := "Litums Tests")
+
+elab "litmusTests!" : term <= ty => do
+  mkElab litmusExtension ty
+
+macro "deflitmus" name:ident " := " litmus:litmus_def : command => do
+  let litmus_term ← `(`[litmus| $litmus $name])
+  `(@[litmusTest $name] def $name := $litmus_term)
+
+syntax (name := litmusHint) "litmusHint " ident+ : attr
+initialize litmusHintExtension : NameExt ←
+  mkExt `Pop.litmusHintExtension `litmusHint
+    (descr := "Litums Trace Hints Tests")
+
+private def mkHintElab (ext : NameExt) (litmus : Name) (ty : Lean.Expr) : Elab.Term.TermElabM Lean.Expr := do
+  let mut stx := #[]
+  for (nm, n4) in ext.getState (← getEnv) do
+    if nm == litmus then
+      stx := stx.push $ ← `($(mkIdent n4):ident)
+  let listStx := (← `([$stx,*]))
+  Elab.Term.elabTerm listStx (some ty)
+
+macro "hint " "for " name:ident " := " g:guide_trace : command => do
+  let newName := Name.str .anonymous $ name.getId.toString ++ "_hint"
+  `(@[litmusHint $name] def $(mkIdent newName) := `[guide_trace| $g])
+
+elab "litmusHints!" name:ident : term <= ty => do
+  mkHintElab litmusHintExtension name.getId ty
+
+
 end Litmus
 
 namespace Pop
+open Lean
 
 variable [Arch]
 
@@ -199,13 +312,13 @@ def mkRequestSimple : RequestSyntax → ThreadId → String → Option Transitio
     | v => panic! s!"Unsupported variable in guide: {v}"
 
 structure LitmusMetadata where
+  (name : String := "anonymous")
   (allowed : Litmus.AxiomaticAllowed := .unknown)
-  (guideTrace : List Transition := [])
-
+  (guideTraces : List (List Transition) := [])
 
 def createLitmus (list : List (List RequestSyntax))
   (opScopesThreadMapping : Option $ ValidScopes × (ThreadId → String))
-  (metadata : LitmusMetadata) (name : String) : Litmus.Test :=
+  (metadata : LitmusMetadata) : Litmus.Test :=
   let validScopes := opScopesThreadMapping.map λ (s,_) => s
   let threadTypes := match opScopesThreadMapping with
     | none => λ _ => "default"
@@ -229,51 +342,7 @@ def createLitmus (list : List (List RequestSyntax))
     | none => SystemState.init (mkValidScopes fullThreads.length) threadTypes
   { initTransitions := initWrites ++ initPropagates,
     program := reqs.toArray, expected := outcomes,
-    initState, name, axiomaticAllowed := metadata.allowed, guideTrace := metadata.guideTrace}
-
-declare_syntax_cat request
-declare_syntax_cat request_seq
-declare_syntax_cat request_set
-declare_syntax_cat threads
-declare_syntax_cat system_desc
-declare_syntax_cat metadata_item
-declare_syntax_cat litmus_metadata
-declare_syntax_cat guide_trace (behavior := both)
-declare_syntax_cat transition (behavior := both)
-
-syntax "R" ident ("//" num)? : request
-syntax "R." ident ident  ("//" num)? : request
-syntax "W" ident "=" num : request
-syntax "W." ident ident "=" num : request
-syntax "Fence"   : request
-syntax "Fence." ident  : request
-syntax request ";" request_seq : request_seq
-syntax request ";dep" request_seq : request_seq
-syntax request : request_seq
-syntax request_seq "||" request_set : request_set
-syntax request_seq : request_set
-syntax ident,+ : threads
-syntax "{" threads "}" : system_desc
-syntax "{" threads "}." ident : system_desc
-syntax "{" system_desc,+ "}" : system_desc
-
-syntax "✓" : metadata_item
-syntax "𐄂" : metadata_item
-syntax "Trace Hint := " guide_trace : metadata_item
-syntax &"Accept" "(" request ")" " at " &"Thread " num : transition
-syntax &"Propagate " &"Request " num " to " &"Thread " num : transition
-syntax &"Satisfy " &"Request " num " with " &"Request " num : transition
-syntax "[" transition,+ "]" : guide_trace
-syntax metadata_item (litmus_metadata)? : litmus_metadata
-
-syntax "{|" request_set "|}" ("where" "sys" ":=" system_desc )? (litmus_metadata)? : term
-syntax "`[sys|" system_desc "]" : term
-syntax "`[req|" request "]" : term
-syntax "`[req_seq|" request_seq "]" : term
-syntax "`[req_set|" request_set "]" : term
-syntax "`[metadata|" litmus_metadata "]" : term
-syntax "`[guide_trace|" guide_trace "]" : term
-syntax "`[transition|" transition "]" : term
+    initState, name := metadata.name, axiomaticAllowed := metadata.allowed, guideTraces := metadata.guideTraces}
 
 macro_rules
   | `(`[req| $r ]) => `(request| $r)
@@ -317,30 +386,27 @@ macro_rules
 --  | `(`[guide_trace| $[$n:num],* ]) => `([ $[$n],* ])
   | `(`[guide_trace| [ $[$ts:transition],* ] ]) => `( filterNones [ $[`[transition|$ts]],* ])
 
+--elab "litmusHints!" name:ident : term <= ty => do
+--  mkHintElab litmusHintExtension name.getId ty
 macro_rules
-  | `(`[metadata| ✓ $[$ms:litmus_metadata]?]) => match ms with
-    | some mss => `( { `[metadata| $mss] with allowed := (Litmus.AxiomaticAllowed.yes)})
-    | none => `( { allowed := (Litmus.AxiomaticAllowed.yes) : Pop.LitmusMetadata})
-  | `(`[metadata| 𐄂 $[$ms:litmus_metadata]?]) => match ms with
-    | some mss => `( { `[metadata| $mss] with allowed := (Litmus.AxiomaticAllowed.no)})
-    | none => `( { allowed := (Litmus.AxiomaticAllowed.no) : Pop.LitmusMetadata})
-  | `(`[metadata| Trace Hint := $g:guide_trace $[$ms:litmus_metadata]?]) => do
-    match ms with
-      | some mss => `( { `[metadata| $mss] with guideTrace := `[guide_trace| $g] })
-      | none => `( { guideTrace := `[guide_trace| $g] : Pop.LitmusMetadata})
+  | `(`[metadata| $name | ✓ $[$ms:litmus_metadata]?]) => match ms with
+    | some mss => `( { `[metadata| $name | $mss] with allowed := (Litmus.AxiomaticAllowed.yes)})
+    | none => `( { { guideTraces := litmusHints! $name, name := $(quote name.getId.toString) : Pop.LitmusMetadata} with allowed := (Litmus.AxiomaticAllowed.yes)})
+  | `(`[metadata| $name | 𐄂 $[$ms:litmus_metadata]?]) => match ms with
+    | some mss => `( { `[metadata| $name | $mss] with allowed := (Litmus.AxiomaticAllowed.no)})
+    | none => `( { { guideTraces := litmusHints! $name, name := $(quote name.getId.toString) : Pop.LitmusMetadata} with allowed := (Litmus.AxiomaticAllowed.no)})
 
 -- TODO: is there a more elegant way to do this with `Option.map`?
 macro_rules
-  | `({| $r |} $[where sys := $opdesc:system_desc ]? $[$opmeta:litmus_metadata]? ) => do
+  | `(`[litmus|  {| $r |} $[where sys := $opdesc:system_desc ]? $[$opmeta:litmus_metadata]? $name:ident ]) => do
     let desc ← match opdesc with
     | none => `( Option.none)
     | some desc => `( (some `[sys| $desc]))
     let meta ← match opmeta with
-    | none => `( { : Pop.LitmusMetadata })
-    | some m => `( `[metadata| $m] )
+    | none => `( { name := $(quote name.getId.toString) : Pop.LitmusMetadata })
+    | some m => `( `[metadata| $name| $m] )
     `( createLitmus `[req_set| $r] $desc $meta)
 
-open Lean
 
 def threadsGetAllNames (threadsSyntax : TSyntax `threads) : Array String :=
   match threadsSyntax.raw with
@@ -383,49 +449,6 @@ partial def mkSysAux (mapping : String → Option ThreadId) (desc : TSyntax `sys
       let join := blesort $ setJoin $ sdsTrees.map ListTree.listType
       return (← ListTree.mkParent join sdsTrees, names.join)
     | _ => Except.error "unexpected syntax in system description"
-
--- Define an attribute to add up all Litmus tests
--- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/.E2.9C.94.20Stateful.2FAggregating.20Macros.3F/near/301067121
-abbrev NameExt := SimplePersistentEnvExtension (Name × Name) (NameMap Name)
-
-private def mkExt (name attr : Name) (descr : String) : IO NameExt := do
-  let addEntryFn | m, (n3, n4) => m.insert n3 n4
-  let ext ← registerSimplePersistentEnvExtension {
-    name, addEntryFn
-    addImportedFn := mkStateFromImportedEntries addEntryFn {}
-  }
-  registerBuiltinAttribute {
-    name := attr
-    descr
-    add := fun declName stx attrKind => do
-      let s := ext.getState (← getEnv)
-      let ns ← stx[1].getArgs.mapM fun stx => do
-        let n := stx.getId
-        if s.contains n then throwErrorAt stx "litmus test {n} already declared"
-        pure n
-      modifyEnv $ ns.foldl fun env n =>
-        ext.addEntry env (n, declName)
-  }
-  pure ext
-
-
-private def mkElab (ext : NameExt) (ty : Lean.Expr) : Elab.Term.TermElabM Lean.Expr := do
-  let mut stx := #[]
-  for (_, n4) in ext.getState (← getEnv) do
-    stx := stx.push $ ← `($(mkIdent n4):ident)
-  let listStx := (← `([$stx,*]))
-  let sorted ← `(Array.toList $ Array.qsort ($listStx).toArray (λ x y => Nat.ble x.weightedSize y.weightedSize))
-  Elab.Term.elabTerm sorted (some ty)
-
-syntax (name := litmusTest) "litmusTest " ident+ : attr
-initialize litmusExtension : NameExt ←
-  mkExt `Pop.litmusExtension `litmusTest
-    (descr := "Litums Tests")
-
-elab "litmusTests!" : term <= ty => do
-  mkElab litmusExtension ty
-
-macro "deflitmus" name:ident " := " litmus:term : command => `(@[litmusTest $name] def $name := $litmus $(Lean.quote name.getId.toString))
 
 def mkSys (desc : TSyntax `system_desc) : Except String (ValidScopes × (List $ List ThreadId × String)) :=
   let allNames := systemDescGetAllNames desc |>.qsort alphabetic

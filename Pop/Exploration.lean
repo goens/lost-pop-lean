@@ -406,8 +406,11 @@ def _root_.Litmus.Test.exhaustiveSearch (test : Litmus.Test) (stopAfterFirst : o
 def runMultipleLitmusAux (tests : List Litmus.Test) (options : SearchOptions)
   : List ((Litmus.Test) × (Except String $ (List Litmus.Outcome) × (List ((List Transition) × SystemState)))) := Id.run do
     let mut tasks  := #[]
-    for test@(Litmus.Test.mk initTrans initProg outcome startingState _ _ guide) in tests do
+    for test@(Litmus.Test.mk initTrans initProg outcome startingState _ _ guides) in tests do
       let task := Task.spawn λ _ =>
+        let guide := match guides.head? with
+          | some trace => trace
+          | none => []
         let resExplExcept := startingState.exhaustiveSearchLitmus (initTrans,initProg,outcome) {{options with stopAfterFirst := true} with guidingTrace := guide}
         match resExplExcept with
           | .ok resExpl =>

@@ -72,9 +72,12 @@ def formatInteractiveState (name : String) (programState : ProgramState) (system
           ++ "--------------------------------------\n"
 
 def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
-  | .mk initTrans initProgSt expected initSysSt name axiomatic guideTrace, stdin => do
+  | .mk initTrans initProgSt expected initSysSt name axiomatic guideTraces, stdin => do
     let Except.ok start := initSysSt.applyTrace initTrans
       |  do return Except.error "error initalizing litmus"
+    let guideTrace := match guideTraces.head? with
+      | none => []
+      | some trace => trace
     let mut partialTrace := []
     let mut partialTraceNums := []
     let mut programState := initProgSt
@@ -134,7 +137,10 @@ def selectLitmus :  List Litmus.Test → String → Except String Litmus.Test
 def selectLitmusLoop : List Litmus.Test → IO.FS.Stream → IO (Except String Litmus.Test)
   | tests, stdin => do
     let litmusHintColors := tests.map λ test =>
-      let resHint := test.initState.applyTrace (test.initTransitions ++ test.guideTrace)
+      let guideTrace := match test.guideTraces.head? with
+        | none => []
+        | some trace => trace
+      let resHint := test.initState.applyTrace (test.initTransitions ++ guideTrace)
       match resHint with
         | .error _ => if test.axiomaticAllowed == .yes then
           Util.Color.yellow else

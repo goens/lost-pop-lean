@@ -1,4 +1,5 @@
 import Pop.Arch.ARM
+import Litmus.ARMTraces
 namespace Litmus
 
 deflitmus WRC := {| W x=1 || R. acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|}

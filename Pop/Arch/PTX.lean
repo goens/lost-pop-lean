@@ -240,19 +240,13 @@ def propagateConstraintsAux (state : SystemState) (req : Request) (blocking : Li
     true else
   if !req.isMem then -- fences don't propagate
     false else
-  if req.isRead then -- acq blocks subsequent reads
-    !blocking.any Request.isGeqAcq else
-  -- req is Write
-  if blocking.any Request.isGeqAcq then
-    false else
-  -- req is Write && (all) fence(s) is (are) rel
-  blocking.any λ block =>
-    let scope := scopeIntersection state.scopes req block
-    let preds := state.requests.filter λ r => r.isPredecessorAt block.thread
-    let memopsOnThread := state.requests.filter λ r => r.isMem &&  r.thread == block.thread &&
-                          state.orderConstraints.lookup (state.scopes.reqThreadScope block) r.id block.id
-    (preds ++ memopsOnThread).all λ p => p.fullyPropagated scope
-    -- (reads/writes/pred prop to scope)
+  if req.isRead then blocking.all λ fenceLike =>
+      (!fenceLike.isGeqAcq || allReadsDone state fenceLike) &&
+      (!fenceLike.isFenceSC || memPredsDone state fenceLike)
+ else if req.isWrite then blocking.all λ fenceLike =>
+      (!fenceLike.isGeqAcq || allReadsDone state fenceLike) &&
+      (!fenceLike.isGeqRel || memPredsDone state fenceLike)
+ else panic! s!"unknown request type ({req})"
 
 def propagateConstraints (state : SystemState) (rid : RequestId) (_ : ThreadId) : Bool :=
     let req := state.requests.getReq! rid

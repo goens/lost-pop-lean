@@ -27,19 +27,6 @@ instance : ArchReq where
   instToString := instToStringReq
   isPermanentRead := λ _ => false
 
-def order : ValidScopes → Request → Request → Bool
-/-
-  -- This won't typecheck, the types *force* us to define embeddings
-  | V, r₁, r₂ => match r₂.basic_type.type with -- "sink rule"
-    | .inl _ => x86.reorder V r₁ r₂
-    | .inr _ => PTX.reorder V r₁ r₂
--/
- := λ _ _ _ => false -- placeholder for now
-
-instance : Arch where
-  req := instArchReq
-  orderCondition :=  order
-
 def x86ReqToCompound : @BasicRequest x86.instArchReq → @BasicRequest Compound.instArchReq
   -- this won't go through pattern match, no idea how to get it to work
   -- | .read rr ty => .read rr (.inl ty)
@@ -59,6 +46,40 @@ def ptxReqToCompound : @BasicRequest PTX.instArchReq → @BasicRequest Compound.
            else .fence (.inr $ @BasicRequest.type PTX.instArchReq req)
 
 instance : Coe (@BasicRequest PTX.instArchReq) (@BasicRequest Compound.instArchReq) where coe := ptxReqToCompound
+
+def compoundReqToPTX : @BasicRequest Compound.instArchReq → Option (@BasicRequest PTX.instArchReq)
+  | .read rr (.inr ptxreq) => some $ @BasicRequest.read PTX.instArchReq rr ptxreq
+  | .write wr (.inr ptxreq) => some $ @BasicRequest.write PTX.instArchReq wr ptxreq
+  | .fence (.inr ptxreq) => some $ @BasicRequest.fence PTX.instArchReq ptxreq
+  | _ => none
+
+def compoundReqToTSO : @BasicRequest Compound.instArchReq → Option (@BasicRequest x86.instArchReq)
+  | .read rr (.inl x86req) => some $ @BasicRequest.read x86.instArchReq rr x86req
+  | .write wr (.inl x86req) => some $ @BasicRequest.write x86.instArchReq wr x86req
+  | .fence (.inl x86req) => some $ @BasicRequest.fence x86.instArchReq x86req
+  | _ => none
+
+def _root_.Pop.Request.toPTX? (req : @Request Compound.instArchReq) : Option (@Request PTX.instArchReq) :=
+  match compoundReqToPTX req.basic_type with
+    | none => none
+    | some bt => @Request.mk PTX.instArchReq req.id req.propagated_to req.predecessor_at req.thread bt req.occurrence
+
+def _root_.Pop.Request.toTSO? (req : @Request Compound.instArchReq) : Option (@Request x86.instArchReq) :=
+  match compoundReqToTSO req.basic_type with
+    | none => none
+    | some bt => @Request.mk x86.instArchReq req.id req.propagated_to req.predecessor_at req.thread bt req.occurrence
+
+def order : ValidScopes → Request → Request → Bool
+  | V, r₁, r₂ => match r₁.toTSO?, r₂.toTSO? with
+    | some x86r₁, some x86r₂ => x86.order V x86r₁ x86r₂
+    | _, _ => match r₁.toPTX?, r₂.toPTX? with
+        | some ptxr₁, some ptxr₂ => PTX.order V ptxr₁ ptxr₂
+        | _, _ => false
+
+instance : Arch where
+  req := instArchReq
+  orderCondition := order
+
 
 namespace Litmus
 def mkRead (typedescr : String ) (addr : Address) (threadType : String): BasicRequest :=

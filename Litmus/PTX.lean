@@ -47,6 +47,8 @@ deflitmus MP_fence_weak_rel_acq := {| W. sys_weak x=1; Fence. sys_rel; W. sys_we
 deflitmus MP_fence_rel_acq := {| W x=1; Fence. sys_rel; W  y=1 ||  R y // 1; Fence. sys_acq; R x // 0|} 𐄂
   Trace Hint := [Accept (R y) at Thread 1, Accept (W x = 1) at Thread 0, Accept (Fence. sys_rel) at Thread 0, Accept (W y = 1) at Thread 0, Propagate Request 5 to Thread 1, Accept (Fence. sys_acq) at Thread 1, Accept (R x) at Thread 1, Propagate Request 2 to Thread 0, Satisfy Request 2 with Request 5, Propagate Request 7 to Thread 0, Satisfy Request 7 with Request 0, Propagate Request 3 to Thread 1]
 deflitmus MP_rel_acq := {| W x=1; W. sys_rel y=1 ||  R. sys_acq y // 1; R x // 0|} 𐄂
+deflitmus MP_rel_seq := {| W x=1; W. sys_rel y=1; W y = 2 ||  R. sys_acq y // 2; R x // 0|} 𐄂
+deflitmus MP_acq_seq := {| W x=1; W. sys_rel y=1 ||  R y // 1; R. sys_acq y // 2; R x // 0|} 𐄂
 deflitmus MP_fence_cta_1fence := {| W x=1; Fence. sys_sc; W y=1 ||  R y // 1; Fence. cta_sc; R x // 0|}
   where sys := { {T0}, {T1} } ✓
   Trace Hint := [Accept (R y) at Thread 1, Accept (Fence. cta_sc) at Thread 1, Accept (R x) at Thread 1, Accept (W x = 1) at Thread 0, Accept (Fence. sys_sc) at Thread 0, Accept (W y = 1) at Thread 0, Propagate Request 4 to Thread 0, Satisfy Request 4 with Request 0, Propagate Request 5 to Thread 1, Propagate Request 7 to Thread 1, Propagate Request 2 to Thread 0, Satisfy Request 2 with Request 7]

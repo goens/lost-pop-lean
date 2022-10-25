@@ -263,8 +263,6 @@ def addNewPredecessors (state : SystemState) (write read : Request) (thId : Thre
   else
     return state
 
--- TODO: somehow when we make a predecessor we need to add the edges immediately as well
--- see: WRC_acqrel [1, 3, 3, 2, 1, 1, 2, 3, 1, 3, 1, 2] should have an edge 6[W. sys_rel y = 1] -> 5[R. sys_acq x]
 def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
 : SystemState := Id.run do
   -- add predecessors as soon as RF edge formed

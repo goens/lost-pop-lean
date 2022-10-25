@@ -26,6 +26,10 @@ lean_exe pop_ptx {
   root := `InteractPTX
 }
 
+lean_exe pop_compound {
+  root := `InteractCompound
+}
+
 lean_exe pop_explore_x86 {
   root := `ExploreTSO
 }
@@ -36,6 +40,10 @@ lean_exe pop_explore_arm {
 
 lean_exe pop_explore_ptx {
   root := `ExplorePTX
+}
+
+lean_exe pop_explore_compound {
+  root := `ExploreCompound
 }
 
 lean_exe alloy {

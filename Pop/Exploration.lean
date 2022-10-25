@@ -442,7 +442,10 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
          else "𐄂"
      let (pt, opState) := match resExcept with
        | .error _ => ([], none)
-       | .ok (_, pts) => match pts.head? with
+       | .ok (_, pts) =>
+         let pts_outcome := pts.filter
+             λ ptTup => outcomeEquiv test.expected (SystemState.partialOutcome (Prod.snd ptTup))
+         match pts_outcome.head? with
          | some pt => (pt.1, some pt.2)
          | none => ([], none)
      let ptString := match opState with

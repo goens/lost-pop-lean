@@ -257,7 +257,7 @@ def propagateConstraints (state : SystemState) (rid : RequestId) (_ : ThreadId) 
     propagateConstraintsAux state req blocking
 
 def addNewPredecessors (state : SystemState) (write read : Request) (thId : ThreadId) : SystemState := Id.run do
-  if write.isWrite && read.isRead &&
+  if write.isWrite && read.isRead && write.address? == read.address? &&
   morallyStrong state.scopes write read && read.thread == thId then -- only reads at that thread
     return state.updateRequest $ write.makePredecessorAt thId
   else

@@ -226,9 +226,7 @@ def requestBlocksPropagateRequest : SystemState → ThreadId → Request → Req
           return true
       return false
     else
-      let scope := state.scopes.jointScope thId propagate.thread
-      --dbg_trace "{block.id} blocks {propagate.id}? {state.orderConstraints.lookup scope block.id propagate.id} && {!(block.propagatedTo thId)}"
-      return state.orderConstraints.lookup scope block.id propagate.id && !(block.propagatedTo thId)
+      return state.orderConstraints.lookup state.scopes.systemScope block.id propagate.id && !(block.propagatedTo thId)
 
 def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | state, reqId, thId =>

@@ -134,7 +134,9 @@ deflitmus three_vars_ws := {| W x = 1; Fence. sys_acqrel; W y = 1 || W y = 2; Fe
 
 deflitmus two_plus_two2 := {| W. sys_rel x=1; W. sys_rel y=2;  R. sys_acq y // 1 || W. sys_rel y=1; W. sys_rel x=2 ;  R. sys_acq x // 1|} ✓
 
-deflitmus co_two_thread := {| W x = 1; R x // 2 || W x = 2; R x // 1 |} ✓
+deflitmus two_plus_two2_rlx := {| W x=1; W y=2;  R y // 1 || W y=1; W x=2 ;  R x // 1|} ✓
+
+deflitmus co_two_thread := {| W x = 1; R x // 2 || W x = 2; R x // 1 |} 𐄂
 
 deflitmus co_four_thread := {| W x = 1 || R x // 1 ; R x // 2 ||  R x // 2; R x // 1; W x = 2 |} 𐄂
 

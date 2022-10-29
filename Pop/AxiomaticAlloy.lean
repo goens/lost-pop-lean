@@ -71,6 +71,8 @@ def toPreds (litmus : Litmus.Test) : String :=
           | some n => n + 1
         seenTrans := (transition, num)::seenTrans
         if opLast.isNone then -- the first transition in a thread
+          if thId > 0 then
+            res := res ++ s!"    t{thId-1} != t{thId} and\n"
           opLast := transitionNames.lookup (transition,num)
           res := res ++ s!"    t{thId}.start = {opLast.get!} and\n"
           continue

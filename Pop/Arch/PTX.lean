@@ -201,15 +201,7 @@ def allReadsDone (state : SystemState) (fenceLike : Request) : Bool :=
     -- All fences block on reads (this implies acq does not block on preds)
     readsOnThread.all λ r =>
         let scope := scopeIntersection state.scopes r fenceLike
-        let precidingWrites := filterNones $ state.orderConstraints.predecessors scope r.id state.seen |>.map
-            λ predId => match state.requests.getReq? predId with
-              | none => none
-              | some req => if req.isWrite then
-                  some req else
-                  none
-        --let rscope := state.scopes.intersection (PTX.requestScope state.scopes r) scope
-        --dbg_trace "RF Established scope {fenceLike.id}? {(r :: precidingWrites).map (λ w => (w.id, w.fullyPropagated scope))}"
-        state.isSatisfied r.id || (r :: precidingWrites).all (λ w => w.fullyPropagated scope)
+        state.isSatisfied r.id || r.fullyPropagated scope
 
 def memPredsDone (state : SystemState) (fenceLike : Request) : Bool :=
     let preds := state.requests.filter λ r => r.isPredecessorAt fenceLike.thread
@@ -232,7 +224,7 @@ def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List Reques
       continue
   return res
 
-  /-
+  /- ∩
   r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
   -/
 def propagateConstraintsAux (state : SystemState) (req : Request) (blocking : List Request) : Bool :=

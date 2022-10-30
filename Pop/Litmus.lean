@@ -228,6 +228,8 @@ class LitmusSyntax where
   mkRead : String → Address → String → BasicRequest
   mkWrite : String → Address → Value → String → BasicRequest
   mkFence : String → String → BasicRequest
+  (toAlloy :  String → BasicRequest → String := λ _ _ => "UNKNOWN_REQUEST")
+  (alloyName :  String := "???")
 
 def mkValidScopes (n : Nat) : ValidScopes :=
   { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}

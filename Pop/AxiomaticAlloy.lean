@@ -2,47 +2,28 @@ import Pop.Litmus
 import Pop.Exploration
 import Pop.Util
 
--- For now specifically for PTX
-import Pop.Arch.PTX
-import Litmus.PTX
-
 open Pop
+variable [Arch] [LitmusSyntax]
 
 -- TODO: should we do this arch-generic?
     -- variable [Arch]
 
 
 def toSizes (litmus : Litmus.Test) : String :=
-  s!"  # ptx/Thread = {litmus.initState.threads.length}\n" ++
-  s!"  # ptx/Read = {litmus.program.allReads.length}\n" ++
-  s!"  # ptx/Write = {litmus.program.allWrites.length}\n" ++
-  s!"  # ptx/Fence = {litmus.program.allFences.length}\n" ++
-  s!"  # ptx/Barrier = 0\n" --++ -- Not considering these for now
+  s!"  # {LitmusSyntax.alloyName}/Thread = {litmus.initState.threads.length}\n" ++
+  s!"  # {LitmusSyntax.alloyName}/Read = {litmus.program.allReads.length}\n" ++
+  s!"  # {LitmusSyntax.alloyName}/Write = {litmus.program.allWrites.length}\n" ++
+  s!"  # {LitmusSyntax.alloyName}/Fence = {litmus.program.allFences.length}\n" ++
+  s!"  # {LitmusSyntax.alloyName}/Barrier = 0\n" --++ -- Not considering these for now
   -- Add the number of threads to scopes, as we don't consider them to be scopes
-  --s!"  # ptx/Scope = {litmus.initState.scopes.scopes.toList.length + litmus.program.size}\n"
+  --s!"  # {LitmusSyntax.alloyName}/Scope = {litmus.initState.scopes.scopes.toList.length + litmus.program.size}\n"
 
 def transToAlloy : Transition → String
-  | .acceptRequest br _ =>
-  match br with
-    | .read _ ty =>
-      match ty.sem with
-        | .acq => "ptx/Acquire"
-        | _ => "ptx/Read - ptx/Acquire"
-    | .write _ ty =>
-      match ty.sem with
-        | .rel => "ptx/Release"
-        | _ => "ptx/Write - ptx/Release"
-    | .fence ty =>
-      match ty.sem with
-        | .sc => "ptx/FenceSC"
-        | .acqrel => "ptx/FenceAcqRel"
-        | .rel => "ptx/FenceRel"
-        | .acq => "ptx/FenceAcq"
-        | _ => "ptx/Fence"
+  | .acceptRequest br _ => LitmusSyntax.toAlloy LitmusSyntax.alloyName br
   | _ => "UNKNOWN_TRANSITION"
 
 def toPreds (litmus : Litmus.Test) : String :=
-  let threads := String.intercalate ",\n    " $ litmus.initState.threads.map λ th => s!"t{th} : ptx/Thread"
+  let threads := String.intercalate ",\n    " $ litmus.initState.threads.map λ th => s!"t{th} : {LitmusSyntax.alloyName}/Thread"
   let readTransitions := litmus.program.allReads.countOcurrences
   let readNames := readTransitions.zip (List.range readTransitions.length) |>.map
     λ (r,i) => (r,s!"r{i}")
@@ -128,10 +109,11 @@ def toPreds (litmus : Litmus.Test) : String :=
         let some transName := transitionNames.lookup (transition, num)
           | panic! s!"Unknown transition {transition}"
         -- Handle special case for system scope (less verbose)
-        if br.type.scope == PTX.Scope.sys then
+        let dummyReq := {{ Request.default with basic_type := br } with thread := thId}
+        let scope : Scope := Arch.scopeIntersection litmus.initState.scopes dummyReq dummyReq
+        if scope == litmus.initState.scopes.systemScope then
           res := res ++ s!"    {transName}.scope = System and\n"
           continue
-        let scope : Scope := PTX.getThreadScope litmus.initState.scopes thId br.type.scope
         for thread in (List.range litmus.program.size) do
           let contains := if scope.threads.contains thread
             then ""
@@ -162,17 +144,14 @@ def toPreds (litmus : Litmus.Test) : String :=
   s!"    // Addresses \n{addresses}\n" ++
   s!"    // Scopes \n{scopes}\n" ++
   s!"    // Outcome \n{outcome}\n" ++
-  s!"  ptx_mm\n\n"
+  s!"  {LitmusSyntax.alloyName}_mm\n\n"
 
 
 def toAlloyLitmus (litmus : Litmus.Test ) : String :=
   s!"// Litmus: {litmus.name}\n" ++
   "module litmus\n" ++
-  "open ptx as ptx\n" ++
+  s!"open {LitmusSyntax.alloyName} as {LitmusSyntax.alloyName}\n" ++
   "pred generated_litmus_test {\n" ++
   s!"{toSizes litmus}" ++
   s!"{toPreds litmus}" ++
   "}\n" ++ "run generated_litmus_test for 10"
-
-
-

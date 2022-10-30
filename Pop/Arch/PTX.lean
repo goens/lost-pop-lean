@@ -72,6 +72,24 @@ instance : ArchReq where
   isPermanentRead := λ _ => false
   instToString := PTX.instToStringReq
 
+def toAlloy : String → BasicRequest → String
+    | moduleName, .read _ ty =>
+      match ty.sem with
+        | .acq => moduleName ++ "/Acquire"
+        | _ => moduleName ++ "/Read - ptx/Acquire"
+    | moduleName, .write _ ty =>
+      match ty.sem with
+        | .rel => moduleName ++ "/Release"
+        | _ => moduleName ++ "/Write - ptx/Release"
+    | moduleName, .fence ty =>
+      match ty.sem with
+        | .sc => moduleName ++ "/FenceSC"
+        | .acqrel => moduleName ++ "/FenceAcqRel"
+        | .rel => moduleName ++ "/FenceRel"
+        | .acq => moduleName ++ "/FenceAcq"
+        | _ => moduleName ++ "/Fence"
+def alloyName := "ptx"
+
 def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
   let containing := valid.containThread thread
   -- TODO: Could I get rid of this sorting (from the ListTree structure)?
@@ -373,5 +391,7 @@ instance : LitmusSyntax where
   mkRead := mkRead
   mkWrite := mkWrite
   mkFence := mkFence
+  alloyName := alloyName
+  toAlloy := toAlloy
 
 end Litmus

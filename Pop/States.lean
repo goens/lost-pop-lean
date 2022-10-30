@@ -691,5 +691,4 @@ class Arch where
   (satisfyReadEffects : SystemState → RequestId → RequestId → SystemState := λ st _ _ => st)
   (orderCondition : ValidScopes → Request → Request → Bool)
   (scopeIntersection : (valid : ValidScopes) → Request → Request → @Scope valid := λ v _ _ => v.systemScope)
-
 end Pop

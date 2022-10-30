@@ -1,6 +1,7 @@
 import Pop
 import Pop.Arch.PTX
 import Pop.AxiomaticAlloy
+import Litmus.PTX
 
 open Pop PTX
 

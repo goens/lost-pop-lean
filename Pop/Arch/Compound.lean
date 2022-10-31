@@ -76,10 +76,18 @@ def order : ValidScopes → Request → Request → Bool
         | some ptxr₁, some ptxr₂ => PTX.order V ptxr₁ ptxr₂
         | _, _ => false
 
+def scopeIntersection : (valid : ValidScopes) → Request → Request → @Scope valid
+  | valid, r₁, r₂ =>
+    match r₁.toPTX?, r₂.toPTX? with
+      | some r₁ptx, some r₂ptx => PTX.scopeIntersection valid r₁ptx r₂ptx
+      | some r₁ptx, none => PTX.requestScope valid r₁ptx
+      | none      , some r₂ptx => PTX.requestScope valid r₂ptx
+      | none      , none => valid.systemScope
+
 instance : Arch where
   req := instArchReq
   orderCondition := order
-
+  scopeIntersection := scopeIntersection
 
 namespace Litmus
 def mkRead (typedescr : String ) (addr : Address) (threadType : String): BasicRequest :=
@@ -109,7 +117,7 @@ def toAlloy : String → BasicRequest → String
       | .inl _ => moduleName ++ "/x86Write"
       | .inr _ => PTX.toAlloy moduleName (compoundReqToPTX br).get!
     | moduleName, br@(.fence ty) => match ty with
-      | .inl _ => moduleName ++ "/x86Fence"
+      | .inl _ => moduleName ++ "/mFence"
       | .inr _ => PTX.toAlloy moduleName (compoundReqToPTX br).get!
 def alloyName := "cmm"
 

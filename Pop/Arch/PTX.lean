@@ -84,12 +84,13 @@ def toAlloy : String → BasicRequest → String
         | .rel => moduleName ++ "/Release"
         | _ => moduleName ++ s!"/{pref}Write - {moduleName}/Release"
     | moduleName, .fence ty =>
+      let pref := if moduleName == "cmm" then "ptx" else ""
       match ty.sem with
-        | .sc => moduleName ++ "/FenceSC"
-        | .acqrel => moduleName ++ "/FenceAcqRel"
-        | .rel => moduleName ++ "/FenceRel"
-        | .acq => moduleName ++ "/FenceAcq"
-        | _ => moduleName ++ "/Fence"
+        | .sc => moduleName ++ s!"/{pref}FenceSC"
+        | .acqrel => moduleName ++ s!"/{pref}FenceAcqRel"
+        | .rel => moduleName ++ s!"/{pref}FenceRel"
+        | .acq => moduleName ++ s!"/{pref}FenceAcq"
+        | _ => moduleName ++ s!"/UnknownFence"
 def alloyName := "ptx"
 
 def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
@@ -110,7 +111,7 @@ def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
       else panic! "invalid gpu scope (not enough scopes)"
     else panic! "invalid gpu scope"
 
-private def requestScope (valid : ValidScopes) (req : Request) : @Pop.Scope valid :=
+def requestScope (valid : ValidScopes) (req : Request) : @Pop.Scope valid :=
   getThreadScope valid req.thread req.basic_type.type.scope
 
 def scopeInclusive (V : ValidScopes) (r₁ r₂ : Request) : Bool :=

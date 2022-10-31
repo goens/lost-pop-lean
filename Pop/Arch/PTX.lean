@@ -74,13 +74,15 @@ instance : ArchReq where
 
 def toAlloy : String → BasicRequest → String
     | moduleName, .read _ ty =>
+      let pref := if moduleName == "cmm" then "ptx" else "" -- hacky...
       match ty.sem with
         | .acq => moduleName ++ "/Acquire"
-        | _ => moduleName ++ "/Read - {moduleName}/Acquire"
+        | _ => moduleName ++ s!"/{pref}Read - {moduleName}/Acquire"
     | moduleName, .write _ ty =>
+      let pref := if moduleName == "cmm" then "ptx" else ""
       match ty.sem with
         | .rel => moduleName ++ "/Release"
-        | _ => moduleName ++ "/Write - {moduleName}/Release"
+        | _ => moduleName ++ s!"/{pref}Write - {moduleName}/Release"
     | moduleName, .fence ty =>
       match ty.sem with
         | .sc => moduleName ++ "/FenceSC"

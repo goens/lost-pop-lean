@@ -100,10 +100,25 @@ def mkFence (typedescr : String) (threadType : String) : BasicRequest :=
     | "x86" => x86.Litmus.mkFence typedescr ""
     | t => panic! s!"Unknown Thread type: {t}"
 
+
+def toAlloy : String → BasicRequest → String
+    | moduleName, br@(.read _ ty) => match ty with
+      | .inl _ => moduleName ++ "/x86Read"
+      | .inr _ => PTX.toAlloy moduleName (compoundReqToPTX br).get!
+    | moduleName, br@(.write _ ty) => match ty with
+      | .inl _ => moduleName ++ "/x86Write"
+      | .inr _ => PTX.toAlloy moduleName (compoundReqToPTX br).get!
+    | moduleName, br@(.fence ty) => match ty with
+      | .inl _ => moduleName ++ "/x86Fence"
+      | .inr _ => PTX.toAlloy moduleName (compoundReqToPTX br).get!
+def alloyName := "cmm"
+
 instance : LitmusSyntax where
   mkRead := mkRead
   mkWrite := mkWrite
   mkFence := mkFence
+  alloyName := alloyName
+  toAlloy := toAlloy
 
 end Litmus
 

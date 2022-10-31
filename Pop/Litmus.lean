@@ -255,19 +255,19 @@ def mkOutcome : List (ThreadId × Address × Value) → Litmus.Outcome
     λ (((thId,addr),num),val) =>
       { thread := thId, address := addr, value := val, occurrence := num}
 
-def initZeroesUnpropagatedTransitions : List Address → List (Transition)
-  | addresses =>
+def initZeroesUnpropagatedTransitions : String → List Address → List (Transition)
+  | threadType, addresses =>
   -- Does the threadId matter? For now, using 0
-  addresses.map λ addr => Pop.Transition.acceptRequest (mkWrite "" addr 0 "init") 0
+  addresses.map λ addr => Pop.Transition.acceptRequest (mkWrite "" addr 0 threadType) 0
 
 def SystemState.initZeroesUnpropagated! : SystemState → List Address → SystemState
   | state, addresses =>
-    let writeReqs := initZeroesUnpropagatedTransitions addresses
+    let writeReqs := initZeroesUnpropagatedTransitions (state.threadTypes 0) addresses
     state.applyTrace! writeReqs
 
 def SystemState.initZeroesUnpropagated : SystemState → List Address → Except String (SystemState)
   | state, addresses =>
-  let writeReqs := initZeroesUnpropagatedTransitions addresses
+  let writeReqs := initZeroesUnpropagatedTransitions (state.threadTypes 0) addresses
 state.applyTrace writeReqs
 
 def mkPropagateTransitions : List RequestId → List ThreadId → List (Transition)
@@ -337,7 +337,7 @@ def createLitmus (list : List (List RequestSyntax))
   let mkOutcomeThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkReadOutcomeTriple r thId) reqs
   let reqs := fullThreads.map λ t => mkThread t |>.toArray
   let outcomes := mkOutcome $ List.join $ fullThreads.map λ t => mkOutcomeThread t
-  let initWrites := initZeroesUnpropagatedTransitions (List.range variables.length)
+  let initWrites := initZeroesUnpropagatedTransitions (threadTypes 0) (List.range variables.length)
   let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
   let initState := match validScopes with
     | some scopes => SystemState.init scopes threadTypes

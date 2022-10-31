@@ -315,20 +315,17 @@ def mkRead (scope_sem : String ) (addr : Address) (_ : String) : BasicRequest :=
         | "gpu" => Scope.gpu
         | "sys" => Scope.sys
         | _ =>
-          dbg_trace "(read) invalid PTX scope: {scopeStr}"
-          Scope.sys
+          panic! s!"(read) invalid PTX scope: {scopeStr}"
       let sem := match semStr with
         | "acq" => Semantics.acq
         | "rlx" => Semantics.rlx
         | "weak" => Semantics.weak
         | _ =>
-          dbg_trace "(read) invalid PTX semantics: {semStr}"
-          Semantics.weak
+          panic! s!"(read) invalid PTX semantics: {semStr}"
       BasicRequest.read rr
       {scope := scope, sem := sem}
     | _ =>
-      dbg_trace "malformed PTX read request: W.{scope_sem}"
-      BasicRequest.read rr default
+      panic! s!"malformed PTX read request: W.{scope_sem}"
 
 def mkWrite (scope_sem : String) (addr : Address) (val : Value) (_ : String) : BasicRequest :=
   let wr : WriteRequest := { addr := addr, val := val}
@@ -341,19 +338,16 @@ def mkWrite (scope_sem : String) (addr : Address) (val : Value) (_ : String) : B
         | "gpu" => Scope.gpu
         | "sys" => Scope.sys
         | _ =>
-          dbg_trace "(write) invalid PTX scope: {scopeStr}"
-          Scope.sys
+          panic! s!"(write) invalid PTX scope: {scopeStr}"
       let sem := match semStr with
         | "rel" => Semantics.rel
         | "rlx" => Semantics.rlx
         | "weak" => Semantics.weak
         | _ =>
-          dbg_trace "(write) invalid PTX semantics: {semStr}"
-          Semantics.weak
+          panic! s!"(write) invalid PTX semantics: {semStr}"
       BasicRequest.write wr {scope := scope, sem := sem}
     | _ =>
-      dbg_trace "malformed PTX read request: W.{scope_sem}"
-      BasicRequest.write wr default
+      panic! s!"malformed PTX read request: W.{scope_sem}"
 
 def mkFence (scope_sem : String) (_ : String) : BasicRequest :=
   match scope_sem.splitOn "_" with
@@ -365,20 +359,17 @@ def mkFence (scope_sem : String) (_ : String) : BasicRequest :=
         | "gpu" => Scope.gpu
         | "sys" => Scope.sys
         | _ =>
-          dbg_trace "(fence) invalid PTX scope: {scopeStr}"
-          Scope.sys
+          panic! s!"(fence) invalid PTX scope: {scopeStr}"
       let sem := match semStr with
         | "sc" => Semantics.sc
         | "acqrel" => Semantics.acqrel
         | "rel" => Semantics.rel
         | "acq" => Semantics.acq
         | _ =>
-          dbg_trace "(fence) invalid PTX semantics: {semStr}"
-          Semantics.sc
+          panic! s!"(fence) invalid PTX semantics: {semStr}"
       BasicRequest.fence {scope := scope, sem := sem}
     | _ =>
-      dbg_trace "malformed PTX read request: Fence.{scope_sem}"
-      BasicRequest.fence default
+      panic! s!"malformed PTX read request: Fence.{scope_sem}"
 
 def mkInitState (n : Nat) :=
   match n with

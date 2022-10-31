@@ -13,8 +13,8 @@ def toSizes (litmus : Litmus.Test) : String :=
   s!"  # {LitmusSyntax.alloyName}/Thread = {litmus.initState.threads.length}\n" ++
   s!"  # {LitmusSyntax.alloyName}/Read = {litmus.program.allReads.length}\n" ++
   s!"  # {LitmusSyntax.alloyName}/Write = {litmus.program.allWrites.length}\n" ++
-  s!"  # {LitmusSyntax.alloyName}/Fence = {litmus.program.allFences.length}\n" ++
-  s!"  # {LitmusSyntax.alloyName}/Barrier = 0\n" --++ -- Not considering these for now
+  s!"  # {LitmusSyntax.alloyName}/Fence = {litmus.program.allFences.length}\n" --++
+--  s!"  # {LitmusSyntax.alloyName}/Barrier = 0\n" --++ -- Not considering these for now
   -- Add the number of threads to scopes, as we don't consider them to be scopes
   --s!"  # {LitmusSyntax.alloyName}/Scope = {litmus.initState.scopes.scopes.toList.length + litmus.program.size}\n"
 

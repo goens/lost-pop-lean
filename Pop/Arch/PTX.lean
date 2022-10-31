@@ -76,11 +76,11 @@ def toAlloy : String → BasicRequest → String
     | moduleName, .read _ ty =>
       match ty.sem with
         | .acq => moduleName ++ "/Acquire"
-        | _ => moduleName ++ "/Read - ptx/Acquire"
+        | _ => moduleName ++ "/Read - {moduleName}/Acquire"
     | moduleName, .write _ ty =>
       match ty.sem with
         | .rel => moduleName ++ "/Release"
-        | _ => moduleName ++ "/Write - ptx/Release"
+        | _ => moduleName ++ "/Write - {moduleName}/Release"
     | moduleName, .fence ty =>
       match ty.sem with
         | .sc => moduleName ++ "/FenceSC"

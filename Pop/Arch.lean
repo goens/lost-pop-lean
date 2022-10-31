@@ -33,9 +33,11 @@ def parseArchitecture :  List ArchType → String → Except String ArchType
     | Except.error s!"Invalid index ({n}), must be between 1 and {archs.length}"
   Except.ok arch
 
+def ArchType.available : List ArchType := [ArchType.PTX, ArchType.TSO, ArchType.Compound] --, ArchType.ARM]
+
 def selectArchitecture : IO.FS.Stream → IO (Option ArchType)
   | stdin => do
-    let available := [ArchType.PTX, ArchType.TSO, ArchType.Compound] --, ArchType.ARM]
+    let available := ArchType.available
     let availableStr := "Select Architecture. Available:\n" ++ String.intercalate "\n" (available.zip (List.range available.length) |>.map λ (arch,n) => s!"{ n+1}. {arch}")
     let res ← Util.selectLoop availableStr (parseArchitecture available) stdin
     return res

@@ -36,6 +36,12 @@ instance : Arch where
   propagateConstraints := x86.propagate
   orderCondition :=  x86.order
 
+def toAlloy : String → BasicRequest → String
+    | moduleName, .read _ _ => moduleName ++ "/Read"
+    | moduleName, .write _ _ => moduleName ++ "/Write"
+    | moduleName, .fence _ => moduleName ++ "/Fence"
+def alloyName := "tso"
+
 namespace Litmus
 
 def mkRead (_ : String ) (addr : Address) (_ : String) : BasicRequest :=
@@ -52,6 +58,8 @@ instance : LitmusSyntax where
   mkRead := mkRead
   mkWrite := mkWrite
   mkFence := mkFence
+  alloyName := alloyName
+  toAlloy := toAlloy
 
 end Litmus
 

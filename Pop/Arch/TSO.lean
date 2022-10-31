@@ -22,11 +22,8 @@ def order : ValidScopes → Request → Request → Bool
   | _, r₁, r₂ =>
     let fences := (r₁.isFence || r₂.isFence)
     let sc_per_loc := r₁.address? == r₂.address?
-    --dbg_trace s!"sc_per_loc: {sc_per_loc}"
     let ppo := (r₁.thread == r₂.thread) && !(r₁.isWrite && r₂.isRead)
-    --dbg_trace s!"ppo: {sc_per_loc}"
     fences || sc_per_loc || ppo
-    -- TODO: satisfied but not deleted?
 
 def propagate : SystemState → RequestId → ThreadId → Bool
   | st, reqId, _ =>

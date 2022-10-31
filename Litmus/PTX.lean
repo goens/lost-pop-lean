@@ -1,5 +1,6 @@
 import Pop.Arch.PTX
 import Litmus.PTXTraces
+namespace PTX
 namespace Litmus
 
 deflitmus IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |} ✓
@@ -149,9 +150,10 @@ deflitmus write_serialization := {| W. cta_rlx x=1;  W. cta_rlx x=2 || R. cta_rl
 
 deflitmus write_serialization_unscoped := {| W. cta_rlx x=1;  W. cta_rlx x=2 || R. cta_rlx x // 1; R. cta_rlx x // 2 || R. cta_rlx x // 2 ; R. cta_rlx x // 1|} 𐄂
 
-def allPTX : List Litmus.Test := litmusTests!
-def ptx_2 := allPTX.filter λ lit => lit.numThreads == 2
-def ptx_3 := allPTX.filter λ lit => lit.numThreads == 3
-def ptx_4 := allPTX.filter λ lit => lit.numThreads == 4
+def allTests : List Litmus.Test := litmusTests!
+def tests_2 := allTests.filter λ lit => lit.numThreads == 2
+def tests_3 := allTests.filter λ lit => lit.numThreads == 3
+def tests_4 := allTests.filter λ lit => lit.numThreads == 4
 
 end Litmus
+end PTX

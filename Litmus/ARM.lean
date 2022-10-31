@@ -1,5 +1,6 @@
 import Pop.Arch.ARM
 import Litmus.ARMTraces
+namespace ARM
 namespace Litmus
 
 deflitmus WRC := {| W x=1 || R. acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|}
@@ -20,9 +21,10 @@ deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |}
 deflitmus dekkers_fence := {| W x=1; Fence; R y //0 || W y=1; Fence;  R x // 0 |}
 --def causality := {| W x = 1 || R x; Fence; W x = 2 || R x; W|}
 
-def allARM := litmusTests!
-def arm_2 := allARM.filter λ lit => lit.numThreads == 2
-def arm_3 := allARM.filter λ lit => lit.numThreads == 3
-def arm_4 := allARM.filter λ lit => lit.numThreads == 4
+def allTests := litmusTests!
+def tests_2 := allTests.filter λ lit => lit.numThreads == 2
+def tests_3 := allTests.filter λ lit => lit.numThreads == 3
+def tests_4 := allTests.filter λ lit => lit.numThreads == 4
 
 end Litmus
+end ARM

@@ -1,4 +1,5 @@
 import Pop.Arch.TSO
+namespace x86
 namespace Litmus
 
 hint for IRIW := [Accept (W x = 1) at Thread 0, Accept (R x) at Thread 1, Accept (R y) at Thread 2, Accept (R x) at Thread 2, Accept (W y = 1) at Thread 3, Accept (R y) at Thread 1, Propagate Request 5 to Thread 1, Propagate Request 5 to Thread 3, Propagate Request 5 to Thread 0, Satisfy Request 5 with Request 0, Propagate Request 2 to Thread 2, Propagate Request 2 to Thread 3, Propagate Request 2 to Thread 1, Propagate Request 3 to Thread 0, Propagate Request 3 to Thread 2, Propagate Request 3 to Thread 3, Satisfy Request 3 with Request 2, Propagate Request 7 to Thread 0, Propagate Request 7 to Thread 2, Propagate Request 7 to Thread 3, Satisfy Request 7 with Request 1, Propagate Request 6 to Thread 0, Propagate Request 6 to Thread 1, Propagate Request 6 to Thread 2, Propagate Request 4 to Thread 0, Propagate Request 4 to Thread 1, Propagate Request 4 to Thread 3, Satisfy Request 4 with Request 6]
@@ -15,3 +16,4 @@ hint for N7 := [Accept (W y = 1) at Thread 1, Accept (R y) at Thread 1, Accept (
 hint for dekkers := [Accept (W y = 1) at Thread 1, Accept (R x) at Thread 1, Accept (W x = 1) at Thread 0, Accept (R y) at Thread 0, Propagate Request 3 to Thread 0, Satisfy Request 3 with Request 0, Propagate Request 4 to Thread 1, Propagate Request 5 to Thread 1, Satisfy Request 5 with Request 1, Propagate Request 2 to Thread 0]
 
 end Litmus
+end x86

@@ -1,14 +1,13 @@
 import Pop
-import Pop.Arch.PTX
 import Pop.AxiomaticAlloy
-import Litmus.PTX
+import Pop.Arch
 
-open Pop PTX
-
-def outputFile := "generated_litmus.als"
-
+open Pop
 def main : IO Unit := do
-  let exceptLitmus ← selectLitmusLoop Litmus.allPTX (← IO.getStdin)
-  match exceptLitmus with
-    | .error msg => println! msg
-    | .ok litmus => IO.FS.writeFile outputFile $ toAlloyLitmus litmus
+  let some arch ← selectArchitecture (← IO.getStdin)
+    | return ()
+  for litmus in arch.getLitmusTests do
+    let outputDir : System.FilePath := "generated_litmus" / s!"{arch}/"
+    IO.FS.createDirAll outputDir
+    let outputFile := outputDir / (@Litmus.Test.name arch.getInstArch litmus ++ ".als")
+    IO.FS.writeFile outputFile $ @toAlloyLitmus arch.getInstArch arch.getInstLitmusSyntax litmus

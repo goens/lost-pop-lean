@@ -87,6 +87,8 @@ deflitmus WRC_rel_first := {| W. sys_rel x=1 || R. sys_acq x // 1; W y = 1 || R 
 
 deflitmus WRC_acq := {| W x=1 || R. sys_acq x // 1; W y = 1 || R. sys_acq y // 1 ;dep R x // 0|} ✓
 
+deflitmus WRC_sc_dep := {| W x=1 || R x // 1; Fence. sys_sc; W y = 1 || R y // 1 ;dep R x // 0|} ✓
+
 deflitmus WRC_no_dep := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ; R x // 0|} ✓
 
 deflitmus WRC_cta_1_2 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_rel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}

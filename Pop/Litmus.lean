@@ -318,7 +318,7 @@ def mkRequestSimple : RequestSyntax → ThreadId → String → Option Transitio
 structure LitmusMetadata where
   (name : String := "anonymous")
   (allowed : Litmus.AxiomaticAllowed := .unknown)
-  (guideTraces : List (List Transition) := [])
+  (guideTraceGens : List (List (ThreadId × (String → Option Transition))) := [])
 
 def createLitmus (list : List (List RequestSyntax))
   (opScopesThreadMapping : Option $ ValidScopes × (ThreadId → String))
@@ -343,12 +343,14 @@ def createLitmus (list : List (List RequestSyntax))
   let outcomes := mkOutcome $ List.join $ fullThreads.map λ t => mkOutcomeThread t
   let initWrites := initZeroesUnpropagatedTransitions (threadTypes 0) (List.range variables.length)
   let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
+  let guideTraces : List (List Transition) := metadata.guideTraceGens.map λ tr =>
+    filterNones $ tr.map λ (thId, genFun) => genFun (threadTypes thId)
   let initState := match validScopes with
     | some scopes => SystemState.init scopes threadTypes
     | none => SystemState.init (mkValidScopes fullThreads.length) threadTypes
   { initTransitions := initWrites ++ initPropagates,
     program := reqs.toArray, expected := outcomes,
-    initState, name := metadata.name, axiomaticAllowed := metadata.allowed, guideTraces := metadata.guideTraces}
+    initState, name := metadata.name, axiomaticAllowed := metadata.allowed, guideTraces}
 
 macro_rules
   | `(`[req| $r ]) => `(request| $r)
@@ -383,24 +385,28 @@ macro_rules
   | `(request_set| $r:request_seq ) => `([`[req_seq| $r]])
   | `(request_set| $r:request_seq || $rs:request_set) => `(`[req_seq| $r] :: `[req_set| $rs])
 
+-- Hack : can't bind var in quotation for lambda
+def propagateToThreadOption : Pop.RequestId → Pop.ThreadId → String → Option Pop.Transition :=
+    λ r t _ => some $ Pop.Transition.propagateToThread r t
+
 macro_rules
-  | `(`[transition| Accept ($r) at Thread $n]) => `(mkRequestSimple `[req|$r] $n "default")
-  | `(`[transition| Propagate Request $r to Thread $t]) => `(Pop.Transition.propagateToThread $r $t)
-  | `(`[transition| Satisfy Request $r with Request $w]) => `(Pop.Transition.satisfyRead $r $w)
+  | `(`[transition| Accept ($r) at Thread $n]) => `( ($n, mkRequestSimple `[req|$r] $n ) )
+  | `(`[transition| Propagate Request $r to Thread $t]) => `(($t, Pop.propagateToThreadOption $r $t))
+  | `(`[transition| Satisfy Request $r with Request $w]) => `((42, fun _ => some (Pop.Transition.satisfyRead $r $w)))
 
 macro_rules
 --  | `(`[guide_trace| $[$n:num],* ]) => `([ $[$n],* ])
-  | `(`[guide_trace| [ $[$ts:transition],* ] ]) => `( filterNones [ $[`[transition|$ts]],* ])
+  | `(`[guide_trace| [ $[$ts:transition],* ] ]) => `( [ $[`[transition|$ts]],* ])
 
 --elab "litmusHints!" name:ident : term <= ty => do
 --  mkHintElab litmusHintExtension name.getId ty
 macro_rules
   | `(`[metadata| $name | ✓ $[$ms:litmus_metadata]?]) => match ms with
     | some mss => `( { `[metadata| $name | $mss] with allowed := (Litmus.AxiomaticAllowed.yes)})
-    | none => `( { { guideTraces := litmusHints! $name, name := $(quote name.getId.toString) : Pop.LitmusMetadata} with allowed := (Litmus.AxiomaticAllowed.yes)})
+    | none => `( { { guideTraceGens := litmusHints! $name, name := $(quote name.getId.toString) : Pop.LitmusMetadata} with allowed := (Litmus.AxiomaticAllowed.yes)})
   | `(`[metadata| $name | 𐄂 $[$ms:litmus_metadata]?]) => match ms with
     | some mss => `( { `[metadata| $name | $mss] with allowed := (Litmus.AxiomaticAllowed.no)})
-    | none => `( { { guideTraces := litmusHints! $name, name := $(quote name.getId.toString) : Pop.LitmusMetadata} with allowed := (Litmus.AxiomaticAllowed.no)})
+    | none => `( { { guideTraceGens := litmusHints! $name, name := $(quote name.getId.toString) : Pop.LitmusMetadata} with allowed := (Litmus.AxiomaticAllowed.no)})
 
 -- TODO: is there a more elegant way to do this with `Option.map`?
 macro_rules

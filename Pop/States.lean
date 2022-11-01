@@ -487,7 +487,7 @@ def RequestArray.filter : RequestArray → (Request → Bool) → List Request
     | none => false
   filterNones $ Array.toList $ ra.val.filter fOp
 
-def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (order : @OrderConstraints V) (colWidth := 20) (highlight : optParam (Option $ ThreadId × RequestId) none) : String := Id.run do
+def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (order : @OrderConstraints V) (colWidth := 25) (highlight : optParam (Option $ ThreadId × RequestId) none) : String := Id.run do
   let mut threads := []
   let mut res := ""
   for thId in (List.range numThreads) do

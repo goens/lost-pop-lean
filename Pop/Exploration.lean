@@ -466,7 +466,7 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
        then colorString .yellow uncolored
        else uncolored
      let witnessStr := if outcome_res == "✓" && printWitness && ptNums.isSome
-       then s!"\n    Witness: {ptNums.get!} → {ptString}\n"
+       then s!"\n    Witness: {ptNums.get!} →\n hint for {test.name} := {ptString}\n"
        else ""
      let headStr := if printHead
      then

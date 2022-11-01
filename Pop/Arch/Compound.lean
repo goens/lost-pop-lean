@@ -15,8 +15,9 @@ instance : BEq Req where beq := λ r r' => match r, r' with
   | _, _ => false
 
 def Req.toString : Req → String
-  | .inl r => s!"x86[{r}]"
-  | .inr r => s!"PTX[{r}]"
+  | .inl r => s!"{r}"
+  | .inr r => s!"{r}"
+
 instance : ToString Req where toString := Req.toString
 instance : Inhabited Req where default := .inl default
 

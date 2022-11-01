@@ -5,6 +5,8 @@ namespace Litmus
 
 deflitmus IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |} ✓
 
+deflitmus IRIW_relacq := {| W. sys_rel x=1 ||  R. sys_acq x // 1 ; R. sys_acq y // 0 || R. sys_acq y // 1; R. sys_acq x // 0 || W. sys_rel y=1 |} ✓
+
 deflitmus IRIW_3ctas := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0}, {T1, T2}, {T3} } 𐄂
 

@@ -203,6 +203,7 @@ def SystemState.updateOrderConstraintsAfterPropagate (state : SystemState) : Thr
       for req' in threadreqs do
         let sc := Arch.scopeIntersection state.scopes req req'
         if oc.lookup sc req.id req'.id then continue
+        if oc.lookup sc req'.id req.id then continue
         unless Arch.orderCondition state.scopes req req' do continue
         --dbg_trace "adding {(req.id, req'.id)} after propagate"
         oc := oc.addSubscopes sc [(req.id, req'.id)]
@@ -322,8 +323,8 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
     let blockingReqs := state.requests.filter (requestBlocksPropagateRequest state thId req)
     let blockingFenceLikes := state.blockedOnRequests.filter
         λ r => r.thread == req.thread &&
-        state.orderConstraints.lookup (state.scopes.reqThreadScope req) r.id req.id
-    --dbg_trace "propagate {rid}, \n{blocking} not blocked? {propagateConstraintsAux state req blocking}"
+        (state.orderConstraints.lookup (state.scopes.reqThreadScope req) r.id req.id || r.id == req.id)
+    --dbg_trace "propagate {reqId}, \n{blockingFenceLikes} not blocked? {propagateConstraintsAux state req blockingFenceLikes}"
     let fenceLikes := propagateConstraintsAux state req blockingFenceLikes
     --dbg_trace "can {req} propagate to thread {thId}?\n blockingReqs = {blockingReqs}"
     arch && unpropagated && blockingReqs.isEmpty && fenceLikes

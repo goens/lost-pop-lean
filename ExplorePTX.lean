@@ -6,11 +6,11 @@ open Pop PTX
 
 def main : IO Unit := do
   println! "running PTX 2-thread tests"
-  let mp_litmus := runMultipleLitmus Litmus.ptx_2
-  println! printMultipleLitmusResults mp_litmus (printWitnesses := false)
+  let mp_litmus := runMultipleLitmus Litmus.tests_2
+  println! printMultipleLitmusResults mp_litmus (printWitnesses := true)
 
   println! "running PTX 3-thread tests"
-  let mp_litmus := runMultipleLitmus Litmus.ptx_3 (maxIterations := some 20000)
+  let mp_litmus := runMultipleLitmus Litmus.tests_3 (maxIterations := some 30000)
   println! printMultipleLitmusResults mp_litmus (printWitnesses := true)
 
 /-

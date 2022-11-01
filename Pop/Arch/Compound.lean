@@ -59,6 +59,7 @@ def compoundReqToTSO : @BasicRequest Compound.instArchReq → Option (@BasicRequ
   | .fence (.inl x86req) => some $ @BasicRequest.fence x86.instArchReq x86req
   | _ => none
 
+-- TODO: maybe make these two into a single function : @Request Compound.instArchReq) → (@Request PTX.instArchReq) ⊕ (@Request x86.instArchReq)
 def _root_.Pop.Request.toPTX? (req : @Request Compound.instArchReq) : Option (@Request PTX.instArchReq) :=
   match compoundReqToPTX req.basic_type with
     | none => none
@@ -84,10 +85,19 @@ def scopeIntersection : (valid : ValidScopes) → Request → Request → @Scope
       | none      , some r₂ptx => PTX.requestScope valid r₂ptx
       | none      , none => valid.systemScope
 
+
+def blockingSemantics (req : Request) : BlockingSemantics :=
+    match req.toPTX? with
+        | some ptxreq => PTX.blockingSemantics ptxreq
+        | none => match req.toTSO? with
+             | some tsoreq => x86.blockingSemantics tsoreq
+             | none => unreachable!
+
 instance : Arch where
   req := instArchReq
   orderCondition := order
   scopeIntersection := scopeIntersection
+  blockingSemantics := blockingSemantics
 
 namespace Litmus
 def mkRead (typedescr : String ) (addr : Address) (threadType : String): BasicRequest :=
@@ -107,7 +117,6 @@ def mkFence (typedescr : String) (threadType : String) : BasicRequest :=
     | "PTX" => PTX.Litmus.mkFence typedescr ""
     | "x86" => x86.Litmus.mkFence typedescr ""
     | t => panic! s!"Unknown Thread type: {t}"
-
 
 def toAlloy : String → BasicRequest → String
     | moduleName, br@(.read _ ty) => match ty with

@@ -65,6 +65,16 @@ def Req.toString (req : Req) : String :=
 
 instance : ToString Req where toString := Req.toString
 
+
+def reqBlockingSemantics (req : Req) : BlockingSemantics :=
+  match req.sem with
+    | .rlx => []
+    | .weak => []
+    | .rel => [.Read2WritePred, .Write2Write]
+    | .acq => [.Read2ReadNoPred, .Read2WriteNoPred]
+    | .acqrel => [.Read2WritePred, .Write2Write, .Read2ReadNoPred]
+    | .sc => [.Read2WritePred, .Write2Write, .Read2ReadPred, .Write2Read]
+
 instance : ArchReq where
   type := PTX.Req
   instBEq := PTX.instBEqReq
@@ -155,7 +165,7 @@ def Request.isGeqAcq (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.acqrel ||
   req.basic_type.type.sem == PTX.Semantics.sc
 
-def Request.isFenceLike (req : Request) : Bool :=
+def Request.isPTXFenceLike (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.rel ||
   req.basic_type.type.sem == PTX.Semantics.acq ||
   req.basic_type.type.sem == PTX.Semantics.acqrel ||
@@ -203,7 +213,7 @@ def order : ValidScopes → Request → Request → Bool
    -- TODO: why also for diff. threads? should this be handled with predeecessors?
   let newrel := r_new.isGeqRel && (r_new.thread == r_old.thread || r_old.isPredecessorAt r_new.thread)
   let relwrite := r_old.isGeqRel && r_new.thread == r_old.thread && r_new.isWrite
-  let pred := r_old.isPredecessorAt r_new.thread && r_new.isFenceLike
+  let pred := r_old.isPredecessorAt r_new.thread && r_new.isPTXFenceLike
   -- TODO: what about acqrel and (w -> r)?
    -- dbg_trace "[order] {r_old} {r_new}"
    -- dbg_trace "[order] fences : {fences}"
@@ -215,96 +225,21 @@ def order : ValidScopes → Request → Request → Bool
   scopesMatch V r_old r_new &&
   (acqafter || newrel || fences || acqread || relwrite || pred || samemem_reads)
 
-def allReadsDone (state : SystemState) (fenceLike : Request) : Bool :=
-    let readsOnThread := state.requests.filter λ r => r.isRead &&  r.thread == fenceLike.thread &&
-                          state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id
+def blockingSemantics : Request → BlockingSemantics
+     | req => reqBlockingSemantics req.basic_type.type
 
-    -- All fences block on reads (this implies acq does not block on preds)
-    readsOnThread.all λ r =>
-        let scope := scopeIntersection state.scopes r fenceLike
-        state.isSatisfied r.id || r.fullyPropagated scope
-
-def memPredsDone (state : SystemState) (fenceLike : Request) : Bool :=
-    let preds := state.requests.filter λ r => r.isPredecessorAt fenceLike.thread
-    let memopsOnThread := state.requests.filter λ r => r.isMem &&  r.thread == fenceLike.thread &&
-                          state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id
-    let fenceScope := PTX.requestScope state.scopes fenceLike
-    (memopsOnThread ++ preds).all λ w => w.fullyPropagated fenceScope
-
-def _root_.Pop.SystemState.blockedOnRequests (state : SystemState) : List Request := Id.run do
-  let fences := state.requests.filter Request.isFenceLike
-  let mut res := []
-  for fence in fences do
-    -- All fences block on reads (this implies acq does not block on preds)
-    unless allReadsDone state fence do
-      res := res ++ [fence]
-      continue
-    -- Rel fences also block on writes/preds
-    if fence.isGeqRel && !(memPredsDone state fence) then
-      res := res ++ [fence]
-      continue
-  return res
-
-  /- ∩
-  r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
-  -/
-def propagateConstraintsAux (state : SystemState) (req : Request) (blocking : List Request) : Bool :=
-  if blocking.isEmpty then
-    true else
-  if !req.isMem then -- fences don't propagate
-    false else
-  if req.isRead then blocking.all λ fenceLike =>
-      (!fenceLike.isGeqAcq || allReadsDone state fenceLike) &&
-      (!fenceLike.isFenceSC || memPredsDone state fenceLike)
- else if req.isWrite then blocking.all λ fenceLike =>
-      (!fenceLike.isGeqAcq || allReadsDone state fenceLike) &&
-      (!fenceLike.isGeqRel || memPredsDone state fenceLike)
- else panic! s!"unknown request type ({req})"
-
-def propagateConstraints (state : SystemState) (rid : RequestId) (_ : ThreadId) : Bool :=
-    let req := state.requests.getReq! rid
-    let blocking := state.blockedOnRequests.filter
-        λ r => r.thread == req.thread &&
-        state.orderConstraints.lookup (state.scopes.reqThreadScope req) r.id req.id
-    --dbg_trace "propagate {rid}, \n{blocking} not blocked? {propagateConstraintsAux state req blocking}"
-    propagateConstraintsAux state req blocking
-
-def addNewPredecessors (state : SystemState) (write read : Request) (thId : ThreadId) : SystemState := Id.run do
-  if write.isWrite && read.isRead && write.address? == read.address? &&
-  morallyStrong state.scopes write read && read.thread == thId then -- only reads at that thread
-    return state.updateRequest $ write.makePredecessorAt thId
-  else
-    return state
-
-def propagateEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId)
-: SystemState := Id.run do
-  -- add predecessors as soon as RF edge formed
-  let req := state.requests.getReq! reqId
-  let mut res := state
-  let successors := state.orderConstraints.successors (state.scopes.jointScope req.thread thId) reqId state.seen
-  for reqId' in successors do
-    if let some req' := state.requests.getReq? reqId' then
-      res := addNewPredecessors res req req' thId
-  return res
-/-
- * A predecessor should behave *as if* it was in that same thread.
- * We add edge between predecessor and fence always (?):  maybe only for ≥release?
- * Add predecessor only at RF (not at propagate)
--/
-def acceptEffects (state : SystemState) (reqId : RequestId) (thId : ThreadId) := Id.run do
-  let writesOnThread := state.requests.filter λ w => w.isWrite && w.propagatedTo thId
-  let mut st := state
-  for write in writesOnThread do
-    st := addNewPredecessors st write (state.requests.getReq! reqId) thId
-  return st
+ def predecessorConstraints : SystemState → RequestId → RequestId → Bool
+   | state, writeId, readId =>
+       match (state.requests.getReq? writeId), (state.requests.getReq? readId) with
+         | some write, some read => morallyStrong state.scopes write read
+         | _, _ => false
 
 instance : Arch where
   req := instArchReq
-  propagateConstraints := propagateConstraints
   orderCondition := order
   scopeIntersection := scopeIntersection
-  acceptEffects := acceptEffects
-  propagateEffects := propagateEffects
+  blockingSemantics := blockingSemantics
+  predecessorConstraints  := predecessorConstraints
 
 namespace Litmus
 def mkRead (scope_sem : String ) (addr : Address) (_ : String) : BasicRequest :=

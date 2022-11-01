@@ -99,6 +99,78 @@ def ProgramState.allWrites (prog : ProgramState) : List Transition :=
 def ProgramState.allFences (prog : ProgramState) : List Transition :=
   prog.allFilter Transition.isFenceAccept
 
+def Request.isFenceLike (req : Request) : Bool := !req.blockingSemantics.isEmpty
+def Request.blocksOnReads (req : Request) : Bool :=
+  req.blockingSemantics.contains BlockingKinds.Read2ReadPred ||
+  req.blockingSemantics.contains BlockingKinds.Read2ReadNoPred ||
+  req.blockingSemantics.contains BlockingKinds.Read2WritePred ||
+  req.blockingSemantics.contains BlockingKinds.Read2WriteNoPred
+
+def Request.blocksOnWrites (req : Request) : Bool :=
+  req.blockingSemantics.contains BlockingKinds.Write2Read ||
+  req.blockingSemantics.contains BlockingKinds.Write2Write
+
+def Request.blocksOnPreds (req : Request) : Bool :=
+  req.blockingSemantics.contains BlockingKinds.Read2ReadPred ||
+  req.blockingSemantics.contains BlockingKinds.Read2WritePred
+
+def memopsNotDone (state : SystemState) (fenceLike : Request) : List Request :=
+    let preds := state.requests.filter λ r => r.isPredecessorAt fenceLike.thread
+    let memopsOnThread := state.requests.filter λ r => r.isMem &&  r.thread == fenceLike.thread &&
+                          state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id
+    (memopsOnThread ++ preds).filter λ r =>
+        let scope := Arch.scopeIntersection state.scopes r fenceLike
+        !(state.isSatisfied r.id || r.fullyPropagated scope)
+
+def readsDone (state : SystemState) (fenceLike : Request) : Bool :=
+  let reads := memopsNotDone state fenceLike |>.filter Request.isRead
+  reads.isEmpty
+
+def writesDone (state : SystemState) (fenceLike : Request) : Bool :=
+  let writes := memopsNotDone state fenceLike |>.filter λ w => w.isWrite && w.thread == fenceLike.thread
+  writes.isEmpty
+
+def predsDone (state : SystemState) (fenceLike : Request) : Bool :=
+  let preds := memopsNotDone state fenceLike |>.filter λ p => p.isPredecessorAt fenceLike.thread
+  preds.isEmpty
+
+def SystemState.blockedOnRequests (state : SystemState) : List Request := Id.run do
+  let fences := state.requests.filter Request.isFenceLike
+  let mut res := []
+  for fence in fences do
+    if fence.blocksOnReads && !(readsDone state fence) then
+      res := res ++ [fence]
+      continue
+    if fence.blocksOnWrites && !(writesDone state fence) then
+      res := res ++ [fence]
+      continue
+    if fence.blocksOnPreds && !(predsDone state fence) then
+      res := res ++ [fence]
+      continue
+  return res
+
+def propagateConstraintsAux (state : SystemState) (req : Request) (blocking : List Request) : Bool :=
+  if blocking.isEmpty then
+    true else
+  if !req.isMem then -- fences don't propagate
+    false else
+  if req.isRead then blocking.all λ fenceLike =>
+      (!fenceLike.blockingSemantics.contains .Read2ReadNoPred || readsDone state fenceLike) &&
+      (!fenceLike.blockingSemantics.contains .Read2ReadPred   || (readsDone state fenceLike && predsDone state fenceLike)) &&
+      (!fenceLike.blockingSemantics.contains .Write2Read      || writesDone state fenceLike)
+ else if req.isWrite then blocking.all λ fenceLike =>
+      (!fenceLike.blockingSemantics.contains .Read2WriteNoPred || readsDone state fenceLike) &&
+      (!fenceLike.blockingSemantics.contains .Read2WritePred   || (readsDone state fenceLike && predsDone state fenceLike)) &&
+      (!fenceLike.blockingSemantics.contains .Write2Write      || writesDone state fenceLike)
+ else panic! s!"unknown request type ({req})"
+
+def addNewPredecessors (state : SystemState) (write read : Request) (thId : ThreadId) : SystemState := Id.run do
+  if write.isWrite && read.isRead && write.address? == read.address? && read.thread == thId  &&
+  Arch.predecessorConstraints state write.id read.id then
+    return state.updateRequest $ write.makePredecessorAt thId
+  else
+    return state
+
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool := Arch.acceptConstraints
 
 def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope state.scopes →
@@ -167,8 +239,13 @@ def SystemState.freshId : SystemState → RequestId
       | none => 0
       | some id => (Nat.succ id)
 
+/-
+ * A predecessor should behave *as if* it was in that same thread.
+ * We add edge between predecessor and fence always (?):  maybe only for ≥release?
+ * Add predecessor only at RF (not at propagate)
+-/
 def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState × RequestId
-  | state, reqType, tId =>
+  | state, reqType, tId => Id.run do
   let prelimReq : Request :=
     {propagated_to := [tId], thread := tId, predecessor_at := [],
      basic_type := reqType, id := state.freshId, occurrence := 0} -- should never stay as 0
@@ -179,16 +256,21 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
   --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
   let requests' := state.requests.insert req
   let orderConstraints' := state.updateOrderConstraintsAccept req
-  ({ requests := requests', scopes := state.scopes,
+  let mut st :=
+   { requests := requests', scopes := state.scopes,
      threadTypes := state.threadTypes,
      orderConstraints := orderConstraints',
      removed := state.removed, satisfied := state.satisfied,
      removedCoherent := sorry
-  }, req.id)
+  }
+  let writesOnThread := state.requests.filter λ w => w.isWrite && w.propagatedTo tId
+  for write in writesOnThread do
+    st := addNewPredecessors st write (st.requests.getReq! req.id) tId
+  return (st, req.id)
 
 def SystemState.canUnapplyRequest : SystemState → RequestId → Bool
   | state, rId =>
-  match state.requests.getReq? rId with
+    match state.requests.getReq? rId with
    | none => false
    | some req =>
      let scope := state.scopes.jointScope req.thread req.thread
@@ -238,27 +320,39 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
       false else
     let unpropagated := !req.isPropagated thId
     let blockingReqs := state.requests.filter (requestBlocksPropagateRequest state thId req)
+    let blockingFenceLikes := state.blockedOnRequests.filter
+        λ r => r.thread == req.thread &&
+        state.orderConstraints.lookup (state.scopes.reqThreadScope req) r.id req.id
+    --dbg_trace "propagate {rid}, \n{blocking} not blocked? {propagateConstraintsAux state req blocking}"
+    let fenceLikes := propagateConstraintsAux state req blockingFenceLikes
     --dbg_trace "can {req} propagate to thread {thId}?\n blockingReqs = {blockingReqs}"
-    arch && unpropagated && blockingReqs.isEmpty
+    arch && unpropagated && blockingReqs.isEmpty && fenceLikes
+
 
 def Request.propagate : Request → ThreadId → Request
   | req, thId =>
     let sorted := (thId :: req.propagated_to).toArray.qsort (λ x y => Nat.ble x y)
     { req with propagated_to := sorted.toList}
 
-
 def SystemState.propagate : SystemState → RequestId → ThreadId → SystemState
-  | state, reqId, thId =>
+  | state, reqId, thId => Id.run do
   match state.requests.getReq? reqId with
   | none => state
-  | some req =>
-    let requests' := state.requests.insert (req.propagate thId)
+  | some req_old =>
+    let req := req_old.propagate thId
+    let requests' := state.requests.insert req
     let scope := state.scopes.jointScope thId req.thread
     let orderConstraints' := state.updateOrderConstraintsPropagate scope reqId thId
+    let mut res :=
     { requests := requests', orderConstraints := orderConstraints',
       threadTypes := state.threadTypes,
       removed := state.removed, satisfied := state.satisfied,
       removedCoherent := sorry}
+    let successors := res.orderConstraints.successors (res.scopes.jointScope req.thread thId) reqId res.seen
+    for reqId' in successors do
+      if let some req' := res.requests.getReq? reqId' then
+        res := addNewPredecessors res req req' thId
+    return res
 
 def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Bool
   | state, readId, writeId =>

@@ -31,13 +31,25 @@ def Address.prettyPrint (addr : Address) : String :=
     | 2 => s!"z"
     | addr => s!"v{addr}"
 
+
+inductive BlockingKinds
+  | Read2ReadPred
+  | Read2ReadNoPred
+  | Read2WritePred
+  | Read2WriteNoPred
+  | Write2Read
+  | Write2Write
+  deriving BEq
+
+abbrev BlockingSemantics := List BlockingKinds
+
 class ArchReq where
   (type : Type 0)
   (instBEq : BEq type)
   (instInhabited : Inhabited type)
   (instToString : ToString type)
   (prettyPrint : type → String := instToString.toString)
-  (isPermanentRead : type → Bool)
+  (isPermanentRead : type → Bool := λ _ => false)
 
 variable [ArchReq]
 
@@ -180,6 +192,7 @@ structure Request where
   -- scope : Scope
   -- type : α
   deriving BEq
+
 
 def Request.default : Request :=
   {id := 0, propagated_to := [], predecessor_at := [], thread := 0,
@@ -683,12 +696,17 @@ def SystemState.allRequests (state : SystemState) : List Request := state.remove
 
 class Arch where
   (req : ArchReq)
+  (orderCondition : ValidScopes → Request → Request → Bool)
+  (blockingSemantics : Request → BlockingSemantics)
+  (scopeIntersection : (valid : ValidScopes) → Request → Request → @Scope valid := λ v _ _ => v.systemScope)
+  (predecessorConstraints : SystemState → RequestId → RequestId → Bool := λ _ _ _ => true)
   (acceptConstraints : SystemState → BasicRequest → ThreadId → Bool := λ _ _ _ => true)
   (acceptEffects : SystemState → RequestId → ThreadId → SystemState := λ st _ _ => st)
   (propagateConstraints : SystemState → RequestId → ThreadId → Bool := λ _ _ _ => true)
   (propagateEffects : SystemState → RequestId → ThreadId → SystemState := λ st _ _ => st)
   (satisfyReadConstraints : SystemState → RequestId → RequestId → Bool := λ _ _ _ => true)
   (satisfyReadEffects : SystemState → RequestId → RequestId → SystemState := λ st _ _ => st)
-  (orderCondition : ValidScopes → Request → Request → Bool)
-  (scopeIntersection : (valid : ValidScopes) → Request → Request → @Scope valid := λ v _ _ => v.systemScope)
+
+def Request.blockingSemantics  [inst : Arch] (req : @Request inst.req) : BlockingSemantics := Arch.blockingSemantics req
+
 end Pop

@@ -304,6 +304,8 @@ structure RequestSyntax where
   (varName : String)
   (value : Option Nat)
 
+instance : ToString RequestSyntax where toString := λ rs => s!"{rs.reqKind}, {rs.reqType}, {rs.varName}, {rs.value}"
+
 -- TODO: I should refactor createLitmus to use something like this, but more robust (passing the maps)
 def mkRequestSimple : RequestSyntax → ThreadId → String → Option Transition
   | syn => match syn.varName with
@@ -329,8 +331,10 @@ def createLitmus (list : List (List RequestSyntax))
   let variables := removeDuplicates $ filterNones $ List.join variablesRaw
   let variableNums := variables.zip (List.range variables.length)
   let variableMap := Std.mkHashMap (capacity := variableNums.length) |> variableNums.foldl λ acc (k, v) => acc.insert k v
-  let replaceVar := λ r => (r.reqKind, r.reqType, (Option.get! $ variableMap.find? r.varName),r.value)
-  let replacedVariablesNat : List (List (String × String × Nat × Option Nat)) := list.map λ thread => thread.map replaceVar
+  let replaceVar := λ r => match variableMap.find? r.varName with
+    | some varName => (r.reqKind, r.reqType, varName ,r.value)
+    | none => (r.reqKind, r.reqType, 0 ,r.value)
+  let replacedVariablesNat : List (List (String × String × Nat × Option Nat)) :=  list.map λ thread => thread.map replaceVar
   let replacedVariables : List (List (String × String × Address × Value)) := replacedVariablesNat.map λ l => l.map (λ (str,rtype,addr,val) => (str,rtype,Address.ofNat addr, val))
   let fullThreads := replacedVariables.zip (List.range replacedVariables.length)
   let mkThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkRequest r thId (threadTypes thId)) reqs

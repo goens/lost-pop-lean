@@ -16,7 +16,14 @@ instance : ArchReq where
   instBEq := x86.instBEqReq
   instInhabited := x86.instInhabitedReq
   instToString := x86.instToStringReq
-  isPermanentRead := λ _ => false
+
+def blockingSemantics (req : Request) : BlockingSemantics :=
+  if req.isMem then
+    [ .Read2ReadPred, .Read2WritePred, .Write2Write]
+  else if req.isFence then --
+    [ .Read2ReadPred, .Read2WritePred, .Write2Write, .Write2Read]
+  else -- dependency (for now handled by "thread subsystem")
+    [ ]
 
 def order : ValidScopes → Request → Request → Bool
   | _, r₁, r₂ =>
@@ -25,16 +32,10 @@ def order : ValidScopes → Request → Request → Bool
     let ppo := (r₁.thread == r₂.thread) && !(r₁.isWrite && r₂.isRead)
     fences || sc_per_loc || ppo
 
-def propagate : SystemState → RequestId → ThreadId → Bool
-  | st, reqId, _ =>
-    let sscope := st.scopes.systemScope
-    let pred := st.orderPredecessors sscope reqId
-    st.idsToReqs pred |>.all λ req => req.fullyPropagated sscope
-
 instance : Arch where
   req := instArchReq
-  propagateConstraints := x86.propagate
   orderCondition :=  x86.order
+  blockingSemantics := blockingSemantics
 
 def toAlloy : String → BasicRequest → String
     | moduleName, .read _ _ => moduleName ++ "/Read"

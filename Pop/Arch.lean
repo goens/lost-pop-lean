@@ -1,24 +1,24 @@
 import Pop.Arch.PTX
 import Pop.Arch.TSO
-import Pop.Arch.ARM
+-- import Pop.Arch.ARM
 import Pop.Arch.Compound
 import Pop.Util
 import Litmus.PTX
 import Litmus.TSO
-import Litmus.ARM
+-- import Litmus.ARM
 import Litmus.Compound
 
 inductive ArchType
   | PTX
   | TSO
-  | ARM
+  --| ARM
   | Compound
   deriving Inhabited
 
 instance : ToString ArchType where toString := λ a => match a with
   | .PTX => "PTX"
   | .TSO => "TSO"
-  | .ARM => "ARM"
+ -- | .ARM => "ARM"
   | .Compound => "Compound TSO-PTX"
 
 
@@ -45,17 +45,17 @@ def selectArchitecture : IO.FS.Stream → IO (Option ArchType)
 def ArchType.getInstArch : ArchType → Pop.Arch
   | .PTX => PTX.instArch
   | .TSO => x86.instArch
-  | .ARM => ARM.instArch
+--  | .ARM => ARM.instArch
   | .Compound => Compound.instArch
 
 def ArchType.getInstLitmusSyntax : (arch : ArchType) → @Pop.LitmusSyntax arch.getInstArch
   | .PTX => PTX.Litmus.instLitmusSyntaxInstArch
   | .TSO => x86.Litmus.instLitmusSyntaxInstArch
-  | .ARM => ARM.Litmus.instLitmusSyntaxInstArch
+--  | .ARM => ARM.Litmus.instLitmusSyntaxInstArch
   | .Compound => Compound.Litmus.instLitmusSyntaxInstArch
 
 def ArchType.getLitmusTests : (arch : ArchType) → List (@Litmus.Test arch.getInstArch)
   | .PTX => PTX.Litmus.allTests
   | .TSO => x86.Litmus.allTests
-  | .ARM => ARM.Litmus.allTests
+ -- | .ARM => ARM.Litmus.allTests
   | .Compound => Compound.Litmus.allTests

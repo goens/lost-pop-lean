@@ -13,7 +13,7 @@ lean_lib Litmus {
   -- add library configuration options here
 }
 
-@[defaultTarget]
+@[default_target]
 lean_exe pop {
   root := `Interact
 }
@@ -38,4 +38,4 @@ lean_exe alloy {
   root := `GenerateAlloy
 }
 
-require std from git "https://github.com/leanprover/std4.git" @ "66b5f95c7f8632823a2d8fd57c54e3c02dead2df"
+require std from git "https://github.com/leanprover/std4.git" @ "a74e9b2"

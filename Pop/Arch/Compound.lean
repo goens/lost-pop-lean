@@ -140,5 +140,51 @@ instance : LitmusSyntax where
 
 end Litmus
 
+def importTSOTransition : @Transition x86.instArch → @Transition Compound.instArch
+  | @Transition.acceptRequest x86.instArch br th => .acceptRequest (x86ReqToCompound br) th
+  | @Transition.propagateToThread x86.instArch rid thid => .propagateToThread rid thid
+  | @Transition.satisfyRead x86.instArch rd wr => .satisfyRead rd wr
+  | @Transition.dependency x86.instArch dep => .dependency dep
+
+def importTSOSystemInit : @SystemState x86.instArchReq → @SystemState Compound.instArchReq
+  | state =>
+    let scopes := @SystemState.scopes x86.instArchReq state
+    let threadTypes := λ _ => "x86"
+    SystemState.init scopes threadTypes
+
+def importTSOLitmus : @Litmus.Test x86.instArch → @Litmus.Test Compound.instArch
+  | test =>
+  { axiomaticAllowed := @Litmus.Test.axiomaticAllowed x86.instArch test,
+    name := "x86_" ++ @Litmus.Test.name x86.instArch test,
+    expected := (@Litmus.Test.expected x86.instArch test),
+    program := (@Litmus.Test.program x86.instArch test).map λ th => th.map importTSOTransition,
+    guideTraces := (@Litmus.Test.guideTraces x86.instArch test).map λ tr => tr.map importTSOTransition
+    initTransitions := (@Litmus.Test.initTransitions x86.instArch test).map importTSOTransition
+    initState := importTSOSystemInit (@Litmus.Test.initState x86.instArch test)
+    : Litmus.Test}
+
+def importPTXTransition : @Transition PTX.instArch → @Transition Compound.instArch
+  | @Transition.acceptRequest PTX.instArch br th => .acceptRequest (ptxReqToCompound br) th
+  | @Transition.propagateToThread PTX.instArch rid thid => .propagateToThread rid thid
+  | @Transition.satisfyRead PTX.instArch rd wr => .satisfyRead rd wr
+  | @Transition.dependency PTX.instArch dep => .dependency dep
+
+def importPTXSystemInit : @SystemState PTX.instArchReq → @SystemState Compound.instArchReq
+  | state =>
+    let scopes := @SystemState.scopes PTX.instArchReq state
+    let threadTypes := λ _ => "PTX"
+    SystemState.init scopes threadTypes
+
+def importPTXLitmus : @Litmus.Test PTX.instArch → @Litmus.Test Compound.instArch
+  | test =>
+  { axiomaticAllowed := @Litmus.Test.axiomaticAllowed PTX.instArch test,
+    name := "PTX_" ++ @Litmus.Test.name PTX.instArch test,
+    expected := (@Litmus.Test.expected PTX.instArch test),
+    program := (@Litmus.Test.program PTX.instArch test).map λ th => th.map importPTXTransition,
+    guideTraces := (@Litmus.Test.guideTraces PTX.instArch test).map λ tr => tr.map importPTXTransition
+    initTransitions := (@Litmus.Test.initTransitions PTX.instArch test).map importPTXTransition
+    initState := importPTXSystemInit (@Litmus.Test.initState PTX.instArch test)
+    : Litmus.Test}
+
 
 end Compound

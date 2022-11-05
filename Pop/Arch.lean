@@ -54,8 +54,11 @@ def ArchType.getInstLitmusSyntax : (arch : ArchType) → @Pop.LitmusSyntax arch.
 --  | .ARM => ARM.Litmus.instLitmusSyntaxInstArch
   | .Compound => Compound.Litmus.instLitmusSyntaxInstArch
 
+def x86Imported := x86.Litmus.allTests.map Compound.importTSOLitmus
+def ptxImported := PTX.Litmus.allTests.map Compound.importPTXLitmus
+
 def ArchType.getLitmusTests : (arch : ArchType) → List (@Litmus.Test arch.getInstArch)
   | .PTX => PTX.Litmus.allTests
   | .TSO => x86.Litmus.allTests
  -- | .ARM => ARM.Litmus.allTests
-  | .Compound => Compound.Litmus.allTests
+  | .Compound => Compound.Litmus.allTests ++ x86Imported ++ ptxImported

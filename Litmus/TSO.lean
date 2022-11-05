@@ -15,7 +15,13 @@ deflitmus MP_fence2 := {| W x=1; W y=1 ||  R y //1; Fence; R x // 0 |} 𐄂
 
 deflitmus MP_fence := {| W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0|} 𐄂
 
-deflitmus N7 := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |} ✓
+deflitmus N7 := {| W x=1; R x // 1; R y //0 || W y=1 || R y // 1; R x //0 |} ✓
+
+deflitmus N7_fence := {| W x=1; Fence; R x // 1; R y //0 || W y=1 || R y // 1; R x //0 |} 𐄂
+
+deflitmus N7_two_threads := {| W x=1; R x // 1; R y //0 || W y=1; R y // 1; R x //0 |} ✓
+
+deflitmus N7_two_threads_fences := {| W x=1; Fence; R x // 1; R y //0 || W y=1; Fence; R y // 1; R x //0 |} 𐄂
 
 deflitmus dekkers := {| W x=1; R y //0 || W y=1; R x // 0 |} ✓
 

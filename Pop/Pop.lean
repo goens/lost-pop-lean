@@ -115,12 +115,12 @@ def Request.blocksOnPreds (req : Request) : Bool :=
   req.blockingSemantics.contains BlockingKinds.Read2WritePred
 
 def memopsNotDone (state : SystemState) (fenceLike : Request) : List Request :=
-    let preds := state.requests.filter λ r => r.isPredecessorAt fenceLike.thread
+    let preds := state.requests.filter λ r => r.isPredecessorAt fenceLike.thread && state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id
     let memopsOnThread := state.requests.filter λ r => r.isMem &&  r.thread == fenceLike.thread &&
                           state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id
     (memopsOnThread ++ preds).filter λ r =>
         let scope := Arch.scopeIntersection state.scopes r fenceLike
-        !(state.isSatisfied r.id || r.fullyPropagated scope)
+        !(state.isSatisfied r.id || r.fullyPropagated scope) && r.id != fenceLike.id
 
 def readsDone (state : SystemState) (fenceLike : Request) : Bool :=
   let reads := memopsNotDone state fenceLike |>.filter Request.isRead
@@ -325,6 +325,7 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
         λ r => r.thread == req.thread &&
         (state.orderConstraints.lookup (state.scopes.reqThreadScope req) r.id req.id || r.id == req.id)
     --dbg_trace "propagate {reqId}, \n{blockingFenceLikes} not blocked? {propagateConstraintsAux state req blockingFenceLikes}"
+
     let fenceLikes := propagateConstraintsAux state req blockingFenceLikes
     --dbg_trace "can {req} propagate to thread {thId}?\n blockingReqs = {blockingReqs}"
     arch && unpropagated && blockingReqs.isEmpty && fenceLikes

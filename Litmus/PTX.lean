@@ -116,10 +116,19 @@ deflitmus WRC_cta_2_1_acqrel := {| W. cta_rlx x=1 || R. cta_rlx x // 1; Fence. s
 
 -- TODO?: WRC + don't care (stray read)
 
-deflitmus WRC_cta_1_1_1 := {| W x=1 || R. sys_rlx x // 1; Fence. sys_acqrel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
+deflitmus WRC_cta_1_1_1_cta_rf_right := {| W x=1 || R. sys_rlx x // 1; Fence. sys_acqrel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1}, {T2}} ✓
 
-deflitmus WRC_cta_1_1_1' := {| W. sys_rlx x=1 || R. cta_rlx x // 1; Fence. sys_rel; W. sys_rlx y = 1 || R. sys_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
+deflitmus WRC_cta_1_1_1_rf_cta_left := {| W. sys_rlx x=1 || R. cta_rlx x // 1; Fence. sys_acqrel; W. sys_rlx y = 1 || R. sys_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
+  where sys := { {T0}, {T1}, {T2}} ✓
+
+deflitmus WRC_cta_1_1_1_cta_rf_left := {| W. cta_rlx x=1 || R. sys_rlx x // 1; Fence. sys_acqrel; W. sys_rlx y = 1 || R. sys_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
+  where sys := { {T0}, {T1}, {T2}} ✓
+
+deflitmus WRC_cta_1_1_1_cta_rf_left_sc_acq := {| W. cta_rlx x=1 || R. sys_rlx x // 1; Fence. sys_sc; W. sys_rlx y = 1 || R. sys_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
+  where sys := { {T0}, {T1}, {T2}} ✓
+
+deflitmus WRC_cta_1_1_1_cta_rf_left_sc := {| W. cta_rlx x=1 || R. sys_rlx x // 1; Fence. sys_sc; W. sys_rlx y = 1 || R. sys_rlx y // 1 ; Fence. sys_sc; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1}, {T2}} ✓
 
 deflitmus MP3 := {| W x=1;  W y=1 || R y // 1; W z = 1 || R z // 1 ; R x // 0|} ✓

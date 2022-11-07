@@ -106,11 +106,20 @@ def blockingSemantics (req : Request) : BlockingSemantics :=
              | some tsoreq => x86.blockingSemantics tsoreq
              | none => unreachable!
 
+ def predecessorConstraints : SystemState → RequestId → RequestId → Bool
+   | state, writeId, readId =>
+       match (state.requests.getReq? writeId), (state.requests.getReq? readId) with
+         | some write, some read => match write.toPTX!?, read.toPTX!? with
+             | some ptxwrite, some ptxread => PTX.morallyStrong state.scopes ptxwrite ptxread
+             | _, _ => false
+         | _, _ => false
+
 instance : Arch where
   req := instArchReq
   orderCondition := order
   scopeIntersection := scopeIntersection
   blockingSemantics := blockingSemantics
+  predecessorConstraints := predecessorConstraints
 
 namespace Litmus
 def mkRead (typedescr : String ) (addr : Address) (threadType : String): BasicRequest :=

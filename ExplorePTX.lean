@@ -18,3 +18,12 @@ def main : IO Unit := do
   let mp_litmus := runMultipleLitmus Litmus.ptx_4
   println! printMultipleLitmusResults mp_litmus
 -/
+def litmus := Litmus.WRC_cta_1_2
+def state := litmus.initState.applyTrace (litmus.initTransitions ++ litmus.guideTraces.head!.take 8) |>.toOption.get!
+def fence := state.requests.getReq! 5
+#eval fence.blocksOnPreds
+#eval memopsNotDone state fence
+#eval state.removed.filter (λ r => r.thread == fence.thread && state.orderConstraints.lookup (state.scopes.reqThreadScope fence) r.id fence.id)
+
+def prev_state := litmus.initState.applyTrace (litmus.initTransitions ++ litmus.guideTraces.head!.take 7) |>.toOption.get!
+#eval prev_state.orderConstraints.lookup (prev_state.scopes.reqThreadScope fence) 2 fence.id

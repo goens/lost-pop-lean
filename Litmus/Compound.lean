@@ -40,10 +40,10 @@ deflitmus IRIW_tso_fence_left_ptx_right_fenceacqrel := {| W x=1 ||  R x // 1 ; F
   where sys := { {T0, T1}. x86, {T2, T3}. PTX} ✓
 
 deflitmus IRIW_one_tso_read_fence_rest_ptx := {| W. sys_rel x=1 ||  R x // 1; R y // 0 || R. sys_acq y // 1; Fence. sys_sc; R. sys_acq x // 0 || W. sys_rel y=1 |}
-  where sys := { {T0, T2, T3}. PTX, {T1}. x86} ✓
+  where sys := { {T0, T2, T3}. PTX, {T1}. x86} 𐄂
 
 deflitmus IRIW_one_tso_read_fence_rest_ptx_rlx := {| W x=1 ||  R x // 1; R y // 0 || R y // 1; Fence. sys_sc; R x // 0 || W y=1 |}
-  where sys := { {T0, T2, T3}. PTX, {T1}. x86} ✓
+  where sys := { {T0, T2, T3}. PTX, {T1}. x86} 𐄂
 
 deflitmus MP_tso := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |}
   where sys := { {T0, T1}. x86} 𐄂

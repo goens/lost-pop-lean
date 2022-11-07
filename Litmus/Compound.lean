@@ -4,7 +4,7 @@ namespace Compound
 namespace Litmus
 
 deflitmus IRIW_tso := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
-  where sys := { {T0, T1, T2, T3}. x86} 𐄂 -- ✓ with change
+  where sys := { {T0, T1, T2, T3}. x86} 𐄂
 
 deflitmus IRIW_ptx := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
   where sys := { {T0, T1, T2, T3}. PTX} ✓
@@ -40,10 +40,10 @@ deflitmus IRIW_tso_fence_left_ptx_right_fenceacqrel := {| W x=1 ||  R x // 1 ; F
   where sys := { {T0, T1}. x86, {T2, T3}. PTX} ✓
 
 deflitmus IRIW_one_tso_read_fence_rest_ptx := {| W. sys_rel x=1 ||  R x // 1; R y // 0 || R. sys_acq y // 1; Fence. sys_sc; R. sys_acq x // 0 || W. sys_rel y=1 |}
-  where sys := { {T0, T2, T3}. PTX, {T1}. x86}
+  where sys := { {T0, T2, T3}. PTX, {T1}. x86} ✓
 
 deflitmus IRIW_one_tso_read_fence_rest_ptx_rlx := {| W x=1 ||  R x // 1; R y // 0 || R y // 1; Fence. sys_sc; R x // 0 || W y=1 |}
-  where sys := { {T0, T2, T3}. PTX, {T1}. x86}
+  where sys := { {T0, T2, T3}. PTX, {T1}. x86} ✓
 
 deflitmus MP_tso := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |}
   where sys := { {T0, T1}. x86} 𐄂
@@ -130,7 +130,10 @@ deflitmus ISA2_middle_ptx_rel_fence := {| W x=1;  W y=1 || R y // 1; Fence. sys_
   where sys := { {T0, T2}. x86, {T1}. PTX} ✓
 
 deflitmus dekkers_tso := {| W x=1; R y //0 || W y=1; R x // 0 |}
-  where sys := { {T0, T1}. x86} 𐄂 -- this should be allowed!
+  where sys := { {T0, T1}. x86} ✓
+
+deflitmus dekkers_tso_ptx_dont_care := {| W x=1; R y //0 || W y=1; R x // 0 || Fence. sys_sc |}
+  where sys := { {T0, T1}. x86, {T2}. PTX}  ✓
 
 deflitmus dekkers_tso_fence := {| W x=1; Fence; R y //0 || W y=1; Fence; R x // 0 |}
   where sys := { {T0, T1}. x86} 𐄂
@@ -151,7 +154,7 @@ deflitmus dekkers_mix_only_tso_fence := {| W x=1; R y //0 || W y=1; Fence; R x /
   where sys := { {T0}. PTX, {T1}. x86} ✓
 
 deflitmus dekkers_mix_only_ptx_fence := {| W x=1; Fence; R y //0 || W y=1; R x // 0 |}
-  where sys := { {T0}. PTX, {T1}. x86} 𐄂
+  where sys := { {T0}. PTX, {T1}. x86} ✓
 
 deflitmus dekkers_mix_only_cta_fence := {| W x=1; Fence. cta_sc; R y //0 || W y=1; Fence; R x // 0 |}
   where sys := { {T0}. PTX, {T1}. x86} ✓

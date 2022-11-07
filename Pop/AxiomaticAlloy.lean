@@ -149,6 +149,7 @@ def toPreds (litmus : Litmus.Test) : String :=
 
 def toAlloyLitmus (litmus : Litmus.Test ) : String :=
   s!"// Litmus: {litmus.name}\n" ++
+  s!"// Expected: {litmus.axiomaticAllowed}\n" ++
   "module litmus\n" ++
   s!"open {LitmusSyntax.alloyName} as {LitmusSyntax.alloyName}\n" ++
   "pred generated_litmus_test {\n" ++

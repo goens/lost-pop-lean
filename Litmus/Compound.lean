@@ -4,13 +4,13 @@ namespace Compound
 namespace Litmus
 
 deflitmus IRIW_tso := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
-  where sys := { {T0, T1, T2, T3}. x86} 𐄂
+  where sys := { {T0, T1, T2, T3}. x86} 𐄂 -- ✓ with change
 
 deflitmus IRIW_ptx := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
   where sys := { {T0, T1, T2, T3}. PTX} ✓
 
 deflitmus IRIW_tso_reads_ptx_writes := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
-  where sys := { {T0, T3}. PTX, {T1, T2}. x86} 𐄂
+  where sys := { {T0, T3}. PTX, {T1, T2}. x86} 𐄂 -- ✓ with change
 
 deflitmus IRIW_ptx_reads_tso_writes := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |}
   where sys := { {T0, T3}. x86, {T1}. PTX, {T2}. PTX} ✓
@@ -82,13 +82,13 @@ deflitmus MP_writes_ptx_rel_cta_fence := {|  W x=1; Fence. cta_rel; W y=1 ||  R 
   where sys := { {T0}. PTX, {T1}. x86} ✓
 
 deflitmus WRC_ptx_reader_dep := {| W x=1 || R x // 1; W y = 1 || R y // 1 ;dep R x // 0|}
-  where sys := { {T0, T1}. x86, {T2}. PTX} ✓ -- TODO: This would probably be disallowed in the operational model
+  where sys := { {T0, T1}. x86, {T2}. PTX} ✓ -- TODO: This would probably be disallowed in the operational model (it is)
 
 deflitmus WRC_ptx_reader_acq := {| W x=1 || R x // 1; W y = 1 || R. sys_acq y // 1 ; R x // 0|}
   where sys := { {T0, T1}. x86, {T2}. PTX} 𐄂
 
 deflitmus WRC_middle_tso_dep := {| W x=1 || R x // 1; W y = 1 || R y // 1 ;dep R x // 0|}
-  where sys := { {T1}. x86, {T0, T2}. PTX} ✓ -- TODO: This would probably be disallowed in the operational model
+  where sys := { {T1}. x86, {T0, T2}. PTX} ✓ -- TODO: This would probably be disallowed in the operational model (it is)
 
 deflitmus WRC_middle_tso_acq := {| W x=1 || R x // 1; W y = 1 || R. sys_acq y // 1 ;R x // 0|}
   where sys := { {T1}. x86, {T0, T2}. PTX} 𐄂

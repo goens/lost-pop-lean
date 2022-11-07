@@ -43,6 +43,16 @@ inductive BlockingKinds
 
 abbrev BlockingSemantics := List BlockingKinds
 
+def BlockingKinds.toString : BlockingKinds → String
+  | .Read2ReadPred => "R → R (P)"
+  | .Read2ReadNoPred => "R → R (NP)"
+  | .Read2WritePred => "R → W (P)"
+  | .Read2WriteNoPred => "R → W (NP)"
+  | .Write2Read => "W → R"
+  | .Write2Write => "W → W"
+
+instance : ToString BlockingKinds where toString := BlockingKinds.toString
+
 class ArchReq where
   (type : Type 0)
   (instBEq : BEq type)
@@ -232,6 +242,7 @@ def Request.equivalent (r₁ r₂ : Request) : Bool :=
   if r₁.isFence then r₁.basic_type == r₂.basic_type
   else r₁.address? == r₂.address? && r₁.value? == r₂.value? && r₁.thread == r₂.thread
 
+-- Read, Write
 def SatisfiedRead := RequestId × RequestId deriving ToString, BEq
 
 def ValidScopes.validate (V : ValidScopes) (threads : List ThreadId) : (@Scope V) :=
@@ -586,7 +597,7 @@ def RequestArray.remove : RequestArray → RequestId → RequestArray
 
 structure SystemState where
   requests : RequestArray
-  removed : List (Request)
+  removed : List (Request) -- TODO: remove, def. "active" to ignore satisfied reads
   scopes : ValidScopes
   satisfied : List SatisfiedRead
   threadTypes : ThreadId → String

@@ -60,6 +60,13 @@ def compoundReqToTSO : @BasicRequest Compound.instArchReq → Option (@BasicRequ
   | .fence (.inl x86req) => some $ @BasicRequest.fence x86.instArchReq x86req
   | _ => none
 
+
+def compoundTSOReqToCompoundPTX : @BasicRequest Compound.instArchReq → @BasicRequest Compound.instArchReq
+  | .read rr (.inl _) => .read rr (.inr { scope := PTX.Scope.sys, sem := .rlx})
+  | .write wr (.inl _) => .write wr (.inr { scope := PTX.Scope.sys, sem := .rlx})
+  | .fence (.inl _) => .fence (.inr { scope := PTX.Scope.sys, sem := .sc})
+  | req => req
+
 -- TODO: maybe make these two into a single function : @Request Compound.instArchReq) → (@Request PTX.instArchReq) ⊕ (@Request x86.instArchReq)
 def _root_.Pop.Request.toPTX? (req : @Request Compound.instArchReq) : Option (@Request PTX.instArchReq) :=
   match compoundReqToPTX req.basic_type with
@@ -71,21 +78,26 @@ def _root_.Pop.Request.toTSO? (req : @Request Compound.instArchReq) : Option (@R
     | none => none
     | some bt => @Request.mk x86.instArchReq req.id req.propagated_to req.predecessor_at req.thread bt req.occurrence
 
+
+def _root_.Pop.Request.toPTX!? (req : @Request Compound.instArchReq) : Option (@Request PTX.instArchReq) :=
+  match compoundReqToPTX (compoundTSOReqToCompoundPTX req.basic_type) with
+    | none => none
+    | some bt => @Request.mk PTX.instArchReq req.id req.propagated_to req.predecessor_at req.thread bt req.occurrence
+
 def order : ValidScopes → Request → Request → Bool
   | V, r₁, r₂ => match r₁.toTSO?, r₂.toTSO? with
     | some x86r₁, some x86r₂ => x86.order V x86r₁ x86r₂
-    | _, _ => match r₁.toPTX?, r₂.toPTX? with
+    | _, _ => match r₁.toPTX!?, r₂.toPTX!? with
         | some ptxr₁, some ptxr₂ => PTX.order V ptxr₁ ptxr₂
         | _, _ => false
 
 def scopeIntersection : (valid : ValidScopes) → Request → Request → @Scope valid
   | valid, r₁, r₂ =>
-    match r₁.toPTX?, r₂.toPTX? with
+    match r₁.toPTX!?, r₂.toPTX!? with
       | some r₁ptx, some r₂ptx => PTX.scopeIntersection valid r₁ptx r₂ptx
       | some r₁ptx, none => PTX.requestScope valid r₁ptx
       | none      , some r₂ptx => PTX.requestScope valid r₂ptx
       | none      , none => valid.systemScope
-
 
 def blockingSemantics (req : Request) : BlockingSemantics :=
     match req.toPTX? with

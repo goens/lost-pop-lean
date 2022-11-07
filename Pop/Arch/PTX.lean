@@ -213,7 +213,7 @@ def order : ValidScopes → Request → Request → Bool
    -- TODO: why also for diff. threads? should this be handled with predeecessors?
   let newrel := r_new.isGeqRel && (r_new.thread == r_old.thread || r_old.isPredecessorAt r_new.thread)
   let relwrite := r_old.isGeqRel && r_new.thread == r_old.thread && r_new.isWrite
-  let pred := r_old.isPredecessorAt r_new.thread && r_new.isPTXFenceLike
+  let pred := r_old.isPredecessorAt r_new.thread && r_new.isGeqRel
   -- TODO: what about acqrel and (w -> r)?
    -- dbg_trace "[order] {r_old} {r_new}"
    -- dbg_trace "[order] fences : {fences}"

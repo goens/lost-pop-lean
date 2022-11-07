@@ -116,7 +116,7 @@ def Request.blocksOnPreds (req : Request) : Bool :=
 
 def memopsNotDone (state : SystemState) (fenceLike : Request) : List Request :=
     let preds := state.requests.filter λ r => r.isPredecessorAt fenceLike.thread && state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id
-    let memopsOnThread := state.requests.filter λ r => r.isMem &&  r.thread == fenceLike.thread &&
+    let memopsOnThread := state.requests.filter λ r => r.isMem &&  r.thread == fenceLike.thread && !r.isSatisfied &&
                           state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id
     (memopsOnThread ++ preds).filter λ r =>
         let scope := Arch.scopeIntersection state.scopes r fenceLike
@@ -154,6 +154,7 @@ def propagateConstraintsAux (state : SystemState) (req : Request) (blocking : Li
     true else
   if !req.isMem then -- fences don't propagate
     false else
+  --dbg_trace (String.intercalate "\n" $ blocking.map λ fenceLike => s!"R{fenceLike.id}{fenceLike.blockingSemantics} blocking {req.id}? memops: {memopsNotDone state fenceLike}\n....reads: {readsDone state fenceLike}, writes: {writesDone state fenceLike}, preds: {predsDone state fenceLike}")
   if req.isRead then blocking.all λ fenceLike =>
       (!fenceLike.blockingSemantics.contains .Read2ReadNoPred || readsDone state fenceLike) &&
       (!fenceLike.blockingSemantics.contains .Read2ReadPred   || (readsDone state fenceLike && predsDone state fenceLike)) &&
@@ -193,6 +194,7 @@ RequestId → ThreadId → @OrderConstraints state.scopes
         --dbg_trace "adding {newRFConstraints} on propagate"
       state.orderConstraints.addSubscopes state.scopes.systemScope newObsConstraints
 
+-- TODO: refactor this all into one update, including the predecessors
 -- for predecessors
 def SystemState.updateOrderConstraintsAfterPropagate (state : SystemState) : ThreadId → @OrderConstraints state.scopes
   | thId => Id.run do
@@ -204,9 +206,9 @@ def SystemState.updateOrderConstraintsAfterPropagate (state : SystemState) : Thr
         let sc := Arch.scopeIntersection state.scopes req req'
         if oc.lookup sc req.id req'.id then continue
         if oc.lookup sc req'.id req.id then continue
-        unless Arch.orderCondition state.scopes req req' do continue
+        if Arch.orderCondition state.scopes req req' then
         --dbg_trace "adding {(req.id, req'.id)} after propagate"
-        oc := oc.addSubscopes sc [(req.id, req'.id)]
+          oc := oc.addSubscopes sc [(req.id, req'.id)]
     oc
 
 def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Request)

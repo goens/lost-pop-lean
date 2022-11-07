@@ -118,7 +118,7 @@ def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except Str
     println! "========================="
     println! "=======  SUMMARY  ======="
     println! "========================="
-    println! s!"Litmus: {name}\n" ++ s!"Trace: {partialTrace}\n" ++
+    println! s!"hint for {name} := {partialTrace}\n" ++
              Util.colorString outcomesColor s!"  Outcome: {outcome.prettyPrint}\n  Expected: {expected.prettyPrint} ({axiomatic})"
     -- return initial program state (litmus) instead of finished
     return Except.ok (partialTrace,initProgSt,finalState)t

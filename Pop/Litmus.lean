@@ -241,8 +241,7 @@ def mkRequest : String × String × Address × Value → ThreadId → String →
   | ("R", typeStr, addr, _), thId, thTy => some $ Pop.Transition.acceptRequest (mkRead typeStr addr thTy) thId
   | ("W",typeStr , addr, val), thId, thTy  => some $ Pop.Transition.acceptRequest (mkWrite typeStr addr val thTy) thId
   | ("Fence", typeStr, _, _), thId, thTy => some $ Pop.Transition.acceptRequest (mkFence typeStr thTy) thId
-  | ("Dependency", _, _, _), thId, thTy => some $ Pop.Transition.acceptRequest (mkFence "sys_dep" thTy) thId -- hack: sys_dep
-  -- | ("Dependency", _, _, _), _, _ => some $ Pop.Transition.dependency none
+  | ("Dependency", _, _, _), _, _ => some $ Pop.Transition.dependency none
   | _, _, _ => none
 
 def mkReadOutcomeTriple : String × String × Address × Value → ThreadId → Option (ThreadId × Address × Value)

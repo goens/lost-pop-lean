@@ -27,6 +27,7 @@ inductive Semantics
   | acq
   | rlx
   | weak
+  | dep
   deriving Inhabited, BEq, Repr
 
 structure Req where
@@ -54,6 +55,7 @@ def Semantics.toString : Semantics → String
   | .acq => "acq"
   | .rlx => "rlx"
   | .weak => "weak"
+  | .dep => "dep"
 
 instance : ToString Scope where toString := Scope.toString
 instance : ToString Semantics where toString := Semantics.toString
@@ -74,6 +76,7 @@ def reqBlockingSemantics (req : Req) : BlockingSemantics :=
     | .acq => [.Read2ReadNoPred, .Read2WriteNoPred]
     | .acqrel => [.Read2WritePred, .Write2Write, .Read2ReadNoPred]
     | .sc => [.Read2WritePred, .Write2Write, .Read2ReadPred, .Write2Read]
+    | .dep => [.Read2ReadNoPred, .Read2WriteNoPred]
 
 instance : ArchReq where
   type := PTX.Req
@@ -152,6 +155,9 @@ def Request.isFenceAcqRel (req : Request) : Bool :=
 def Request.isRel (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.rel
 
+def Request.isDep (req : Request) : Bool :=
+  req.isFence && req.basic_type.type.sem == PTX.Semantics.dep
+
 def Request.isGeqRel (req : Request) : Bool :=
   req.basic_type.type.sem == PTX.Semantics.rel ||
   req.basic_type.type.sem == PTX.Semantics.acqrel ||
@@ -209,6 +215,8 @@ def order : ValidScopes → Request → Request → Bool
   let acqread :=  r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
   let newrel := r_new.isGeqRel && (r_new.thread == r_old.thread || r_old.isPredecessorAt r_new.thread)
   let relwrite := r_old.isGeqRel && r_new.thread == r_old.thread && r_new.isWrite
+  let dep_old := r_old.isDep && r_new.isMem && r_new.thread == r_old.thread
+  let dep_new := r_new.isDep && r_old.isRead && r_new.thread == r_old.thread
   let pred := r_old.isPredecessorAt r_new.thread && r_new.isGeqRel
   -- TODO: what about acqrel and (w -> r)?
    -- dbg_trace "[order] {r_old} {r_new}"
@@ -218,10 +226,10 @@ def order : ValidScopes → Request → Request → Bool
    -- dbg_trace "[order] relwrite : {relwrite}"
    -- dbg_trace "[order] scopes match: {scopesMatch V r_old r_new}"
   scopesMatch V r_old r_new &&
-  (acqafter || newrel || acqread || relwrite || pred || samemem_reads)
+  (acqafter || newrel || acqread || relwrite || pred || samemem_reads || dep_old || dep_new)
 
 def blockingSemantics : Request → BlockingSemantics
-     | req => reqBlockingSemantics req.basic_type.type
+    | req => reqBlockingSemantics req.basic_type.type
 
  def predecessorConstraints : SystemState → RequestId → RequestId → Bool
    | state, writeId, readId =>
@@ -298,6 +306,7 @@ def mkFence (scope_sem : String) (_ : String) : BasicRequest :=
         | "acqrel" => Semantics.acqrel
         | "rel" => Semantics.rel
         | "acq" => Semantics.acq
+        | "dep" => Semantics.dep
         | _ =>
           panic! s!"(fence) invalid PTX semantics: {semStr}"
       BasicRequest.fence {scope := scope, sem := sem}

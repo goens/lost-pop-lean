@@ -74,5 +74,7 @@ hint for WRC_cta_1_1_1_cta_rf_left_sc_acq := [Accept (R y) at Thread 2, Accept (
 
 hint for WRC_cta_1_1_1_cta_rf_left_sc := [Accept (R y) at Thread 2, Accept (Fence. sys_sc) at Thread 2, Accept (R x) at Thread 2, Accept (R x) at Thread 1, Accept (Fence. sys_sc) at Thread 1, Accept (W y = 1) at Thread 1, Accept (W. cta_rlx x = 1) at Thread 0, Propagate Request 8 to Thread 1, Propagate Request 5 to Thread 0, Satisfy Request 5 with Request 8, Propagate Request 7 to Thread 2, Propagate Request 2 to Thread 1, Satisfy Request 2 with Request 7, Propagate Request 7 to Thread 0, Propagate Request 4 to Thread 0, Propagate Request 4 to Thread 1, Satisfy Request 4 with Request 0, Propagate Request 8 to Thread 2]
 
+hint for WRC_cta_1_1_1_cta_rf_right := [Accept (R. cta_rlx y) at Thread 2, Accept (Fence. sys_acq) at Thread 2, Accept (R x) at Thread 2, Accept (R x) at Thread 1, Accept (Fence. sys_acqrel) at Thread 1, Accept (W. cta_rlx y = 1) at Thread 1, Accept (W x = 1) at Thread 0, Propagate Request 4 to Thread 0, Propagate Request 4 to Thread 1, Satisfy Request 4 with Request 0, Propagate Request 8 to Thread 1, Propagate Request 8 to Thread 2, Propagate Request 5 to Thread 0, Propagate Request 5 to Thread 2, Satisfy Request 5 with Request 8, Propagate Request 7 to Thread 0, Propagate Request 7 to Thread 2, Propagate Request 2 to Thread 0, Propagate Request 2 to Thread 1, Satisfy Request 2 with Request 7]
+
 end Litmus
 end PTX

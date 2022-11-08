@@ -26,11 +26,7 @@ def blockingSemantics (req : Request) : BlockingSemantics :=
     [ ]
 
 def order : ValidScopes → Request → Request → Bool
-  | _, r₁, r₂ =>
-    let fences := (r₁.isFence || r₂.isFence)
-    let sc_per_loc := r₁.address? == r₂.address?
-    let ppo := (r₁.thread == r₂.thread) && !(r₁.isWrite && r₂.isRead)
-    fences || sc_per_loc || ppo
+  | _, r₁, r₂ => (r₁.thread == r₂.thread) && !(r₁.isWrite && r₂.isRead)
 
 instance : Arch where
   req := instArchReq

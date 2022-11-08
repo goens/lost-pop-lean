@@ -62,5 +62,7 @@ hint for IRIW_tso_fence_left_ptx_right_fenceacqrel := [Accept (W y = 1) at Threa
 
 hint for WRC_middle_ptx_acqrel_fence := [Accept (R y) at Thread 2, Accept (R x) at Thread 2, Accept (R x) at Thread 1, Accept (Fence. sys_acqrel) at Thread 1, Accept (W y = 1) at Thread 1, Accept (W x = 1) at Thread 0, Propagate Request 7 to Thread 1, Propagate Request 4 to Thread 0, Satisfy Request 4 with Request 7, Propagate Request 6 to Thread 2, Propagate Request 6 to Thread 0, Propagate Request 2 to Thread 1, Propagate Request 2 to Thread 0, Satisfy Request 2 with Request 6, Propagate Request 3 to Thread 0, Propagate Request 3 to Thread 1, Satisfy Request 3 with Request 0, Propagate Request 7 to Thread 2]
 
+hint for dekkers_tso_ptx_dont_care := [Accept (Fence. sys_sc) at Thread 2, Accept (W y = 1) at Thread 1, Accept (R x) at Thread 1, Accept (W x = 1) at Thread 0, Accept (R y) at Thread 0, Propagate Request 6 to Thread 1, Propagate Request 6 to Thread 2, Propagate Request 4 to Thread 0, Propagate Request 4 to Thread 2, Satisfy Request 4 with Request 0, Satisfy Request 6 with Request 1, Propagate Request 3 to Thread 0, Propagate Request 3 to Thread 2, Propagate Request 5 to Thread 1, Propagate Request 5 to Thread 2]
+
 end Litmus
 namespace Compound

@@ -115,8 +115,6 @@ deflitmus WRC_acq_mid := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ; Fe
 deflitmus WRC_cta_2_1_acqrel := {| W. cta_rlx x=1 || R. cta_rlx x // 1; Fence. sys_acqrel; W. sys_rlx y = 1 || R. sys_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0, T1}, {T2}} 𐄂
 
--- TODO : This test is disallowed currently because the W -> W is getting too strong a scope, since the acqrel fence also is a release fence and needs to have the stronger scope for any R -> W.
--- To fix this we need to stop using the fence edges for enforcing the R/W -> R/W edges, and just create the actual edges accordingly. Should be a refactor after deadline.
 deflitmus WRC_cta_1_1_1_cta_rf_right := {| W x=1 || R. sys_rlx x // 1; Fence. sys_acqrel; W. cta_rlx y = 1 || R. cta_rlx y // 1 ; Fence. sys_acq; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1}, {T2}} ✓
 

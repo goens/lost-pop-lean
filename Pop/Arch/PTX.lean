@@ -199,31 +199,26 @@ def scopesMatch : ValidScopes → Request → Request → Bool
     let scope := scopeIntersection V r_old r_new |>.threads
     scope.contains r_old.thread && scope.contains r_new.thread
 
+/-
+r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
+-/
 def order : ValidScopes → Request → Request → Bool
   | V, r_old, r_new =>
-  -- TODO: we are not sure if this might make our model stronger than necessary
-  let fences := (r_old.isFence || r_new.isFence)
-                       && (r_old.thread == r_new.thread)
-  /-
-  r -> / Acq -> r/w; r/w -> acqrel r/w except (w -> r); r/w -> rel -> w
-  -/
   let samemem_reads := r_old.address? == r_new.address? && r_old.isRead && r_new.isRead
   let acqafter := r_old.isGeqAcq && (r_new.thread == r_old.thread)
   let acqread :=  r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
-   -- TODO: why also for diff. threads? should this be handled with predeecessors?
   let newrel := r_new.isGeqRel && (r_new.thread == r_old.thread || r_old.isPredecessorAt r_new.thread)
   let relwrite := r_old.isGeqRel && r_new.thread == r_old.thread && r_new.isWrite
   let pred := r_old.isPredecessorAt r_new.thread && r_new.isGeqRel
   -- TODO: what about acqrel and (w -> r)?
    -- dbg_trace "[order] {r_old} {r_new}"
-   -- dbg_trace "[order] fences : {fences}"
    -- dbg_trace "[order] acqafter : {acqafter}"
    -- dbg_trace "[order] acqread : {acqread}"
    -- dbg_trace "[order] newrel : {newrel}"
    -- dbg_trace "[order] relwrite : {relwrite}"
    -- dbg_trace "[order] scopes match: {scopesMatch V r_old r_new}"
   scopesMatch V r_old r_new &&
-  (acqafter || newrel || fences || acqread || relwrite || pred || samemem_reads)
+  (acqafter || newrel || acqread || relwrite || pred || samemem_reads)
 
 def blockingSemantics : Request → BlockingSemantics
      | req => reqBlockingSemantics req.basic_type.type

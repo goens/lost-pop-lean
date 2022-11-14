@@ -54,6 +54,10 @@ proctype thread_1(){
                 :: ((propagated[1] >> 3) & 1) == 0 -> atomic { printf("propagating req 1 to thread 3\n"); propagated[1] = propagated[1] ^ (1 << 3) }
              fi
     od
+    do // predecessors
+      :: (((order_constraints[0] >> 1) & 1) == 1) -> propagated[0] == 15; break
+      :: else -> break
+    od
     do
          :: propagated[2] == 15 /* 1111b */ -> break;
          :: propagated[2] == propagated[5] & (((order_constraints[5] >> 2) & 1) == 1) -> break; // remove read
@@ -86,6 +90,10 @@ proctype thread_2(){
                                                       fi
                }
              fi
+    od
+    do // predecessors
+      :: (((order_constraints[5] >> 3) & 1) == 1) -> propagated[5] == 15; break
+      :: else -> break
     od
     do
          :: propagated[4] == 15 /* 1111b */  -> break;
@@ -165,3 +173,20 @@ init{
   run thread_2();
   run thread_3()
 }
+/*                          propagating req 5 to thread 0
+                      propagating req 3 to thread 0
+                      propagating req 3 to thread 1
+              propagating req 0 to thread 1
+              adding oc (0, 1)
+                  propagating req 1 to thread 0
+                  propagating req 2 to thread 0
+                  propagating req 2 to thread 2
+                  propagating req 2 to thread 3
+                  adding oc (2, 5)
+                          propagating req 5 to thread 1
+                          propagating req 5 to thread 2
+                          adding oc (5, 3)
+                      propagating req 3 to thread 3
+                      propagating req 4 to thread 0
+                      adding oc (4, 0)
+ */

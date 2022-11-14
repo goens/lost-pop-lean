@@ -21,19 +21,19 @@ proctype thread_0(){
   do
     :: propagated[0] == 15 /* 1111b */ -> break;
     :: if
-         :: ((propagated[0] >> 1) & 1) == 0 -> atomic { propagated[0] = propagated[0] & (1 << 1);
+         :: ((propagated[0] >> 1) & 1) == 0 -> atomic { printf("propagating req 0 to thread 1\n"); propagated[0] = propagated[0] ^ (1 << 1);
                                                       if
-                                                        :: (((order_constraints[1] >> 0) & 1) == 0) -> order_constraints[0] = order_constraints[0] ^ 2 /* 000010b */
+                                                        :: printf("adding oc (0, 1)\n"); (((order_constraints[1] >> 0) & 1) == 0) -> order_constraints[0] = order_constraints[0] ^ 2 /* 000010b */
                                                         :: else -> skip
                                                       fi
                                                      }
-         :: ((propagated[0] >> 2) & 1) == 0 -> atomic { propagated[0] = propagated[0] & (1 << 2);
+         :: ((propagated[0] >> 2) & 1) == 0 -> atomic { printf("propagating req 0 to thread 2\n"); propagated[0] = propagated[0] ^ (1 << 2);
                                                       if
-                                                        :: (((order_constraints[4] >> 0) & 1) == 0) -> order_constraints[0] = order_constraints[0] ^ 16 /* 010000b */
+                                                        :: printf("adding oc (0, 4)\n"); (((order_constraints[4] >> 0) & 1) == 0) -> order_constraints[0] = order_constraints[0] ^ 16 /* 010000b */
                                                         :: else -> skip
                                                       fi
                                                      }
-         :: ((propagated[0] >> 3) & 1) == 0 -> atomic { propagated[0] = propagated[0] & (1 << 3) }
+         :: ((propagated[0] >> 3) & 1) == 0 -> atomic { printf("propagating req 0 to thread 3\n"); propagated[0] = propagated[0] ^ (1 << 3) }
        fi
   od
 }
@@ -44,14 +44,14 @@ proctype thread_1(){
          :: propagated[1] == propagated[0] & (((order_constraints[0] >> 1) & 1) == 1) -> break; // remove read
          :: else ->
              if
-                :: ((propagated[1] >> 0) & 1) == 0 -> atomic { propagated[1] = propagated[1] ^ (1 << 0);
+                :: ((propagated[1] >> 0) & 1) == 0 -> atomic { printf("propagating req 1 to thread 0\n"); propagated[1] = propagated[1] ^ (1 << 0);
                                                       if
-                                                        :: (((order_constraints[0] >> 1) & 1) == 0) -> order_constraints[1] = order_constraints[1] ^ 1 /* 000001b */
+                                                        :: (((order_constraints[0] >> 1) & 1) == 0) -> printf("adding oc (1, 0)\n"); order_constraints[1] = order_constraints[1] ^ 1 /* 000001b */
                                                         :: else -> skip
                                                       fi
                 }
-                :: ((propagated[1] >> 2) & 1) == 0 -> atomic { propagated[1] = propagated[1] ^ (1 << 2) }
-                :: ((propagated[1] >> 3) & 1) == 0 -> atomic { propagated[1] = propagated[1] ^ (1 << 3) }
+                :: ((propagated[1] >> 2) & 1) == 0 -> atomic { printf("propagating req 1 to thread 2\n"); propagated[1] = propagated[1] ^ (1 << 2) }
+                :: ((propagated[1] >> 3) & 1) == 0 -> atomic { printf("propagating req 1 to thread 3\n"); propagated[1] = propagated[1] ^ (1 << 3) }
              fi
     od
     do
@@ -59,11 +59,11 @@ proctype thread_1(){
          :: propagated[2] == propagated[5] & (((order_constraints[5] >> 2) & 1) == 1) -> break; // remove read
          :: else ->
              if
-                :: ((propagated[2] >> 0) & 1) == 0 -> atomic { propagated[2] = propagated[2] ^ (1 << 0)}
-                :: ((propagated[2] >> 2) & 1) == 0 -> atomic { propagated[2] = propagated[2] ^ (1 << 2) }
-                :: ((propagated[2] >> 3) & 1) == 0 -> atomic { propagated[2] = propagated[2] ^ (1 << 3);
+                :: ((propagated[2] >> 0) & 1) == 0 -> atomic { printf("propagating req 2 to thread 0\n"); propagated[2] = propagated[2] ^ (1 << 0)}
+                :: ((propagated[2] >> 2) & 1) == 0 -> atomic { printf("propagating req 2 to thread 2\n"); propagated[2] = propagated[2] ^ (1 << 2) }
+                :: ((propagated[2] >> 3) & 1) == 0 -> atomic { printf("propagating req 2 to thread 3\n"); propagated[2] = propagated[2] ^ (1 << 3);
                                                       if
-                                                        :: (((order_constraints[5] >> 2) & 1) == 0) -> order_constraints[2] = order_constraints[2] ^ 32 /* 100000b */
+                                                        :: (((order_constraints[5] >> 2) & 1) == 0) -> printf("adding oc (2, 5)\n"); order_constraints[2] = order_constraints[2] ^ 32 /* 100000b */
                                                         :: else -> skip
                                                       fi
                 }
@@ -77,11 +77,11 @@ proctype thread_2(){
          :: propagated[3] == propagated[5] & (((order_constraints[5] >> 3) & 1) == 1) -> break; // remove read
          :: else ->
              if
-                :: ((propagated[3] >> 0) & 1) == 0 -> atomic { propagated[3] = propagated[3] ^ (1 << 0) }
-                :: ((propagated[3] >> 1) & 1) == 0 -> atomic { propagated[3] = propagated[3] ^ (1 << 1) }
-                :: ((propagated[3] >> 3) & 1) == 0 -> atomic { propagated[3] = propagated[3] ^ (1 << 3);
+                :: ((propagated[3] >> 0) & 1) == 0 -> atomic { printf("propagating req 3 to thread 0\n"); propagated[3] = propagated[3] ^ (1 << 0) }
+                :: ((propagated[3] >> 1) & 1) == 0 -> atomic { printf("propagating req 3 to thread 1\n"); propagated[3] = propagated[3] ^ (1 << 1) }
+                :: ((propagated[3] >> 3) & 1) == 0 -> atomic { printf("propagating req 3 to thread 3\n"); propagated[3] = propagated[3] ^ (1 << 3);
                                                       if
-                                                        :: (((order_constraints[5] >> 3) & 1) == 0) -> order_constraints[3] = order_constraints[3] ^ 32 /* 100000b */
+                                                        :: (((order_constraints[5] >> 3) & 1) == 0) -> printf("adding oc (3, 5)\n"); order_constraints[3] = order_constraints[3] ^ 32 /* 100000b */
                                                         :: else -> skip
                                                       fi
                }
@@ -92,14 +92,14 @@ proctype thread_2(){
          :: propagated[4] == propagated[0] & (((order_constraints[0] >> 4) & 1) == 1) -> break; // remove read
          :: else ->
              if
-                :: ((propagated[4] >> 0) & 1) == 0 -> atomic { propagated[4] = propagated[4] ^ (1 << 0);
+                :: ((propagated[4] >> 0) & 1) == 0 -> atomic { printf("propagating req 4 to thread 0\n"); propagated[4] = propagated[4] ^ (1 << 0);
                                                       if
-                                                        :: (((order_constraints[0] >> 4) & 1) == 0) -> order_constraints[4] = order_constraints[4] ^ 1 /* 000001b */
+                                                        :: (((order_constraints[0] >> 4) & 1) == 0) -> printf("adding oc (4, 0)\n"); order_constraints[4] = order_constraints[4] ^ 1 /* 000001b */
                                                         :: else -> skip
                                                       fi
                }
-                :: ((propagated[4] >> 1) & 1) == 0 -> atomic { propagated[4] = propagated[4] ^ (1 << 1) }
-                :: ((propagated[4] >> 3) & 1) == 0 -> atomic { propagated[4] = propagated[4] ^ (1 << 3) }
+                :: ((propagated[4] >> 1) & 1) == 0 -> atomic { printf("propagating req 4 to thread 1\n"); propagated[4] = propagated[4] ^ (1 << 1) }
+                :: ((propagated[4] >> 3) & 1) == 0 -> atomic { printf("propagating req 4 to thread 3\n"); propagated[4] = propagated[4] ^ (1 << 3) }
              fi
     od
 
@@ -109,16 +109,16 @@ proctype thread_3(){
   do
     :: propagated[5] == 15 /* 1111b */ -> break;
     :: if
-         :: ((propagated[5] >> 0) & 1) == 0 -> atomic { propagated[5] = propagated[5] ^ (1 << 0) }
-         :: ((propagated[5] >> 1) & 1) == 0 -> atomic { propagated[5] = propagated[5] ^ (1 << 1);
+         :: ((propagated[5] >> 0) & 1) == 0 -> atomic { printf("propagating req 5 to thread 0\n"); propagated[5] = propagated[5] ^ (1 << 0) }
+         :: ((propagated[5] >> 1) & 1) == 0 -> atomic { printf("propagating req 5 to thread 1\n"); propagated[5] = propagated[5] ^ (1 << 1);
                                                       if
-                                                        :: (((order_constraints[2] >> 5) & 1) == 0) -> order_constraints[5] = order_constraints[5] ^ 4 /* 000100b */
+                                                        :: (((order_constraints[2] >> 5) & 1) == 0) -> printf("adding oc (5, 2)\n"); order_constraints[5] = order_constraints[5] ^ 4 /* 000100b */
                                                         :: else -> skip
                                                       fi
          }
-         :: ((propagated[5] >> 2) & 1) == 0 -> atomic { propagated[5] = propagated[5] ^ (1 << 2);
+         :: ((propagated[5] >> 2) & 1) == 0 -> atomic { printf("propagating req 5 to thread 2\n"); propagated[5] = propagated[5] ^ (1 << 2);
                                                      if
-                                                        :: (((order_constraints[3] >> 5) & 1) == 0) -> order_constraints[5] = order_constraints[5] ^ 8 /* 001000b */
+                                                        :: (((order_constraints[3] >> 5) & 1) == 0) -> printf("adding oc (5, 3)\n"); order_constraints[5] = order_constraints[5] ^ 8 /* 001000b */
                                                         :: else -> skip
                                                       fi
          }
@@ -129,12 +129,19 @@ proctype thread_3(){
 never
 {
   do
-    :: assert(
+    /* invalid condition threads read (1,0) (1,0) */
+     ::  assert( !(
          //      { (4,0), (0,1), (2,5), (5,3) \in oc
-         !( (((order_constraints[4] >> 0) & 1) == 1) && ((order_constraints[0] >> 1) & 1 == 1) &&
+         (((order_constraints[4] >> 0) & 1) == 1) && ((order_constraints[0] >> 1) & 1 == 1) &&
             (((order_constraints[2] >> 5) & 1) == 1) && ((order_constraints[5] >> 3) & 1 == 1)
-         )
-    )
+         ))
+    /* valid condition: both read 1s
+     ::  assert( !(
+         //      { (0,4), (0,1), (5,2), (5,3) \in oc
+         (((order_constraints[0] >> 4) & 1) == 1) && ((order_constraints[0] >> 1) & 1 == 1) &&
+            (((order_constraints[5] >> 2) & 1) == 1) && ((order_constraints[5] >> 3) & 1 == 1)
+         ))
+     */
   od
 }
 

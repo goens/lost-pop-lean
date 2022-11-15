@@ -21,7 +21,7 @@ var
   propagated : array [req_t] Of thread_arr_t;
   order_constraints : array [req_t] Of req_arr_t;
 
-procedure propagate(var req : req_t; thread : thread_t)
+procedure propagate(var req : req_t; thread : thread_t);
 begin
     if propagated[req][thread] == false  then
       propagated[req][thread] := true;
@@ -78,9 +78,9 @@ begin
           endswitch;
       endswitch;
       endif;
-end;
+endprocedure;
 
-procedure reset()
+procedure reset();
 begin
     for i : req_t do
         for j : thread_t do
@@ -98,7 +98,7 @@ begin
             order_constraints[i][j] := false;
         endfor;
     endfor;
-end;
+endprocedure;
 
 startstate "Init"
     undefine propagated;
@@ -115,15 +115,21 @@ ruleset i : req_t; j : thread_t do
         &&
         ((i != 2) ||
             -- satisfy read: same propagation + oc
-            (propagated[0][0] == propagated[1][0] && 
-             propagated[0][1] == propagated[1][1] && 
-             propagated[0][2] == propagated[1][2] && 
-             propagated[0][3] == propagated[1][3] &&
-             order_constraints[0][1] == true)
-            &&
-            -- predecessors
-            (propagated[0][0] && propagated[0][1] && 
-             propagated[0][2] && propagated[0][3])
+            (((propagated[0][0] == propagated[1][0] && 
+              propagated[0][1] == propagated[1][1] && 
+              propagated[0][2] == propagated[1][2] && 
+              propagated[0][3] == propagated[1][3] &&
+              order_constraints[0][1] == true) 
+              &&
+              -- predecessors
+              (propagated[0][0] && propagated[0][1] && 
+               propagated[0][2] && propagated[0][3]))
+           ||
+             (propagated[1][0] == true && 
+              propagated[1][1] == true && 
+              propagated[1][2] == true && 
+              propagated[1][3] == true &&
+              order_constraints[1][0] == true)) -- read from mem
         )
         &&
         ((i != 3) ||
@@ -132,15 +138,21 @@ ruleset i : req_t; j : thread_t do
         &&
         ((i != 4) ||
             -- satisfy read: same propagation + oc
-            (propagated[5][0] == propagated[3][0] && 
-             propagated[5][1] == propagated[3][1] && 
-             propagated[5][2] == propagated[3][2] && 
-             propagated[5][3] == propagated[3][3] &&
-             order_constraints[5][3] == true)
-            &&
-            -- predecessors
-            (propagated[5][0] && propagated[5][1] && 
-             propagated[5][2] && propagated[5][3])
+            (((propagated[5][0] == propagated[3][0] && 
+               propagated[5][1] == propagated[3][1] && 
+               propagated[5][2] == propagated[3][2] && 
+               propagated[5][3] == propagated[3][3] &&
+               order_constraints[5][3] == true)
+               &&
+               -- predecessors
+               (propagated[5][0] && propagated[5][1] && 
+                propagated[5][2] && propagated[5][3]))
+            || 
+            (propagated[3][0] == true && 
+             propagated[3][1] == true && 
+             propagated[3][2] == true && 
+             propagated[3][3] == true &&
+             order_constraints[3][5] == true)) -- read from mem
         )
         ==>
         propagate(i,j);
@@ -151,12 +163,56 @@ rule "reset"
   true ==> reset();
 end;
 
-invariant "forbidden result"
-    --  { (4,0), (0,1), (2,5), (5,3) \in oc
+invariant "forbidden result: x = 1; y = 0 || y = 1; x = 0"
+    --  { (4,0), (0,1), (2,5), (5,3) } \in oc
     !(order_constraints[4][0] && order_constraints[0][1] &&
       order_constraints[2][5] && order_constraints[5][3])
 
--- invariant "allowed result" -- both read 1s
---     --  { (0,4), (0,1), (5,2), (5,3) \in oc
+
+-- invariant "x = 0; y = 0 || y = 0; x = 0"
+--     !(order_constraints[4][0] && order_constraints[1][0] &&
+--       order_constraints[2][5] && order_constraints[3][5])
+
+-- invariant "x = 1; y = 0 || y = 0; x = 0"
+--     !(order_constraints[0][4] && order_constraints[1][0] &&
+--       order_constraints[2][5] && order_constraints[3][5])
+
+-- invariant "x = 0; y = 1 || y = 0; x = 0"
+--     !(order_constraints[0][4] && order_constraints[1][0] &&
+--       order_constraints[2][5] && order_constraints[3][5])
+
+-- invariant "x = 0; y = 0 || y = 1; x = 0"
+--     !(order_constraints[4][0] && order_constraints[1][0] &&
+--       order_constraints[5][2] && order_constraints[3][5])
+
+-- invariant "x = 0; y = 0 || y = 0; x = 1"
+--     !(order_constraints[4][0] && order_constraints[1][0] &&
+--       order_constraints[2][5] && order_constraints[5][3])
+
+-- invariant "x = 1; y = 1 || y = 0; x = 0"
+--    !(order_constraints[0][4] && order_constraints[0][1] &&
+--      order_constraints[2][5] && order_constraints[3][5])
+
+-- invariant "x = 0; y = 0 || y = 1; x = 1"
+--     !(order_constraints[4][0] && order_constraints[1][0] &&
+--       order_constraints[5][2] && order_constraints[5][3])
+
+-- invariant "x = 0; y = 1 || y = 0; x = 1"
+--     !(order_constraints[0][4] && order_constraints[1][0] &&
+--       order_constraints[5][2] && order_constraints[3][5])
+
+-- invariant "x = 1; y = 0 || y = 1; x = 1"
+--     !(order_constraints[0][4] && order_constraints[0][1] &&
+--       order_constraints[2][5] && order_constraints[5][3])
+
+-- invariant "x = 1; y = 1 || y = 0; x = 1"
+--     !(order_constraints[0][4] && order_constraints[0][1] &&
+--       order_constraints[5][2] && order_constraints[3][5])
+
+-- invariant "x = 1; y = 1 || y = 1; x = 0"
+--     !(order_constraints[4][0] && order_constraints[0][1] &&
+--       order_constraints[5][2] && order_constraints[5][3])
+
+-- invariant "x = 1; y = 1 || y = 1; x = 1"
 --     !(order_constraints[0][4] && order_constraints[0][1] &&
 --       order_constraints[5][2] && order_constraints[5][3])

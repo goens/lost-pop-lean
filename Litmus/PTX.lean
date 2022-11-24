@@ -5,6 +5,10 @@ namespace Litmus
 
 deflitmus IRIW := {| W x=1 ||  R x // 1 ; R y // 0 || R y // 1; R x // 0 || W y=1 |} ✓
 
+deflitmus IRIW_dep := {| W x=1 ||  R x // 1 ;dep R y // 0 || R y // 1;dep R x // 0 || W y=1 |} ✓
+
+deflitmus IRIW_dep_sc := {| W x=1 ||  R x // 1 ;dep R y // 0 || R y // 1; Fence; R x // 0 || W y=1 |} ✓
+
 deflitmus IRIW_relacq := {| W. sys_rel x=1 ||  R. sys_acq x // 1 ; R. sys_acq y // 0 || R. sys_acq y // 1; R. sys_acq x // 0 || W. sys_rel y=1 |} ✓
 
 deflitmus IRIW_3ctas := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
@@ -13,6 +17,7 @@ deflitmus IRIW_3ctas := {| W x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y 
 deflitmus IRIW_4ctas := {| W x=1 ||  R. cta_rlx x // 1 ; Fence. sys_sc;  R. cta_rlx y // 0 || R. cta_rlx y // 1; Fence. sys_sc; R. sys_rlx x // 0 || W y=1 |}
   where sys := { {T0}, {T1}, {T2}, {T3} } ✓
 
+-- TODO: litmus with sc fences and writes that are not predecessors, can something break?
 deflitmus IRIW_3ctas_1scoped_w := {| W. cta_rlx x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
   where sys := { {T0}, {T1, T2}, {T3} } ✓
 
@@ -161,6 +166,9 @@ deflitmus write_serialization := {| W. cta_rlx x=1;  W. cta_rlx x=2 || R. cta_rl
   where sys := { {T0, T1}, {T2} } ✓
 
 deflitmus write_serialization_unscoped := {| W. cta_rlx x=1;  W. cta_rlx x=2 || R. cta_rlx x // 1; R. cta_rlx x // 2 || R. cta_rlx x // 2 ; R. cta_rlx x // 1|} 𐄂
+
+deflitmus two_r_two_w := {| R. cta_rlx x // 0;dep  W. cta_rlx x=1; R. cta_rlx x // 1 || R. cta_rlx x // 0;dep W. cta_rlx x = 1; R. cta_rlx x // 1   |}
+  where sys := { {T0}, {T1} }
 
 def allTests : List Litmus.Test := litmusTests!
 def tests_2 := allTests.filter λ lit => lit.numThreads == 2

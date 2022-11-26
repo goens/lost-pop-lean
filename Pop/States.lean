@@ -6,12 +6,13 @@ namespace Pop
 def RequestId := Nat deriving ToString, BEq, Inhabited, Hashable
 def Value := Option Nat deriving ToString, BEq, Inhabited
 def Address := Nat deriving ToString, BEq, Inhabited
-def ThreadId := Nat deriving BEq, Ord, LT, LE, ToString, Inhabited, Hashable
+def ThreadId := Nat deriving Ord, LT, LE, ToString, Inhabited, Hashable, DecidableEq
+--abbrev ThreadId := Nat
 
 def RequestId.toNat : RequestId → Nat := λ x => x
 def ThreadId.toNat : ThreadId → Nat := λ x => x
 def RequestId.ofNat : Nat → RequestId := λ x => x
-def ThreadId.ofNat : Nat → RequestId := λ x => x
+def ThreadId.ofNat : Nat → ThreadId := λ x => x
 def Address.ofNat : Nat → Address := λ x => x
 def Value.ofNat : Nat → Value := λ x => some x
 def Value.ofOptionNat : Option Nat → Value := λ x => x
@@ -23,6 +24,9 @@ instance : OfNat Value n where ofNat := Value.ofNat n
 instance : Coe RequestId Nat where coe := RequestId.toNat
 
 instance : Lean.Quote ThreadId where quote := λ n => Lean.quote (ThreadId.toNat n)
+
+instance : LawfulBEq ThreadId := inferInstance
+instance : LawfulBEq (List ThreadId) := inferInstance
 
 def Address.prettyPrint (addr : Address) : String :=
   match (OfNat.ofNat addr) with
@@ -67,11 +71,13 @@ structure ReadRequest where
  addr : Address
  reads_from : Option RequestId
  val : Value
+ atomic : Bool
  deriving BEq, Inhabited
 
 structure WriteRequest where
  addr : Address
  val : Value
+ atomic : Bool
  deriving BEq, Inhabited
 
 instance : BEq ArchReq.type := ArchReq.instBEq
@@ -154,8 +160,21 @@ def BasicRequest.value? : BasicRequest → Value
 structure ValidScopes where
   system_scope : List ThreadId
   scopes : ListTree ThreadId
+  scopes_consistent : ∀ s, scopes.elem s → s.sublist system_scope
+  system_scope_is_scope : system_scope ∈ scopes
 
-def ValidScopes.default : ValidScopes := { system_scope := [], scopes := ListTree.leaf []}
+def ValidScopes.default : ValidScopes :=
+    { system_scope := [], scopes := ListTree.leaf [],
+      scopes_consistent :=
+          (by
+           intros s h
+           simp [ListTree.elem] at h
+           rw [h]
+           simp),
+      system_scope_is_scope :=
+          (by simp [ (· ∈ ·) ])
+    }
+
 instance : Inhabited ValidScopes where default := ValidScopes.default
 
 def ValidScopes.toStringHet (threadType : Option (ThreadId → String)) (scopes : ValidScopes) : String :=
@@ -174,7 +193,7 @@ instance : ToString ValidScopes where toString := ValidScopes.toString
 
 open Lean in
 private def quoteValidScopes : ValidScopes → Term
-  | ValidScopes.mk system_scope scopes => Syntax.mkCApp ``ValidScopes.mk #[quote system_scope, quote scopes]
+  | ValidScopes.mk system_scope scopes consistent system_is_scope => Syntax.mkCApp ``ValidScopes.mk #[quote system_scope, quote scopes, sorry, sorry]
 instance : Lean.Quote ValidScopes where quote := quoteValidScopes
 
 structure Scope {V : ValidScopes} where
@@ -199,13 +218,14 @@ structure Request where
   thread : ThreadId
   basic_type : BasicRequest
   occurrence : Nat
+  atomic : Bool -- for RMW
   -- scope : Scope
   -- type : α
   deriving BEq
 
 
 def Request.default : Request :=
-  {id := 0, propagated_to := [], predecessor_at := [], thread := 0,
+  {id := 0, propagated_to := [], predecessor_at := [], thread := 0, atomic := false,
    occurrence := 0, basic_type := BasicRequest.fence Inhabited.default}
 instance : Inhabited (Request) where default := Request.default
 
@@ -245,37 +265,50 @@ def Request.equivalent (r₁ r₂ : Request) : Bool :=
 -- Read, Write
 def SatisfiedRead := RequestId × RequestId deriving ToString, BEq
 
-def ValidScopes.validate (V : ValidScopes) (threads : List ThreadId) : (@Scope V) :=
- { threads := threads, valid := sorry }
+--instance [BEq α] : Membership (List α) (ListTree α) where
+--  mem lst tree := tree.elem lst = true
+
+def decideThreadsValid (threads : List ThreadId) (V : ValidScopes) : Decidable (threads ∈ V.scopes) :=
+  if h : V.scopes.elem threads then
+    Decidable.isTrue h
+  else
+    Decidable.isFalse h
+
+instance {threads : List ThreadId} {V : ValidScopes} : Decidable (threads ∈ V.scopes) := decideThreadsValid threads V
+
+def ValidScopes.validate (V : ValidScopes) (threads : List ThreadId) : Option (@Scope V) :=
+    if h : threads ∈ V.scopes then
+        some { threads := threads, valid := h }
+    else
+        none
 
 -- Gives the subscopes of S, including S.
 def ValidScopes.subscopes (V : ValidScopes) (S : @Scope V) : List (@Scope V) :=
   let children := V.scopes.nodesBelow S.threads
-  children.map V.validate
+  filterNones $ children.map V.validate
 
 def ValidScopes.containThread (V: ValidScopes) (t : ThreadId) : List (@Scope V) :=
   let containing := V.scopes.nodesAbove [t]
-  containing.map V.validate
+  filterNones $ containing.map V.validate
+
+def ValidScopes.systemScope {V : ValidScopes } : @Scope V :=
+  {threads := V.system_scope, valid := V.system_scope_is_scope}
 
 instance {V : ValidScopes} : Inhabited (@Scope V) where
- default := {threads := [], valid := sorry}
+ default := V.systemScope
 
 def ValidScopes.isUnscoped (V : ValidScopes) : Bool :=
   V.scopes == (ListTree.leaf V.system_scope)
-
-def ValidScopes.systemScope {V : ValidScopes } : @Scope V :=
-  {threads := V.system_scope, valid := sorry}
 
 def ValidScopes.jointScope : (V : ValidScopes) → ThreadId → ThreadId → (@Scope V)
  | valid, t₁, t₂ => match valid.scopes.meet t₁ t₂ with
    | some scope => {threads := scope, valid := sorry}
    | none => panic! s!"can't find the joint scope of {t₁} and {t₂} in {valid.scopes}"-- can we get rid of this case distinction?
 
-
 def ValidScopes.reqThreadScope (V : ValidScopes ) (req : Request) : (@Scope V) :=
    V.jointScope req.thread req.thread
 
-def ValidScopes.intersection : (V : ValidScopes) → @Scope V → @Scope V → @Scope V
+def ValidScopes.intersection : (V : ValidScopes) → @Scope V → @Scope V → Option (@Scope V)
   | V, s1, s2 => V.validate $ s1.threads.intersection s2.threads
 
 def Request.propagatedTo (r : Request) (t : ThreadId) : Bool := r.propagated_to.elem t
@@ -370,7 +403,9 @@ def OrderConstraints.compare {V₁ V₂ : ValidScopes} ( oc₁ : @OrderConstrain
       let scopes := scopes₁.zip scopes₂ -- pretty hacky: should get types to match
       let reqPairs := List.join $ requests.map λ r₁ => requests.foldl (init := []) λ reqs r₂ => (r₁,r₂)::reqs
       let keys := List.join $ scopes.map λ s => reqPairs.foldl (init := []) λ ks (r₁,r₂) => (s,r₁,r₂)::ks
-      keys.all λ (s,r₁,r₂) => (oc₁.lookup s.1 r₁ r₂ == oc₂.lookup s.2 r₁ r₂)
+      keys.all λ (s,r₁,r₂) => match s with
+        | (some s₁, some s₂) => (oc₁.lookup s₁ r₁ r₂ == oc₂.lookup s₂ r₁ r₂)
+        | _ => panic! s!"invalid scopes {scopes₁} or {scopes₂}"
 
 def OrderConstraints.addSingleScope {V : ValidScopes} (constraints : @OrderConstraints V)
   (scope : @Scope V) (reqs : List (RequestId × RequestId)) (val := true) : @OrderConstraints V :=
@@ -631,7 +666,7 @@ def SystemState.prettyPrint (state : SystemState) (highlight : optParam (Option 
   let ocString := if state.scopes.scopes.toList.length == 1
     then s!"constraints: {state.oderConstraintsString}\n"
     else String.intercalate "\n" $ state.scopes.scopes.toList.map
-      λ scope => s!"constraints (scope {scope}) : {state.oderConstraintsString (state.scopes.validate scope)}"
+      λ scope => s!"constraints (scope {scope}) : {state.oderConstraintsString (state.scopes.validate scope).get!}"
   let satisfiedStr := state.satisfied.map
     λ (r₁, r₂) => s!"{(state.findMaybeRemoved? r₁).get!.toShortString} with {state.requests.printReq r₂}"
   s!"requests:\n{state.requests.toString}\n\n"++
@@ -645,7 +680,7 @@ def SystemState.toString : SystemState → String
   let ocString := if state.scopes.scopes.toList.length == 1
     then s!"constraints: {state.oderConstraintsString}\n"
     else String.intercalate "\n" $ state.scopes.scopes.toList.map
-      λ scope => s!"constraints (scope {scope}) : {state.oderConstraintsString (state.scopes.validate scope)}"
+      λ scope => s!"constraints (scope {scope}) : {state.oderConstraintsString (state.scopes.validate scope).get!}"
   let satisfiedStr := state.satisfied.map
     λ (r₁, r₂) => s!"{(state.findMaybeRemoved? r₁).get!.toShortString} with {state.requests.printReq r₂}"
   s!"requests:\n{state.requests}\n"  ++

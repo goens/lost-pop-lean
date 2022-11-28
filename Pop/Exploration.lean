@@ -132,43 +132,6 @@ def SystemState.isDeadlocked (state : SystemState) (unaccepted : ProgramState) :
   let transitions := state.possibleTransitions unaccepted
   transitions == [] && state.hasUnsatisfiedReads
 
-def SystemState.partialOutcome : SystemState → Litmus.Outcome
-| state =>
-  let reqToReadOutcome := λ rd : Request =>
-    { thread := rd.thread, address := rd.address?.get!, value := rd.value?,
-      occurrence := rd.occurrence : Litmus.ReadOutcome}
-  let removed : List Litmus.ReadOutcome := state.removed.map reqToReadOutcome
-  let satisfied := state.requests.filter Request.isSatisfied |>.map reqToReadOutcome
-  removed ++ satisfied
-
-def outcomeSubset : Litmus.Outcome → Litmus.Outcome → Bool
-  | out₁, out₂ =>
-  out₁.all λ readOutcome => out₂.contains readOutcome
-
-def outcomeEquiv : Litmus.Outcome → Litmus.Outcome → Bool
-  | out₁, out₂ => outcomeSubset out₁ out₂ && outcomeSubset out₂ out₁
-
-def SystemState.outcomePossible : Litmus.Outcome → ProgramState → SystemState → Bool
- | expectedOutcome, program, state => Id.run do
-   -- Commented out: this pruning should be better/stronger, but it seems to make things slower and/or be wrong
-   -- let rfpairs := expectedOutcome.toRFPairs program
-   -- for ((readTrans,readNum),opWrite) in rfpairs do
-   --   if let some (writeTrans,writeNum) := opWrite then
-   --     if let some read := readTrans.getAcceptBasicRequest? then
-   --       if let some write := writeTrans.getAcceptBasicRequest? then
-   --         let stWrites := state.requests.filter
-   --           λ req => req.address? == write.address? && some req.thread == writeTrans.thread?
-   --             && req.occurrence == writeNum && write.value? == req.value?
-   --         let stReads := state.requests.filter
-   --           λ req => req.address? == read.address? && some req.thread == readTrans.thread?
-   --             && req.occurrence == readNum
-   --         if let (some stRead, some stWrite) := (stReads[0]?, stWrites[0]?) then
-   --           let scope := state.scopes.jointScope stRead.thread stWrite.thread
-   --           if state.orderConstraints.lookup scope stWrite.id stRead.id then
-   --             return false
-   -- if nothing breaks from
-   return outcomeSubset state.partialOutcome expectedOutcome
-
 -- This should be a monad transformer or smth...
 def SystemState.takeNthStep (state : SystemState) (acceptRequests : ProgramState)
 (n : Nat) : Except String (Transition × SystemState) :=

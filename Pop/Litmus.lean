@@ -51,6 +51,59 @@ def Test.numInstructions (test : Test) : Nat := Array.sum $ test.program.map (λ
 def Test.numScopes (test : Test)  : Nat := test.initState.scopes.scopes.toList.length
 def Test.weightedSize (test : Test)  : Nat := test.numThreads * 100 + test.numInstructions * 10 + test.numScopes
 
+end Litmus
+
+namespace Pop
+variable [Arch]
+def SystemState.partialOutcome : SystemState → Litmus.Outcome
+| state =>
+  let reqToReadOutcome := λ rd : Request =>
+    { thread := rd.thread, address := rd.address?.get!, value := rd.value?,
+      occurrence := rd.occurrence : Litmus.ReadOutcome}
+  let removed : List Litmus.ReadOutcome := state.removed.map reqToReadOutcome
+  let satisfied := state.requests.filter Request.isSatisfied |>.map reqToReadOutcome
+  removed ++ satisfied
+
+def outcomeSubset : Litmus.Outcome → Litmus.Outcome → Bool
+  | out₁, out₂ =>
+  out₁.all λ readOutcome => out₂.contains readOutcome
+
+def outcomeEquiv : Litmus.Outcome → Litmus.Outcome → Bool
+  | out₁, out₂ => outcomeSubset out₁ out₂ && outcomeSubset out₂ out₁
+
+def SystemState.outcomePossible : Litmus.Outcome → ProgramState → SystemState → Bool
+ | expectedOutcome, program, state => Id.run do
+   -- Commented out: this pruning should be better/stronger, but it seems to make things slower and/or be wrong
+   -- let rfpairs := expectedOutcome.toRFPairs program
+   -- for ((readTrans,readNum),opWrite) in rfpairs do
+   --   if let some (writeTrans,writeNum) := opWrite then
+   --     if let some read := readTrans.getAcceptBasicRequest? then
+   --       if let some write := writeTrans.getAcceptBasicRequest? then
+   --         let stWrites := state.requests.filter
+   --           λ req => req.address? == write.address? && some req.thread == writeTrans.thread?
+   --             && req.occurrence == writeNum && write.value? == req.value?
+   --         let stReads := state.requests.filter
+   --           λ req => req.address? == read.address? && some req.thread == readTrans.thread?
+   --             && req.occurrence == readNum
+   --         if let (some stRead, some stWrite) := (stReads[0]?, stWrites[0]?) then
+   --           let scope := state.scopes.jointScope stRead.thread stWrite.thread
+   --           if state.orderConstraints.lookup scope stWrite.id stRead.id then
+   --             return false
+   -- if nothing breaks from
+   return outcomeSubset state.partialOutcome expectedOutcome
+
+end Pop
+
+namespace Litmus
+open Util Pop Lean
+
+variable [Arch]
+
+def Test.trace (test : Test) (trace : List Transition) : Except String SystemState := test.initState.applyTrace (test.initTransitions ++ test.program.all ++ trace)
+def Test.outcome? (test : Test) (trace : List Transition) : Option Outcome := test.trace trace |>.toOption |>.map SystemState.partialOutcome
+def Test.allowed (test : Test) : Prop := ∃ trace, test.outcome? trace = some test.expected
+def Test.disallowed (test : Test) : Prop := ¬ test.allowed
+
 instance : Inhabited Test where default := { initTransitions := [], program := #[], expected := [], initState := default, name := "default", axiomaticAllowed := .unknown, guideTraces := []}
 
 def addressValuePretty : Address × Value → String

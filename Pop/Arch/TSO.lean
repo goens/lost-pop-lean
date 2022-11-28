@@ -42,18 +42,26 @@ def alloyName := "tso"
 namespace Litmus
 
 def mkRead (_ : String ) (addr : Address) (_ : String) : BasicRequest :=
-  let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
+  let rr : ReadRequest := { addr := addr, reads_from := none, val := none, atomic := false}
   BasicRequest.read rr default
 
 def mkWrite (_ : String) (addr : Address) (val : Value) (_ : String) : BasicRequest :=
-  let wr : WriteRequest := { addr := addr, val := val}
+  let wr : WriteRequest := match val with
+    | some v => { addr := addr, val := .const v, atomic := false}
+    | none => { addr := addr, val := .failed, atomic := false}
   BasicRequest.write wr default
 
 def mkFence (_ : String) (_ : String) : BasicRequest := BasicRequest.fence default
 
+def mkRMW (_ : String) (addr: Address) (_ : String) : BasicRequest × BasicRequest :=
+  let wr : WriteRequest := { addr := addr, val := .addOne, atomic := true}
+  let rr : ReadRequest := { addr := addr, reads_from := none, val := none, atomic := true}
+  (BasicRequest.read rr default, BasicRequest.write wr default)
+
 instance : LitmusSyntax where
   mkRead := mkRead
   mkWrite := mkWrite
+  mkRMW := mkRMW
   mkFence := mkFence
   alloyName := alloyName
   toAlloy := toAlloy

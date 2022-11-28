@@ -117,6 +117,7 @@ declare_syntax_cat guide_trace (behavior := both)
 declare_syntax_cat transition (behavior := both)
 
 syntax "R" ident ("//" num)? : request
+syntax "RMW" ident ("//" num)? : request
 syntax "R." ident ident  ("//" num)? : request
 syntax "W" ident "=" num : request
 syntax "W." ident ident "=" num : request
@@ -226,6 +227,7 @@ variable [Arch]
 
 class LitmusSyntax where
   mkRead : String → Address → String → BasicRequest
+  mkRMW : String → Address → String → BasicRequest × BasicRequest
   mkWrite : String → Address → Value → String → BasicRequest
   mkFence : String → String → BasicRequest
   (toAlloy :  String → BasicRequest → String := λ _ _ => "UNKNOWN_REQUEST")
@@ -237,13 +239,14 @@ def mkValidScopes (n : Nat) : ValidScopes :=
 variable [LitmusSyntax]
 open LitmusSyntax
 
-def mkRequest : String × String × Address × Value → ThreadId → String → Option (Transition)
-  | ("R", typeStr, addr, _), thId, thTy => some $ Pop.Transition.acceptRequest (mkRead typeStr addr thTy) thId
-  | ("W",typeStr , addr, val), thId, thTy  => some $ Pop.Transition.acceptRequest (mkWrite typeStr addr val thTy) thId
-  | ("Fence", typeStr, _, _), thId, thTy => some $ Pop.Transition.acceptRequest (mkFence typeStr thTy) thId
-  | ("Dependency", _, _, _), thId, thTy => some $ Pop.Transition.acceptRequest (mkFence "sys_dep" thTy) thId -- hack: sys_dep
+def mkRequest : String × String × Address × Value → ThreadId → String → List Transition
+  | ("R", typeStr, addr, _), thId, thTy => [Pop.Transition.acceptRequest (mkRead typeStr addr thTy) thId]
+  | ("RMW", typeStr, addr, _), thId, thTy => [Pop.Transition.acceptRequest (mkRead typeStr addr thTy) thId,  Pop.Transition.acceptRequest (mkRead typeStr addr thTy) thId]
+  | ("W",typeStr , addr, val), thId, thTy  => [Pop.Transition.acceptRequest (mkWrite typeStr addr val thTy) thId]
+  | ("Fence", typeStr, _, _), thId, thTy => [Pop.Transition.acceptRequest (mkFence typeStr thTy) thId]
+  | ("Dependency", _, _, _), thId, thTy => [Pop.Transition.acceptRequest (mkFence "sys_dep" thTy) thId] -- hack: sys_dep
   -- | ("Dependency", _, _, _), _, _ => some $ Pop.Transition.dependency none
-  | _, _, _ => none
+  | _, _, _ => []
 
 def mkReadOutcomeTriple : String × String × Address × Value → ThreadId → Option (ThreadId × Address × Value)
   | ("R", _, addr, val@(some _)), thId  => some (thId,addr,val)
@@ -308,7 +311,7 @@ structure RequestSyntax where
 instance : ToString RequestSyntax where toString := λ rs => s!"{rs.reqKind}, {rs.reqType}, {rs.varName}, {rs.value}"
 
 -- TODO: I should refactor createLitmus to use something like this, but more robust (passing the maps)
-def mkRequestSimple : RequestSyntax → ThreadId → String → Option Transition
+def mkRequestSimple : RequestSyntax → ThreadId → String → List Transition
   | syn => match syn.varName with
     | "x" => Pop.mkRequest (syn.reqKind, syn.reqType, 0, syn.value)
     | "y" => Pop.mkRequest (syn.reqKind, syn.reqType, 1, syn.value)
@@ -319,7 +322,7 @@ def mkRequestSimple : RequestSyntax → ThreadId → String → Option Transitio
 structure LitmusMetadata where
   (name : String := "anonymous")
   (allowed : Litmus.AxiomaticAllowed := .unknown)
-  (guideTraceGens : List (List (ThreadId × (String → Option Transition))) := [])
+  (guideTraceGens : List (List (ThreadId × (String → List Transition))) := [])
 
 def createLitmus (list : List (List RequestSyntax))
   (opScopesThreadMapping : Option $ ValidScopes × (ThreadId → String))
@@ -338,14 +341,14 @@ def createLitmus (list : List (List RequestSyntax))
   let replacedVariablesNat : List (List (String × String × Nat × Option Nat)) :=  list.map λ thread => thread.map replaceVar
   let replacedVariables : List (List (String × String × Address × Value)) := replacedVariablesNat.map λ l => l.map (λ (str,rtype,addr,val) => (str,rtype,Address.ofNat addr, val))
   let fullThreads := replacedVariables.zip (List.range replacedVariables.length)
-  let mkThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkRequest r thId (threadTypes thId)) reqs
+  let mkThread := λ (reqs, thId) => List.join $ List.map (λ r => mkRequest r thId (threadTypes thId)) reqs
   let mkOutcomeThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkReadOutcomeTriple r thId) reqs
   let reqs := fullThreads.map λ t => mkThread t |>.toArray
   let outcomes := mkOutcome $ List.join $ fullThreads.map λ t => mkOutcomeThread t
   let initWrites := initZeroesUnpropagatedTransitions (threadTypes 0) (List.range variables.length)
   let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
   let guideTraces : List (List Transition) := metadata.guideTraceGens.map λ tr =>
-    filterNones $ tr.map λ (thId, genFun) => genFun (threadTypes thId)
+    List.join $ tr.map λ (thId, genFun) => genFun (threadTypes thId)
   let initState := match validScopes with
     | some scopes => SystemState.init scopes threadTypes
     | none => SystemState.init (mkValidScopes fullThreads.length) threadTypes
@@ -387,13 +390,13 @@ macro_rules
   | `(request_set| $r:request_seq || $rs:request_set) => `(`[req_seq| $r] :: `[req_set| $rs])
 
 -- Hack : can't bind var in quotation for lambda
-def propagateToThreadOption : Pop.RequestId → Pop.ThreadId → String → Option Pop.Transition :=
-    λ r t _ => some $ Pop.Transition.propagateToThread r t
+def propagateToThreadList : Pop.RequestId → Pop.ThreadId → String → List Pop.Transition :=
+    λ r t _ => [Pop.Transition.propagateToThread r t]
 
 macro_rules
   | `(`[transition| Accept ($r) at Thread $n]) => `( ($n, mkRequestSimple `[req|$r] $n ) )
-  | `(`[transition| Propagate Request $r to Thread $t]) => `(($t, Pop.propagateToThreadOption $r $t))
-  | `(`[transition| Satisfy Request $r with Request $w]) => `((42, fun _ => some (Pop.Transition.satisfyRead $r $w)))
+  | `(`[transition| Propagate Request $r to Thread $t]) => `(($t, Pop.propagateToThreadList $r $t))
+  | `(`[transition| Satisfy Request $r with Request $w]) => `((42, fun _ => [ (Pop.Transition.satisfyRead $r $w)]))
 
 macro_rules
 --  | `(`[guide_trace| $[$n:num],* ]) => `([ $[$n],* ])
@@ -459,8 +462,8 @@ partial def mkSysAux (mapping : String → Option ThreadId) (desc : TSyntax `sys
     | `(system_desc| { $ts:threads }.$ty) => return (← mkCTA mapping ts, [(threadsGetAllNames ts |>.toList, ty.getId.toString)])
     | `(system_desc| { $[$sds:system_desc],* }) => do
       let (sdsTrees, names) := (← sds.mapM $ mkSysAux mapping).toList.unzip
-      let join := blesort $ setJoin $ sdsTrees.map ListTree.listType
-      return (← ListTree.mkParent join sdsTrees, names.join)
+      let join := blesort $ setJoin $ sdsTrees.map (@ListTree.listType ThreadId instBEqThreadId)
+      return (← @ListTree.mkParent ThreadId instBEqThreadId join sdsTrees, names.join)
     | _ => Except.error "unexpected syntax in system description"
 
 def mkSys (desc : TSyntax `system_desc) : Except String (ValidScopes × (List $ List ThreadId × String)) :=

@@ -134,6 +134,9 @@ def mkWrite (typedescr : String) (addr : Address) (val : Value) (threadType : St
     | "x86" => x86.Litmus.mkWrite typedescr addr val ""
     | t => panic! s!"Unknown Thread type: {t}"
 
+def mkRMW (_ : String) (_ : Address) (_ : String) : BasicRequest × BasicRequest :=
+  panic! "RMW unimplemented in Compound"
+
 def mkFence (typedescr : String) (threadType : String) : BasicRequest :=
   match threadType with
     | "PTX" => PTX.Litmus.mkFence typedescr ""
@@ -155,6 +158,7 @@ def alloyName := "cmm"
 instance : LitmusSyntax where
   mkRead := mkRead
   mkWrite := mkWrite
+  mkRMW := mkRMW
   mkFence := mkFence
   alloyName := alloyName
   toAlloy := toAlloy

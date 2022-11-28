@@ -172,7 +172,8 @@ def addNewPredecessors (state : SystemState) (write read : Request) (thId : Thre
   else
     return state
 
-def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool := Arch.acceptConstraints
+def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool
+    := Arch.acceptConstraints
 
 def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope state.scopes →
 RequestId → ThreadId → @OrderConstraints state.scopes

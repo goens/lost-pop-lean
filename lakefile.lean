@@ -39,3 +39,4 @@ lean_exe alloy {
 }
 
 require std from git "https://github.com/leanprover/std4.git" @ "587bc70"
+require Murphi from git "https://github.com/goens/lean-murphi.git" @ "e1e6ea7"

@@ -211,6 +211,19 @@ def buildTransitionTrace : Litmus.Test → List Nat → Option (List Transition)
         panic! s!"cannot find transition ({idx}) in available transitions: {available}"
     return some res
 
+def validTrace : SystemState → ProgramState → List Transition → Bool
+  | _, _, [] => true
+  | state, prog, trans::rest =>
+    let transOk := state.possibleTransitions prog |>.contains trans
+    let restOk := match state.applyTransition trans with
+      | .error _ => false
+      | .ok state' => validTrace state' (prog.consumeTransition state trans) rest
+    transOk && restOk
+
+def _root_.Litmus.Test.outcome? (test : Litmus.Test) (trace : List Transition) : Option Litmus.Outcome := test.runTrace trace |>.toOption |>.map SystemState.partialOutcome
+def _root_.Litmus.Test.allowed (test : Litmus.Test) : Prop := ∃ trace, validTrace test.initalized test.program trace ∧ test.outcome? trace = some test.expected
+def _root_.Litmus.Test.disallowed (test : Litmus.Test) : Prop := ¬ test.allowed
+
 abbrev SearchState := Triple (List Transition) ProgramState SystemState
 
 structure SearchOptions where

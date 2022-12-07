@@ -99,10 +99,9 @@ open Util Pop Lean
 
 variable [Arch]
 
-def Test.trace (test : Test) (trace : List Transition) : Except String SystemState := test.initState.applyTrace (test.initTransitions ++ test.program.all ++ trace)
-def Test.outcome? (test : Test) (trace : List Transition) : Option Outcome := test.trace trace |>.toOption |>.map SystemState.partialOutcome
-def Test.allowed (test : Test) : Prop := ∃ trace, test.outcome? trace = some test.expected
-def Test.disallowed (test : Test) : Prop := ¬ test.allowed
+
+def Test.initalized (test : Test) : SystemState := test.initState.applyTrace! test.initTransitions
+def Test.runTrace (test : Test) (trace : List Transition) : Except String SystemState := test.initState.applyTrace (test.initTransitions ++ trace)
 
 instance : Inhabited Test where default := { initTransitions := [], program := #[], expected := [], initState := default, name := "default", axiomaticAllowed := .unknown, guideTraces := []}
 

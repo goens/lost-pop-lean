@@ -87,10 +87,13 @@ def Transition.prettyPrint : SystemState → Transition → String
 
 abbrev ProgramState := Array (Array (Transition))
 
+
 def ProgramState.allFilter (prog : ProgramState) (filterFun : Transition → Bool)
   : List Transition :=
   List.join $ Array.toList $ prog.map
     λ th => th.toList.filter filterFun
+
+def ProgramState.all (prog : ProgramState) : List Transition := prog.allFilter (λ _ => true)
 
 def ProgramState.allReads (prog : ProgramState) : List Transition :=
   prog.allFilter Transition.isReadAccept
@@ -172,7 +175,8 @@ def addNewPredecessors (state : SystemState) (write read : Request) (thId : Thre
   else
     return state
 
-def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool := Arch.acceptConstraints
+def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool
+    := Arch.acceptConstraints
 
 def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope state.scopes →
 RequestId → ThreadId → @OrderConstraints state.scopes

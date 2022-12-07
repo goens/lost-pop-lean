@@ -7,7 +7,11 @@ def RequestId := Nat deriving ToString, BEq, Inhabited, Hashable
 def Value := Option Nat deriving ToString, BEq, Inhabited
 def Address := Nat deriving ToString, BEq, Inhabited
 def ThreadId := Nat deriving Ord, LT, LE, ToString, Inhabited, Hashable, DecidableEq
---abbrev ThreadId := Nat
+inductive ConditionalValue
+  | const : Nat → ConditionalValue
+  | addOne : ConditionalValue
+  | failed : ConditionalValue
+  deriving BEq, Inhabited
 
 def RequestId.toNat : RequestId → Nat := λ x => x
 def ThreadId.toNat : ThreadId → Nat := λ x => x
@@ -23,7 +27,12 @@ instance : OfNat Address n where ofNat := Address.ofNat n
 instance : OfNat Value n where ofNat := Value.ofNat n
 instance : Coe RequestId Nat where coe := RequestId.toNat
 
+instance : BEq ThreadId := @instBEq ThreadId instThreadIdDecidableEq
 instance : Lean.Quote ThreadId where quote := λ n => Lean.quote (ThreadId.toNat n)
+instance : ToString ConditionalValue where toString
+  | .const n => s!"{n}"
+  | .addOne => s!"n + 1"
+  | .failed => "FAILED"
 
 instance : LawfulBEq ThreadId := inferInstance
 instance : LawfulBEq (List ThreadId) := inferInstance
@@ -70,13 +79,13 @@ variable [ArchReq]
 structure ReadRequest where
  addr : Address
  reads_from : Option RequestId
- val : Value
  atomic : Bool
+ val : Value
  deriving BEq, Inhabited
 
 structure WriteRequest where
  addr : Address
- val : Value
+ val : ConditionalValue
  atomic : Bool
  deriving BEq, Inhabited
 
@@ -98,7 +107,7 @@ def BasicRequest.toString : BasicRequest → String
     s!"R{tyStr} {rr.addr.prettyPrint}" ++ match rr.val with | none => "" | some v => s!" // {v}"
   | BasicRequest.write  wr ty =>
     let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
-    s!"W{tyStr} {wr.addr.prettyPrint}" ++ match wr.val with | none => "" | some v => s!" = {v}"
+    s!"W{tyStr} {wr.addr.prettyPrint} {wr.val}"
   | BasicRequest.fence ty =>
     let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
     s!"Fence{tyStr}"
@@ -113,13 +122,10 @@ def BasicRequest.prettyPrint : BasicRequest → String
       | str => s!".{str}"
     s!"R{tyStr} {rr.addr.prettyPrint}{valStr}"
   | BasicRequest.write  wr ty =>
-    let valStr := match wr.val with
-     | none => ""
-     | some val => s!"({val})"
     let tyStr := match s!"{ArchReq.prettyPrint ty}" with
       | "" => ""
       | str => s!".{str}"
-    s!"W{tyStr} {wr.addr.prettyPrint}{valStr}"
+    s!"W{tyStr} {wr.addr.prettyPrint}({wr.val})"
   | BasicRequest.fence ty =>
     let tyStr := match s!"{ArchReq.prettyPrint ty}" with
       | "" => ""
@@ -154,7 +160,10 @@ def BasicRequest.setValue : (BasicRequest) → Value → (BasicRequest)
 
 def BasicRequest.value? : BasicRequest → Value
   | BasicRequest.read rr _ => rr.val
-  | BasicRequest.write wr _ => wr.val
+  | BasicRequest.write wr _ => match wr.val with
+    | .const n => some n
+    | .addOne => none
+    | .failed => none
   | _ => none
 
 structure ValidScopes where
@@ -239,6 +248,8 @@ def Request.toShortString : Request → String
 def BasicRequest.isRead    (r : BasicRequest) : Bool := match r with | read  _ _ => true | _ => false
 def BasicRequest.isWrite   (r : BasicRequest) : Bool := match r with | write _ _ => true | _ => false
 def BasicRequest.isFence (r : BasicRequest) : Bool := match r with | fence _ => true | _ => false
+
+def BasicRequest.isAtomic (r : BasicRequest) : Bool := match r with | .read rr _ => rr.atomic | .write wr _ => wr.atomic | .fence _ => false
 def Request.isRead    (r : Request) : Bool := r.basic_type.isRead
 def Request.isWrite   (r : Request) : Bool := r.basic_type.isWrite
 def Request.isFence (r : Request) : Bool := r.basic_type.isFence
@@ -250,6 +261,8 @@ def Request.setValue (r : Request) (v : Value) : Request := { r with basic_type 
 def Request.isSatisfied (r : Request) : Bool := match r.basic_type with
   | .read rr _ => rr.val.isSome
   | _ => false
+
+def Request.isAtomic (r : Request) : Bool := r.basic_type.isAtomic
 
 def BasicRequest.address? (r : BasicRequest) : Option Address := match r with
   | read  req _ => some req.addr

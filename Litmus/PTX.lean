@@ -135,17 +135,17 @@ deflitmus WRC_cta_1_1_1_cta_rf_left_sc_acq := {| W. cta_rlx x=1 || R. sys_rlx x 
 deflitmus WRC_cta_1_1_1_cta_rf_left_sc := {| W. cta_rlx x=1 || R. sys_rlx x // 1; Fence. sys_sc; W. sys_rlx y = 1 || R. sys_rlx y // 1 ; Fence. sys_sc; R. sys_rlx x // 0 |}
   where sys := { {T0}, {T1}, {T2}} ✓
 
-deflitmus MP3 := {| W x=1;  W y=1 || R y // 1; W z = 1 || R z // 1 ; R x // 0|} ✓
+deflitmus ISA2 := {| W x=1;  W y=1 || R y // 1; W z = 1 || R z // 1 ; R x // 0|} ✓
 
-deflitmus MP3_acqrel := {| W. cta_rel x=1;  W. cta_rel y=1 || R. cta_acq y // 1; W. cta_rel z = 1 || R. cta_acq z // 1 ; R. cta_acq x // 0|} 𐄂
+deflitmus ISA2_acqrel := {| W. cta_rel x=1;  W. cta_rel y=1 || R. cta_acq y // 1; W. cta_rel z = 1 || R. cta_acq z // 1 ; R. cta_acq x // 0|} 𐄂
 
-deflitmus MP3_fences := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_acq; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} ✓
+deflitmus ISA2_fences := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_acq; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} ✓
 
-deflitmus MP3_fences_rel := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_rel; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} ✓
+deflitmus ISA2_fences_rel := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_rel; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} ✓
 
-deflitmus MP3_fences' := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_acqrel; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} 𐄂
+deflitmus ISA2_fences' := {| W x=1; Fence. sys_rel; W y=1 || R y // 1; Fence. sys_acqrel; W z = 1 || R z // 1 ; Fence. sys_acq; R x // 0|} 𐄂
 
-deflitmus MP3_scoped := {| W. cta_rel x=1;  W. cta_rel y=1 || R. cta_acq y // 1; W. cta_rel z = 1 || R. cta_acq z // 1 ; R. cta_acq x // 0|}
+deflitmus ISA2_scoped := {| W. cta_rel x=1;  W. cta_rel y=1 || R. cta_acq y // 1; W. cta_rel z = 1 || R. cta_acq z // 1 ; R. cta_acq x // 0|}
   where sys := { {T0}, {T1, T2}} ✓
 
 deflitmus three_vars_ws := {| W x = 1; Fence. sys_acqrel; W y = 1 || W y = 2; Fence. sys_acqrel; W z = 1 || R z // 1; Fence. sys_acqrel; R x // 0 |} ✓
@@ -169,6 +169,8 @@ deflitmus write_serialization_unscoped := {| W. cta_rlx x=1;  W. cta_rlx x=2 || 
 
 deflitmus two_r_two_w := {| R. cta_rlx x // 0;dep  W. cta_rlx x=1; R. cta_rlx x // 1 || R. cta_rlx x // 0;dep W. cta_rlx x = 1; R. cta_rlx x // 1   |}
   where sys := { {T0}, {T1} }
+
+deflitmus z6_3_lwsync_lwsync_dep := {| W x=1; Fence. sys_acqrel; W y=1; R y // 2 || W y = 2; Fence. sys_acqrel; W z = 1 || R z // 1 ;dep R x // 0|}
 
 def allTests : List Litmus.Test := litmusTests!
 def tests_2 := allTests.filter λ lit => lit.numThreads == 2

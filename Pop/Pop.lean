@@ -188,8 +188,25 @@ def addNewPredecessors (state : SystemState) (write read : Request) (thId : Thre
   else
     return state
 
+def SystemState.rmwPairsBlocking : SystemState → List (Request × Request)
+  | state =>
+    let atomics := state.requests.filter Request.isAtomic
+    -- quadratic, but shouldn't often by many pairs anyway
+    let rmw_pairs := filterNones $ atomics.map
+      λ req => if !req.isRead then none else
+        let succ_write? := state.atomicWriteAfterRead req.id
+        match succ_write? with
+          | none => none
+          | some write => some (req,write)
+    rmw_pairs.filter
+      λ (read, write) => !(read.propagated_to == write.propagated_to)
+
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool
-    := Arch.acceptConstraints
+  | state, br, thId =>
+    if state.rmwPairsBlocking.isEmpty then
+      Arch.acceptConstraints state br thId
+    else
+      false
 
 def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope state.scopes →
 RequestId → ThreadId → @OrderConstraints state.scopes
@@ -347,16 +364,7 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
 
     let fenceLikes := propagateConstraintsAux state req blockingFenceLikes
     --dbg_trace "can {req} propagate to thread {thId}?\n blockingReqs = {blockingReqs}"
-    let atomics := state.requests.filter Request.isAtomic
-    -- quadratic, but shouldn't often by many pairs anyway
-    let rmw_pairs := filterNones $ atomics.map
-      λ req => if !req.isRead then none else
-        let succ_write? := state.atomicWriteAfterRead req.id
-        match succ_write? with
-          | none => none
-          | some write => some (req,write)
-    let rmw_pairs_done := rmw_pairs.all
-      λ (read, write) => (read.propagated_to == write.propagated_to) || (reqId == write.id && read.propagatedTo thId)
+    let rmw_pairs_done := state.rmwPairsBlocking.all λ (read, write) => write.id == reqId && read.propagatedTo thId
     arch && unpropagated && blockingReqs.isEmpty && fenceLikes && rmw_pairs_done
 
 def Request.propagate : Request → ThreadId → Request
@@ -403,7 +411,8 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
         let between := state.idsToReqs betweenIds
         let writesToAddrBetween := between.filter λ r =>
           r.address? == write.address? && !(state.isSatisfied r.id)
-        arch && oc && writesToAddrBetween.length == 0 && write.value?.isSome
+        let rmwPairs := state.rmwPairsBlocking
+        arch && oc && writesToAddrBetween.length == 0 && write.value?.isSome && rmwPairs.isEmpty
     | _, _ => panic! s!"unknown request ({readId} or {writeId})"
 
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState

@@ -180,19 +180,19 @@ def BasicRequest.value? : BasicRequest → Value
 structure ValidScopes where
   system_scope : List ThreadId
   scopes : ListTree ThreadId
-  scopes_consistent : ∀ s, scopes.elem s → s.sublist system_scope
-  system_scope_is_scope : system_scope ∈ scopes
+  --scopes_consistent : ∀ s, scopes.elem s → s.sublist system_scope
+  --system_scope_is_scope : system_scope ∈ scopes
 
 def ValidScopes.default : ValidScopes :=
     { system_scope := [], scopes := ListTree.leaf [],
-      scopes_consistent :=
-          (by
-           intros s h
-           simp [ListTree.elem] at h
-           rw [h]
-           simp),
-      system_scope_is_scope :=
-          (by simp [ (· ∈ ·) ])
+     -- scopes_consistent :=
+     --     (by
+     --      intros s h
+     --      simp [ListTree.elem] at h
+     --      rw [h]
+     --      simp),
+     -- system_scope_is_scope :=
+     --     (by simp [ (· ∈ ·) ])
     }
 
 instance : Inhabited ValidScopes where default := ValidScopes.default
@@ -213,7 +213,7 @@ instance : ToString ValidScopes where toString := ValidScopes.toString
 
 open Lean in
 private def quoteValidScopes : ValidScopes → Term
-  | ValidScopes.mk system_scope scopes consistent system_is_scope => Syntax.mkCApp ``ValidScopes.mk #[quote system_scope, quote scopes, sorry, sorry]
+  | ValidScopes.mk system_scope scopes /-consistent system_is_scope-/ => Syntax.mkCApp ``ValidScopes.mk #[quote system_scope, quote scopes] -- , sorry, sorry]
 instance : Lean.Quote ValidScopes where quote := quoteValidScopes
 
 structure Scope {V : ValidScopes} where
@@ -316,7 +316,7 @@ def ValidScopes.containThread (V: ValidScopes) (t : ThreadId) : List (@Scope V) 
   filterNones $ containing.map V.validate
 
 def ValidScopes.systemScope {V : ValidScopes } : @Scope V :=
-  {threads := V.system_scope, valid := V.system_scope_is_scope}
+  {threads := V.system_scope, valid := sorry} -- V.system_scope_is_scope}
 
 instance {V : ValidScopes} : Inhabited (@Scope V) where
  default := V.systemScope

@@ -286,8 +286,8 @@ class LitmusSyntax where
   (alloyName :  String := "???")
 
 def mkValidScopes (n : Nat) : ValidScopes :=
-  { system_scope := List.range n, scopes := ListTree.leaf (List.range n),
-    scopes_consistent := sorry, system_scope_is_scope := sorry}
+  { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
+    --scopes_consistent := sorry, system_scope_is_scope := sorry}
 
 variable [LitmusSyntax]
 open LitmusSyntax
@@ -531,9 +531,7 @@ def mkSys (desc : TSyntax `system_desc) : Except String (ValidScopes × (List $ 
     let (scopes, thTypes) ← mkSysAux mapping desc
     let threads := filterNones (allNames.map mapping).toList
     let thIdTypes := thTypes.map λ (thNames,ty) => (thNames.map mapping |> filterNones, ty)
-    let valids := {scopes := scopes, system_scope := threads,
-                   scopes_consistent := sorry, system_scope_is_scope := sorry}
-    return (valids, thIdTypes)
+    return ({scopes := scopes, system_scope := threads}, thIdTypes)
   else
     let doubles := allNames.toList.unique.foldl (init := allNames) (λ curr name => curr.erase name)
     Except.error s!"some thread(s) appear(s) more than once: {doubles}"
@@ -547,9 +545,9 @@ macro_rules
 
 -- Tests
 
-#eval `[sys| {{T1}, {T2}} ].scopes
+-- #eval `[sys| {{T1}, {T2}} ].1.scopes
 
-#eval `[sys| {{ T1, T2 } , {T3}.x86, {T4, T5, T6}} ].scopes
+-- #eval `[sys| {{ T1, T2 } , {T3}.x86, {T4, T5, T6}} ].1.scopes
 -- should fail!
 -- #eval `[sys| {{ T1, T2 } , {T2, T3}} ].scopes.leaves
 

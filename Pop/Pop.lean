@@ -144,9 +144,10 @@ def SystemState.atomicWriteAfterRead : SystemState → RequestId → Option Requ
       let ocLookup := state.orderConstraints.lookup (state.scopes.reqThreadScope read)
       let readThreadRequests := state.requests.filter (·.thread == read.thread)
       let afterRead := readThreadRequests.filter
-                 λ req => ocLookup readId req.id && readThreadRequests.all
-                   λ req' => ocLookup req.id req'.id
-      afterRead.head?
+                 λ req => ocLookup readId req.id
+      let firstAfterRead := afterRead.filter λ req => afterRead.all
+                   λ req' => req.id == req'.id || ocLookup req.id req'.id
+      firstAfterRead.head?
 
 -- TODO: add also for atomics
 def SystemState.blockedOnRequests (state : SystemState) : List Request := Id.run do
@@ -402,7 +403,7 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
         let between := state.idsToReqs betweenIds
         let writesToAddrBetween := between.filter λ r =>
           r.address? == write.address? && !(state.isSatisfied r.id)
-        arch && oc && writesToAddrBetween.length == 0
+        arch && oc && writesToAddrBetween.length == 0 && write.value?.isSome
     | _, _ => panic! s!"unknown request ({readId} or {writeId})"
 
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState
@@ -415,8 +416,13 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
      let read' := read.setValue write.value?
      let rmwWriteAfter? := state.atomicWriteAfterRead read.id
      let requests' := match rmwWriteAfter? with
-       | none => state.requests.remove readId
-       | some write => state.requests.remove readId |>.insert
+       | none =>
+         dbg_trace "no RMW after"
+         state.requests.remove readId
+       | some write =>
+         dbg_trace "rmw: {write.id} after {read.id}"
+         dbg_trace "updated: {(write.updateValue read'.value?)}"
+         state.requests.remove readId |>.insert
          (write.updateValue read'.value?)
      let removed' := (read'::state.removed).toArray.qsort
        (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList

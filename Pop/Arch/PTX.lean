@@ -322,8 +322,8 @@ def mkInitState (n : Nat) :=
   match n with
   | _ =>
   let valid_scopes : ValidScopes :=
-    { system_scope := List.range n, scopes := ListTree.leaf (List.range n),
-      scopes_consistent := sorry, system_scope_is_scope := sorry}
+    { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
+      --scopes_consistent := sorry, system_scope_is_scope := sorry}
   SystemState.init valid_scopes
 
 instance : LitmusSyntax where

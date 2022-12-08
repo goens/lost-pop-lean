@@ -426,6 +426,8 @@ macro_rules
  `(RequestSyntax.mk "R" ""  $(Lean.quote x.getId.toString)  $(Lean.quote $ v.map λ s => s.getNat))
  | `(request| R. $t:ident $x:ident $[// $v]?) =>
  `(RequestSyntax.mk "R" $(Lean.quote t.getId.toString) $(Lean.quote x.getId.toString) $(Lean.quote $ v.map λ s => s.getNat))
+ | `(request| RMW $x:ident $[// $v]?) =>
+ `(RequestSyntax.mk "RMW" ""  $(Lean.quote x.getId.toString)  $(Lean.quote $ v.map λ s => s.getNat))
  | `(request| W $x:ident = $y:num) =>
  `(RequestSyntax.mk "W" "" $(Lean.quote x.getId.toString) (some $y))
  | `(request| W. $t:ident $x:ident = $y:num) =>

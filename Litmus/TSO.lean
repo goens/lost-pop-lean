@@ -39,6 +39,8 @@ deflitmus two_plus_two2 := {| W x=1; W y=2;  R y // 1 || W y=1; W x=2 ;  R x // 
 
 deflitmus co_two_thread := {| W x = 1; R x // 2 || W x = 2; R x // 1 |} 𐄂
 
+deflitmus two_rmws := {| RMW x // 0; R x // 1 || RMW x // 0; R x // 1 |} 𐄂
+
 def allTests := litmusTests!
 def tests_2 := allTests.filter λ lit => lit.numThreads == 2
 def tests_3 := allTests.filter λ lit => lit.numThreads == 3

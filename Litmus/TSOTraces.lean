@@ -20,5 +20,7 @@ hint for dekkers := [Accept (W y = 1) at Thread 1, Accept (R x) at Thread 1, Acc
 
 hint for WRC := [Accept (R y) at Thread 2, Accept (R x) at Thread 1, Accept (W y = 1) at Thread 1, Accept (W x = 1) at Thread 0, Propagate Request 5 to Thread 1, Propagate Request 3 to Thread 0, Satisfy Request 3 with Request 5, Propagate Request 4 to Thread 2, Propagate Request 2 to Thread 1, Satisfy Request 2 with Request 4, Accept (R x) at Thread 2, Propagate Request 6 to Thread 0, Propagate Request 6 to Thread 1, Satisfy Request 6 with Request 0, Propagate Request 4 to Thread 0, Propagate Request 5 to Thread 2]
 
+-- hint for two_rmws := [Accept (R x) at Thread 1, Accept (W x n + 1) at Thread 1, Accept (R x) at Thread 1, Accept (R x) at Thread 0, Accept (W x n + 1) at Thread 0, Accept (R x) at Thread 0, Propagate Request 1 to Thread 0, Satisfy Request 1 with Request 0, Propagate Request 4 to Thread 1, Satisfy Request 4 with Request 0, Satisfy Request 3 with Request 2, Satisfy Request 6 with Request 5, Propagate Request 2 to Thread 0, Propagate Request 5 to Thread 1]
+
 end Litmus
 end x86

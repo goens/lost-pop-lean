@@ -268,7 +268,8 @@ def Request.isPermanentRead (r : Request) : Bool := r.isRead && ArchReq.isPerman
 
 def Request.value? (r : Request) : Value := r.basic_type.value?
 def Request.setValue (r : Request) (v : Value) : Request := { r with basic_type := r.basic_type.setValue v}
-def Request.updateValue (r : Request) (v : Value) : Request := { r with basic_type := r.basic_type.updateValue v}
+def Request.updateValue (r : Request) (v : Value) : Request :=
+  { r with basic_type := r.basic_type.updateValue v}
 def Request.isSatisfied (r : Request) : Bool := match r.basic_type with
   | .read rr _ => rr.val.isSome
   | _ => false

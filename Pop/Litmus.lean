@@ -286,18 +286,23 @@ class LitmusSyntax where
   (alloyName :  String := "???")
 
 def mkValidScopes (n : Nat) : ValidScopes :=
-  { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
+  { system_scope := List.range n, scopes := ListTree.leaf (List.range n),
+    scopes_consistent := sorry, system_scope_is_scope := sorry}
 
 variable [LitmusSyntax]
 open LitmusSyntax
 
 def mkRequest : String × String × Address × Value → ThreadId → String → List Transition
   | ("R", typeStr, addr, _), thId, thTy => [Pop.Transition.acceptRequest (mkRead typeStr addr thTy) thId]
-  | ("RMW", typeStr, addr, _), thId, thTy => [Pop.Transition.acceptRequest (mkRead typeStr addr thTy) thId,  Pop.Transition.acceptRequest (mkRead typeStr addr thTy) thId]
   | ("W",typeStr , addr, val), thId, thTy  => [Pop.Transition.acceptRequest (mkWrite typeStr addr val thTy) thId]
   | ("Fence", typeStr, _, _), thId, thTy => [Pop.Transition.acceptRequest (mkFence typeStr thTy) thId]
   | ("Dependency", _, _, _), thId, thTy => [Pop.Transition.acceptRequest (mkFence "sys_dep" thTy) thId] -- hack: sys_dep
   -- | ("Dependency", _, _, _), _, _ => some $ Pop.Transition.dependency none
+  | ("RMW", typeStr, addr, _), thId, thTy => [Pop.Transition.acceptRequest (mkRMW typeStr addr thTy).1 thId,
+                                              Pop.Transition.acceptRequest (mkRMW typeStr addr thTy).2 thId]
+    --I don't know why this doesn't work...
+    --let (read, write) := mkRMW typeStr addr thTy
+    --[Pop.Transition.acceptRequest read thId,  Pop.Transition.acceptRequest write thId]
   | _, _, _ => []
 
 def mkReadOutcomeTriple : String × String × Address × Value → ThreadId → Option (ThreadId × Address × Value)
@@ -526,7 +531,9 @@ def mkSys (desc : TSyntax `system_desc) : Except String (ValidScopes × (List $ 
     let (scopes, thTypes) ← mkSysAux mapping desc
     let threads := filterNones (allNames.map mapping).toList
     let thIdTypes := thTypes.map λ (thNames,ty) => (thNames.map mapping |> filterNones, ty)
-    return ({ scopes := scopes, system_scope := threads}, thIdTypes)
+    let valids := {scopes := scopes, system_scope := threads,
+                   scopes_consistent := sorry, system_scope_is_scope := sorry}
+    return (valids, thIdTypes)
   else
     let doubles := allNames.toList.unique.foldl (init := allNames) (λ curr name => curr.erase name)
     Except.error s!"some thread(s) appear(s) more than once: {doubles}"
@@ -539,7 +546,10 @@ macro_rules
       | Except.error msg => Macro.throwError msg
 
 -- Tests
--- #eval `[sys| {{ T1, T2 } , {T3}.x86, {T4, T5, T6}} ].scopes
+
+#eval `[sys| {{T1}, {T2}} ].scopes
+
+#eval `[sys| {{ T1, T2 } , {T3}.x86, {T4, T5, T6}} ].scopes
 -- should fail!
 -- #eval `[sys| {{ T1, T2 } , {T2, T3}} ].scopes.leaves
 

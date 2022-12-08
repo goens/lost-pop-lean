@@ -9,9 +9,16 @@ def Address := Nat deriving ToString, BEq, Inhabited
 def ThreadId := Nat deriving Ord, LT, LE, ToString, Inhabited, Hashable, DecidableEq
 inductive ConditionalValue
   | const : Nat → ConditionalValue
+  --| transaction : Nat → ConditionalValue
   | addOne : ConditionalValue
   | failed : ConditionalValue
   deriving BEq, Inhabited
+
+def updateConditionalValue : ConditionalValue → Value → ConditionalValue
+  | c@(.const _), _ => c
+  | .failed , _ => .failed
+  | .addOne, some v => .const (v + 1)
+  | .addOne, none => .failed
 
 def RequestId.toNat : RequestId → Nat := λ x => x
 def ThreadId.toNat : ThreadId → Nat := λ x => x
@@ -158,6 +165,10 @@ def BasicRequest.setValue : (BasicRequest) → Value → (BasicRequest)
   | BasicRequest.read rr rt, v => BasicRequest.read {rr with val := v} rt
   | br@_ , _ => br
 
+def BasicRequest.updateValue : (BasicRequest) → Value → (BasicRequest)
+  | BasicRequest.write wr rt, v => BasicRequest.write {wr with val := updateConditionalValue wr.val v} rt
+  | br@_ , _ => br
+
 def BasicRequest.value? : BasicRequest → Value
   | BasicRequest.read rr _ => rr.val
   | BasicRequest.write wr _ => match wr.val with
@@ -227,14 +238,13 @@ structure Request where
   thread : ThreadId
   basic_type : BasicRequest
   occurrence : Nat
-  atomic : Bool -- for RMW
   -- scope : Scope
   -- type : α
   deriving BEq
 
 
 def Request.default : Request :=
-  {id := 0, propagated_to := [], predecessor_at := [], thread := 0, atomic := false,
+  {id := 0, propagated_to := [], predecessor_at := [], thread := 0,
    occurrence := 0, basic_type := BasicRequest.fence Inhabited.default}
 instance : Inhabited (Request) where default := Request.default
 
@@ -258,6 +268,7 @@ def Request.isPermanentRead (r : Request) : Bool := r.isRead && ArchReq.isPerman
 
 def Request.value? (r : Request) : Value := r.basic_type.value?
 def Request.setValue (r : Request) (v : Value) : Request := { r with basic_type := r.basic_type.setValue v}
+def Request.updateValue (r : Request) (v : Value) : Request := { r with basic_type := r.basic_type.updateValue v}
 def Request.isSatisfied (r : Request) : Bool := match r.basic_type with
   | .read rr _ => rr.val.isSome
   | _ => false

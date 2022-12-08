@@ -198,7 +198,7 @@ def scopeIntersection : (V : ValidScopes) → Request → Request → @Pop.Scope
       return new_scope
     if r_old.isGeqAcq then
       return old_scope
-    return intersection
+    return intersection.get!
 
 def scopesMatch : ValidScopes → Request → Request → Bool
   | V, r_old, r_new =>
@@ -322,7 +322,8 @@ def mkInitState (n : Nat) :=
   match n with
   | _ =>
   let valid_scopes : ValidScopes :=
-    { system_scope := List.range n, scopes := ListTree.leaf (List.range n)}
+    { system_scope := List.range n, scopes := ListTree.leaf (List.range n),
+      scopes_consistent := sorry, system_scope_is_scope := sorry}
   SystemState.init valid_scopes
 
 instance : LitmusSyntax where

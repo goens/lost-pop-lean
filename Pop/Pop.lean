@@ -137,6 +137,18 @@ def predsDone (state : SystemState) (fenceLike : Request) : Bool :=
   let preds := memopsNotDone state fenceLike |>.filter λ p => p.isPredecessorAt fenceLike.thread
   preds.isEmpty
 
+def SystemState.atomicWriteAfterRead : SystemState → RequestId → Option Request
+  | state, readId => match state.requests.getReq? readId with
+    | none => none
+    | some read =>
+      let ocLookup := state.orderConstraints.lookup (state.scopes.reqThreadScope read)
+      let readThreadRequests := state.requests.filter (·.thread == read.thread)
+      let afterRead := readThreadRequests.filter
+                 λ req => ocLookup readId req.id && readThreadRequests.all
+                   λ req' => ocLookup req.id req'.id
+      afterRead.head?
+
+-- TODO: add also for atomics
 def SystemState.blockedOnRequests (state : SystemState) : List Request := Id.run do
   let fences := state.requests.filter Request.isFenceLike
   let mut res := []
@@ -334,8 +346,17 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
 
     let fenceLikes := propagateConstraintsAux state req blockingFenceLikes
     --dbg_trace "can {req} propagate to thread {thId}?\n blockingReqs = {blockingReqs}"
-    arch && unpropagated && blockingReqs.isEmpty && fenceLikes
-
+    let atomics := state.requests.filter Request.isAtomic
+    -- quadratic, but shouldn't often by many pairs anyway
+    let rmw_pairs := filterNones $ atomics.map
+      λ req => if !req.isRead then none else
+        let succ_write? := state.atomicWriteAfterRead req.id
+        match succ_write? with
+          | none => none
+          | some write => some (req,write)
+    let rmw_pairs_done := rmw_pairs.all
+      λ (read, write) => (read.propagated_to == write.propagated_to) || (reqId == write.id && read.propagatedTo thId)
+    arch && unpropagated && blockingReqs.isEmpty && fenceLikes && rmw_pairs_done
 
 def Request.propagate : Request → ThreadId → Request
   | req, thId =>
@@ -392,29 +413,17 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
    | some read, some write =>
      let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexBLe |>.toList
      let read' := read.setValue write.value?
-     match read.isPermanentRead with
-       | true =>
-       let jointScope := state.scopes.jointScope read.thread write.thread -- TODO: are we sure?
-       let betweenIds := state.orderConstraints.between jointScope write.id read.id (reqIds state.requests)
-       let requests' := state.requests.insert read'
-       let orderConstraints' := state.orderConstraints
-       /-
-       let orderConstraints' := if betweenIds.length > 0
-         then state.orderConstraints
-         else state.orderConstraints.swap jointScope read.id write.id
-        -/
-       { requests := requests', orderConstraints := orderConstraints',
-         removed := state.removed, satisfied := satisfied',
-         threadTypes := state.threadTypes, removedCoherent := sorry
-       }
-       | false =>
-       let removed' := (read'::state.removed).toArray.qsort
-         (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
-       let requests' := state.requests.remove readId
-       { requests := requests', orderConstraints := state.orderConstraints,
-         removed := removed', satisfied := satisfied',
-         threadTypes := state.threadTypes, removedCoherent := sorry,
-       }
+     let rmwWriteAfter? := state.atomicWriteAfterRead read.id
+     let requests' := match rmwWriteAfter? with
+       | none => state.requests.remove readId
+       | some write => state.requests.remove readId |>.insert
+         (write.updateValue read'.value?)
+     let removed' := (read'::state.removed).toArray.qsort
+       (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
+     { requests := requests', orderConstraints := state.orderConstraints,
+       removed := removed', satisfied := satisfied',
+       threadTypes := state.threadTypes, removedCoherent := sorry,
+     }
    | _, _ => unreachable!
 
 open Transition in

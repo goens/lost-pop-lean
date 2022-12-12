@@ -425,13 +425,8 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
      let read' := read.setValue write.value?
      let rmwWriteAfter? := state.atomicWriteAfterRead read.id
      let requests' := match rmwWriteAfter? with
-       | none =>
-         dbg_trace "no RMW after"
-         state.requests.remove readId
-       | some write =>
-         dbg_trace "rmw: {write.id} after {read.id}"
-         dbg_trace "updated: {(write.updateValue read'.value?)}"
-         state.requests.remove readId |>.insert
+       | none => state.requests.remove readId
+       | some write => state.requests.remove readId |>.insert
          (write.updateValue read'.value?)
      let removed' := (read'::state.removed).toArray.qsort
        (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList

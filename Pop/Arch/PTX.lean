@@ -315,8 +315,11 @@ def mkFence (scope_sem : String) (_ : String) : BasicRequest :=
     | _ =>
       panic! s!"malformed PTX read request: Fence.{scope_sem}"
 
-def mkRMW (_ : String) (_addr: Address) (_ : String) : BasicRequest × BasicRequest :=
-  panic! "unipmelmented RMWs in PTX"
+def mkRMW (_ : String) (addr: Address) (_ : String) : BasicRequest × BasicRequest :=
+  dbg_trace "unipmelmented RMWs in PTX"
+  let wr : WriteRequest := { addr := addr, val := .addOne, atomic := true}
+  let rr : ReadRequest := { addr := addr, reads_from := none, val := none, atomic := true}
+  (BasicRequest.read rr default, BasicRequest.write wr default)
 
 def mkInitState (n : Nat) :=
   match n with

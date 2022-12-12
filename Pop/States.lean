@@ -111,10 +111,12 @@ instance : Inhabited BasicRequest where default := BasicRequest.fence default
 def BasicRequest.toString : BasicRequest → String
   | BasicRequest.read  rr ty =>
     let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
-    s!"R{tyStr} {rr.addr.prettyPrint}" ++ match rr.val with | none => "" | some v => s!" // {v}"
+    let atomicStr := if rr.atomic then "a" else ""
+    s!"R{atomicStr}{tyStr} {rr.addr.prettyPrint}" ++ match rr.val with | none => "" | some v => s!" // {v}"
   | BasicRequest.write  wr ty =>
+    let atomicStr := if wr.atomic then "a" else ""
     let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
-    s!"W{tyStr} {wr.addr.prettyPrint} {wr.val}"
+    s!"W{atomicStr}{tyStr} {wr.addr.prettyPrint} {wr.val}"
   | BasicRequest.fence ty =>
     let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
     s!"Fence{tyStr}"
@@ -124,15 +126,17 @@ def BasicRequest.prettyPrint : BasicRequest → String
     let valStr := match rr.val with
       | none => ""
       | some val => s!"({val})"
+    let atomicStr := if rr.atomic then "a" else ""
     let tyStr := match s!"{ArchReq.prettyPrint ty}" with
       | "" => ""
       | str => s!".{str}"
-    s!"R{tyStr} {rr.addr.prettyPrint}{valStr}"
+    s!"R{atomicStr}{tyStr} {rr.addr.prettyPrint}{valStr}"
   | BasicRequest.write  wr ty =>
+    let atomicStr := if wr.atomic then "a" else ""
     let tyStr := match s!"{ArchReq.prettyPrint ty}" with
       | "" => ""
       | str => s!".{str}"
-    s!"W{tyStr} {wr.addr.prettyPrint}({wr.val})"
+    s!"W{atomicStr}{tyStr} {wr.addr.prettyPrint}({wr.val})"
   | BasicRequest.fence ty =>
     let tyStr := match s!"{ArchReq.prettyPrint ty}" with
       | "" => ""

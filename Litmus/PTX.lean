@@ -172,6 +172,8 @@ deflitmus two_r_two_w := {| R. cta_rlx x // 0;dep  W. cta_rlx x=1; R. cta_rlx x 
 
 deflitmus z6_3_lwsync_lwsync_dep := {| W x=1; Fence. sys_acqrel; W y=1; R y // 2 || W y = 2; Fence. sys_acqrel; W z = 1 || R z // 1 ;dep R x // 0|}
 
+deflitmus IRIW_rmw := {| RMW x //0 ||  R x // 1 ; Fence. sys_acq; R y // 0 || R y // 1; Fence. sys_acq; R x // 0 || RMW y//0 |}
+
 def allTests : List Litmus.Test := litmusTests!
 def tests_2 := allTests.filter λ lit => lit.numThreads == 2
 def tests_3 := allTests.filter λ lit => lit.numThreads == 3

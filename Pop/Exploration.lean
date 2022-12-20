@@ -211,6 +211,14 @@ def buildTransitionTrace : Litmus.Test → List Nat → Option (List Transition)
         panic! s!"cannot find transition ({idx}) in available transitions: {available}"
     return some res
 
+def _root_.Litmus.Test.buildTestState : Litmus.Test → List Nat → Except String SystemState
+  | test, numTransitions => do
+    let initState ← test.initState.applyTrace test.initTransitions
+    let opTransitions := buildTransitionTrace test numTransitions
+    match opTransitions with
+      | some transitions => initState.applyTrace transitions
+      | none => Except.error "Invalid trace"
+
 def validTrace : SystemState → ProgramState → List Transition → Bool
   | _, _, [] => true
   | state, prog, trans::rest =>

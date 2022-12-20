@@ -87,7 +87,6 @@ def Transition.prettyPrint : SystemState → Transition → String
 
 abbrev ProgramState := Array (Array (Transition))
 
-
 def ProgramState.allFilter (prog : ProgramState) (filterFun : Transition → Bool)
   : List Transition :=
   List.join $ Array.toList $ prog.map
@@ -136,7 +135,11 @@ def writesDone (state : SystemState) (fenceLike : Request) : Bool :=
 def predsDone (state : SystemState) (fenceLike : Request) : Bool :=
   let preds := memopsNotDone state fenceLike |>.filter λ p => p.isPredecessorAt fenceLike.thread
   preds.isEmpty
-
+/-
+TODO: we should make the RMW have 'global' knowledge whether there's another RMW in-flight.
+Only allow the write to succeed if there's not another RMW in-flight. Prevent (other) writes
+from propagating in a way that would break the coherence order once a RMW is in-flight.
+-/
 def SystemState.atomicWriteAfterRead : SystemState → RequestId → Option Request
   | state, readId => match state.requests.getReq? readId with
     | none => none
@@ -220,7 +223,7 @@ RequestId → ThreadId → @OrderConstraints state.scopes
         (req.isWrite && req'.isMem || req.isMem && req'.isWrite) &&
         --req.isMem && req'.isMem &&
         req.address? == req'.address? &&
-        (req.thread == thId || req'.thread == thId) && -- don't sync somewhere else
+        --(req.thread == thId || req'.thread == thId) && -- don't sync somewhere else
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id)
       let newObsReqs := state.requests.filter λ r => newobs r

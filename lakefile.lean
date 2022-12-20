@@ -15,7 +15,7 @@ lean_lib Litmus {
 
 @[default_target]
 lean_exe pop {
-  root := `Interact
+  root := `Main
 }
 
 lean_exe pop_explore_x86 {
@@ -39,4 +39,6 @@ lean_exe alloy {
 }
 
 require std from git "https://github.com/leanprover/std4.git" @ "main"
+require Cli from git "https://github.com/mhuisi/lean4-cli.git" @ "nightly"
 require Murphi from git "https://github.com/goens/lean-murphi.git" @ "e1e6ea7"
+

@@ -11,6 +11,19 @@ def parseArch : Option Cli.Parsed.Flag → Except String ArchType
           | .error "Error parsing flag"
         parseArchitectureString arch
 
+def parseLitmus :  (arch : ArchType) → Option Cli.Parsed.Flag → Except String (List $ @Litmus.Test arch.getInstArch)
+  | arch, opLitmusArg => do
+        let some litmusArg := opLitmusArg
+          | .ok []
+        let some litmusStr := litmusArg.as? (Array String)
+          | .error "Error parsing flag"
+        litmusStr.toList.mapM
+          λ str => match arch.getLitmusTests.find?
+            λ litmus => str == (@Litmus.Test.name arch.getInstArch litmus)
+              with
+               | none => .error s!"Unknown litmus test: {str}"
+               | some test => .ok test
+
 def parseArchIO : Cli.Parsed → IO (Option ArchType)
   | args => do
       if args.hasFlag "arch" then
@@ -27,7 +40,16 @@ def interact : Cli.Parsed → IO UInt32
   | args => do
     let some arch ← parseArchIO args
       | return 1
-    let res ← @Pop.interactiveExecution (arch.getInstArch) (arch.getLitmusTests) (← IO.getStdin)
+    let litmus ← match parseLitmus arch (args.flag? "litmus") with
+      | .ok [test] => pure test
+      | .ok [] =>
+        let exceptLitmus ← @Pop.selectLitmusLoop arch.getInstArch arch.getLitmusTests (← IO.getStdin)
+        match exceptLitmus with
+          | .ok test => pure test
+          | .error msg  => IO.println msg; return 1
+      | .ok _ => IO.println "selected multiple litmus tests for interactive mode, only 1 supported"; return 1
+      | .error msg => IO.println msg; return 1
+    let res ← @Pop.interactiveExecutionSingle (arch.getInstArch) litmus (← IO.getStdin)
       if let .error msg  := res then
         println! msg
         return 0
@@ -49,7 +71,12 @@ def explore : Cli.Parsed → IO UInt32
     let threads := match args.flag? "filter-num-threads" with
       | some ts => ts.as! (Array Nat) |>.toList
       | none => Util.removeDuplicates $ arch.getLitmusTests.map (@Litmus.Test.numThreads arch.getInstArch)
-    let tests := arch.getLitmusTests.filter λ test => threads.contains (@Litmus.Test.numThreads arch.getInstArch test)
+    let tests ← if !(args.hasFlag "litmus") then
+      pure $ arch.getLitmusTests.filter λ test => threads.contains (@Litmus.Test.numThreads arch.getInstArch test)
+      else match parseLitmus arch (args.flag? "litmus") with
+        | .ok tests => pure tests
+        | .error msg => do
+          IO.println msg; return 1
     let maxIterationsString := match maxIterations with
       | none => "unlimited iterations"
       | some max => s!"maximum {max} iterations"
@@ -79,6 +106,7 @@ def mainCmd := `[Cli|
       b, "batch-size" : Nat;                "Batch size for exploration"
       r, "random-seed" : Nat;               "Random seed for exploration"
       i, "iterations" : Nat;                "Maximum number of iterations (unlimted if not provided)"
+      l, "litmus" : String;                 "Name of a specific litmus test"
       t, "filter-num-threads" : Array Nat;  "Print witnesses when exploring"
     ]
 

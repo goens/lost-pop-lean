@@ -98,11 +98,11 @@ def selectMode : Cli.Parsed → IO UInt32
 
 def mainCmd := `[Cli|
     pop VIA selectMode;
-    "Defaults to interactive mode."
+    "Execute litmus tests on the LOST-POP model."
     FLAGS:
       a, arch : String;                     "Select the target architecture"
       "list-archs";                         "List all available architectures"
-      e, explore;                           "Automatically explore the architecture"
+      e, explore;                           "Automatically explore the litmus test(s). Default is interactive exploration"
       b, "batch-size" : Nat;                "Batch size for exploration"
       r, "random-seed" : Nat;               "Random seed for exploration"
       i, "iterations" : Nat;                "Maximum number of iterations (unlimted if not provided)"

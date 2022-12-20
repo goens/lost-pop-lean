@@ -1,6 +1,6 @@
 # POP - Lean
 
-This repository contains the Lean4 implementation of the (generalized, scoped) POP model.
+This repository contains the Lean4 implementation of the LOST-POP model.
 
 # Building
 
@@ -17,14 +17,16 @@ After compiling, you should be able to run the executable with the interactive m
 /build/bin/pop
 ```
 
-# Exploration
-
-To compile the exploration binary, we need to specify the exploration target to lake:
+An automatic exploration, among other options, can be configured using the command following flags:
 ```
-lake build pop_explore
-```
-
-We can then run it with
-```
-/build/bin/pop_explore
+  -h, --help                            Prints help message.
+  -a, --arch : String                   Select the target architecture
+  --list-archs                          List all available architectures
+  -e, --explore                         Automatically explore the architecture
+  -b, --batch-size : Nat                Batch size for exploration
+  -r, --random-seed : Nat               Random seed for exploration
+  -i, --iterations : Nat                Maximum number of iterations (unlimted
+                                        if not provided)
+  -l, --litmus : String                 Name of a specific litmus test
+  -t, --filter-num-threads : Array Nat  Print witnesses when exploring
 ```

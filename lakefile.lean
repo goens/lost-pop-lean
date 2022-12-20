@@ -18,22 +18,6 @@ lean_exe pop {
   root := `Main
 }
 
-lean_exe pop_explore_x86 {
-  root := `ExploreTSO
-}
-
-lean_exe pop_explore_arm {
-  root := `ExploreARM
-}
-
-lean_exe pop_explore_ptx {
-  root := `ExplorePTX
-}
-
-lean_exe pop_explore_compound {
-  root := `ExploreCompound
-}
-
 lean_exe alloy {
   root := `GenerateAlloy
 }

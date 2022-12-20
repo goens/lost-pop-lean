@@ -35,6 +35,12 @@ def parseArchitecture :  List ArchType → String → Except String ArchType
 
 def ArchType.available : List ArchType := [ArchType.PTX, ArchType.TSO, ArchType.Compound] --, ArchType.ARM]
 
+def parseArchitectureString : String → Except String ArchType
+  | "PTX" => .ok ArchType.PTX
+  | "TSO" => .ok ArchType.TSO
+  | "Compound" => .ok ArchType.Compound
+  | s => .error s!"Unknown architecture ({s}). Available: {ArchType.available}"
+
 def selectArchitecture : IO.FS.Stream → IO (Option ArchType)
   | stdin => do
     let available := ArchType.available

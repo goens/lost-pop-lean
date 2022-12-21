@@ -105,7 +105,7 @@ def mainCmd := `[Cli|
       e, explore;                           "Automatically explore the litmus test(s). Default is interactive exploration"
       b, "batch-size" : Nat;                "Batch size for exploration"
       r, "random-seed" : Nat;               "Random seed for exploration"
-      i, "iterations" : Nat;                "Maximum number of iterations (unlimted if not provided)"
+      i, "iterations" : Nat;                "Maximum number of iterations (unlimited if not provided)"
       l, "litmus" : String;                 "Name of a specific litmus test"
       t, "filter-num-threads" : Array Nat;  "Print witnesses when exploring"
     ]

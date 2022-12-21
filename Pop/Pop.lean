@@ -223,7 +223,7 @@ RequestId → ThreadId → @OrderConstraints state.scopes
         (req.isWrite && req'.isMem || req.isMem && req'.isWrite) &&
         --req.isMem && req'.isMem &&
         req.address? == req'.address? &&
-        --(req.thread == thId || req'.thread == thId) && -- don't sync somewhere else
+        (req.thread == thId || req'.thread == thId) && -- don't sync somewhere else
         !(state.orderConstraints.lookup scope req.id req'.id) &&
         !(state.orderConstraints.lookup scope req'.id req.id)
       let newObsReqs := state.requests.filter λ r => newobs r

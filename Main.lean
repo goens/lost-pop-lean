@@ -40,6 +40,9 @@ def interact : Cli.Parsed → IO UInt32
   | args => do
     let some arch ← parseArchIO args
       | return 1
+    let partialTrace := match args.flag? "partial-trace" with
+      | none => []
+      | some flag => flag.as! (Array Nat) |>.toList
     let litmus ← match parseLitmus arch (args.flag? "litmus") with
       | .ok [test] => pure test
       | .ok [] =>
@@ -49,7 +52,7 @@ def interact : Cli.Parsed → IO UInt32
           | .error msg  => IO.println msg; return 1
       | .ok _ => IO.println "selected multiple litmus tests for interactive mode, only 1 supported"; return 1
       | .error msg => IO.println msg; return 1
-    let res ← @Pop.interactiveExecutionSingle (arch.getInstArch) litmus (← IO.getStdin)
+    let res ← @Pop.interactiveExecutionSingle (arch.getInstArch) litmus partialTrace (← IO.getStdin)
       if let .error msg  := res then
         println! msg
         return 0
@@ -71,6 +74,7 @@ def explore : Cli.Parsed → IO UInt32
     let threads := match args.flag? "filter-num-threads" with
       | some ts => ts.as! (Array Nat) |>.toList
       | none => Util.removeDuplicates $ arch.getLitmusTests.map (@Litmus.Test.numThreads arch.getInstArch)
+    -- TODO: guide trace?
     let tests ← if !(args.hasFlag "litmus") then
       pure $ arch.getLitmusTests.filter λ test => threads.contains (@Litmus.Test.numThreads arch.getInstArch test)
       else match parseLitmus arch (args.flag? "litmus") with
@@ -108,6 +112,7 @@ def mainCmd := `[Cli|
       i, "iterations" : Nat;                "Maximum number of iterations (unlimited if not provided)"
       l, "litmus" : String;                 "Name of a specific litmus test"
       t, "filter-num-threads" : Array Nat;  "Print witnesses when exploring"
+      p, "partial-trace" : Array Nat       ;  "Provide a partial (guide) to start the litmus test"
     ]
 
 

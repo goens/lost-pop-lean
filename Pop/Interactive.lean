@@ -71,15 +71,16 @@ def formatInteractiveState (name : String) (programState : ProgramState) (system
           ++ s!"Current state:\n{systemState.prettyPrint (highlight := highlight)}\n"
           ++ "--------------------------------------\n"
 
-def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except String SearchState)
-  | .mk initTrans initProgSt expected initSysSt name axiomatic guideTraces, stdin => do
+def interactiveExecutionSingle : Litmus.Test → List  Nat → IO.FS.Stream → IO (Except String SearchState)
+  | .mk initTrans initProgSt expected initSysSt name axiomatic guideTraces, partialTraceInit, stdin => do
     let Except.ok start := initSysSt.applyTrace initTrans
       |  do return Except.error s!"error initializing litmus: {initSysSt.applyTrace initTrans}"
     let guideTrace := match guideTraces.head? with
       | none => []
       | some trace => trace
-    let mut partialTrace := []
+    let mut initTrace := partialTraceInit
     let mut partialTraceNums := []
+    let mut partialTrace := []
     let mut programState := initProgSt
     let mut finished := false
     while !finished do
@@ -96,7 +97,14 @@ def interactiveExecutionSingle : Litmus.Test → IO.FS.Stream → IO (Except Str
           ++ s!"Current trace:\n{partialTraceNums}\n"
           ++ "--------------------------------------\n"
           ++ "Possible transitions:\n" ++ "0: Undo (last transition)\n" ++ m
-        let opStep ← Util.selectLoop msg (getTransition systemState programState) stdin
+        let opStep ←
+          match initTrace with
+            | [] => Util.selectLoop msg (getTransition systemState programState) stdin
+            | n::rest =>
+              initTrace := rest
+              match getTransition systemState programState s!"{n}" with
+                | Except.error msg => panic! msg
+                | Except.ok trans => pure trans
         if let some opTransition := opStep then
           if let some (transition, n) := opTransition then
             partialTrace := partialTrace ++ [transition]
@@ -168,7 +176,7 @@ def interactiveExecution : List Litmus.Test → IO.FS.Stream → IO (Except Stri
   | tests, stdin => do
     let exceptLitmus ← selectLitmusLoop tests stdin
     match exceptLitmus with
-      | .ok litmus => interactiveExecutionSingle litmus stdin
+      | .ok litmus => interactiveExecutionSingle litmus [] stdin
       | .error msg  => return Except.error msg
 
 def replayTrace : Litmus.Test → List Transition → IO.FS.Stream → IO Unit

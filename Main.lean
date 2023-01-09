@@ -112,7 +112,7 @@ def mainCmd := `[Cli|
       i, "iterations" : Nat;                "Maximum number of iterations (unlimited if not provided)"
       l, "litmus" : String;                 "Name of a specific litmus test"
       t, "filter-num-threads" : Array Nat;  "Print witnesses when exploring"
-      p, "partial-trace" : Array Nat       ;  "Provide a partial (guide) to start the litmus test"
+      p, "partial-trace" : Array Nat     ;  "Provide a partial (guide) to start the litmus test"
     ]
 
 

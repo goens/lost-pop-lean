@@ -135,11 +135,7 @@ def writesDone (state : SystemState) (fenceLike : Request) : Bool :=
 def predsDone (state : SystemState) (fenceLike : Request) : Bool :=
   let preds := memopsNotDone state fenceLike |>.filter λ p => p.isPredecessorAt fenceLike.thread
   preds.isEmpty
-/-
-TODO: we should make the RMW have 'global' knowledge whether there's another RMW in-flight.
-Only allow the write to succeed if there's not another RMW in-flight. Prevent (other) writes
-from propagating in a way that would break the coherence order once a RMW is in-flight.
--/
+
 def SystemState.atomicWriteAfterRead : SystemState → RequestId → Option Request
   | state, readId => match state.requests.getReq? readId with
     | none => none
@@ -191,8 +187,10 @@ def addNewPredecessors (state : SystemState) (write read : Request) (thId : Thre
   else
     return state
 
+-- TODO: this is for atomics (cannot fail)
 def SystemState.rmwPairsBlocking : SystemState → List (Request × Request)
-  | state =>
+  | state => []
+  /-
     let atomics := state.requests.filter Request.isAtomic
     -- quadratic, but shouldn't often by many pairs anyway
     let rmw_pairs := filterNones $ atomics.map
@@ -203,6 +201,7 @@ def SystemState.rmwPairsBlocking : SystemState → List (Request × Request)
           | some write => some (req,write)
     rmw_pairs.filter
       λ (read, write) => !(read.propagated_to == write.propagated_to)
+      -/
 
 def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool
   | state, br, thId =>
@@ -333,6 +332,67 @@ def SystemState.unapplyAcceptRequest : SystemState → RequestId → SystemState
 --       let prop := req.propagatedTo thId
 --       -- ...
 
+/-
+A RMW can either fail or succeed.
+
+If atomicity is violated (i.e. another write comes in-between the RMW-read and the RMW-write) then
+the write will fail. If the RMW-write starts propagating (after the RMW-read has been satisfied) or is used
+to satisfy another read, then the RMW-write succeeds. In this case, we need to preserve the atomicity
+condition. This means that all writes to that same address need to be before the write read by the RMW-read
+or after the RMW-write. In particular, a write is blocked from propagating to the RMW's thread if it would break
+this invariant.
+-/
+def Request.conditionalValue? : Request → Option ConditionalValue
+  | req => req.basic_type.conditionalValue?
+
+def Request.conditionalSucceeded : Request → Bool
+  | req => match req.conditionalValue? with
+    | some (.const _) => true
+    | some _ => false
+    | none => false
+
+def Request.conditionalFailed : Request → Bool
+  | req => match req.conditionalValue? with
+    | some .failed => true
+    | some _ => false
+    | none => false
+
+def Request.conditionalUndecided : Request → Bool
+  | req => match req.conditionalValue? with
+    | some .failed => false
+    | some (.const _) => false
+    | some _ => true
+    | none => false
+
+def SystemState.rmwGetWrite? : SystemState → RequestId → Option Request
+  | state, reqId =>
+    match state.requests.getReq? reqId with
+      | none => none
+      | some req =>
+        if !req.isAtomic then
+          none -- TODO: change if changing atomics
+        else if req.isRead  then
+          let writes := state.requests.filter
+            λ req' => req'.isWrite && req'.thread == req.thread
+          let scope := state.scopes.reqThreadScope req
+          let rmwWrite := writes.filter
+            λ wr => state.orderConstraints.lookup scope req.id wr.id && writes.all
+              -- all other writes come after (i.e. is orderConstraints first)
+              λ wr' => wr'.id == wr.id || state.orderConstraints.lookup scope wr.id wr'.id
+          match rmwWrite with
+            | wr::_ => some wr
+            | [] => none
+        else none
+    
+
+def SystemState.inFlightRMWs : SystemState → List (Request × Request)
+  | state =>
+    let satisfiedReads := filterNones $ state.satisfied.map λ (r_id,w_id) =>
+      match (state.requests.getReq? r_id, state.requests.getReq? w_id) with
+        | (some read, some write) => some (read, write)
+        | _ => none
+    satisfiedReads.filter λ (read, _) => read.isAtomic -- TODO: when implementing atomics that cannot fail I should change this flag to distinguish them
+
 def Request.isPropagated : Request → ThreadId → Bool
   | req, thId => req.propagated_to.elem thId
 
@@ -350,6 +410,18 @@ def requestBlocksPropagateRequest : SystemState → ThreadId → Request → Req
     else
       return state.orderConstraints.lookup state.scopes.systemScope block.id propagate.id && !(block.propagatedTo thId)
 
+def SystemState.rmwBlocking : SystemState → RequestId → ThreadId → Bool
+  | state, reqId, thId =>
+    match state.requests.getReq? reqId with
+      | none => false
+      | some req =>
+      if !req.isWrite then false else
+        let inFlight := state.inFlightRMWs.map (λ (_,rd) => state.rmwGetWrite? rd.id)
+          |> filterNones |>.filter (λ wr => wr.address? == req.address? && wr.thread == thId)
+        let scope := state.scopes.jointScope thId req.thread
+        -- the incoming request must already be ordered with all in-flight RMWs
+        inFlight.all λ wr => state.orderConstraints.lookup scope wr.id reqId || state.orderConstraints.lookup scope reqId wr.id
+
 def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | state, reqId, thId =>
   let arch := Arch.propagateConstraints state reqId thId
@@ -357,6 +429,10 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | none => false
   | some req =>
     if !req.isMem then -- fences don't propagate
+      false else
+    if req.conditionalUndecided then -- can't propagate until decided
+      false else
+    if state.rmwBlocking reqId thId then
       false else
     let unpropagated := !req.isPropagated thId
     let blockingReqs := state.requests.filter (requestBlocksPropagateRequest state thId req)
@@ -373,6 +449,7 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
 def Request.propagate : Request → ThreadId → Request
   | req, thId =>
     let sorted := (thId :: req.propagated_to).toArray.qsort (λ x y => Nat.ble x y)
+    --if req.conditionalUndecided then
     { req with propagated_to := sorted.toList}
 
 def SystemState.propagate : SystemState → RequestId → ThreadId → SystemState
@@ -418,6 +495,14 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
         arch && oc && writesToAddrBetween.length == 0 && write.value?.isSome && rmwPairs.isEmpty
     | _, _ => panic! s!"unknown request ({readId} or {writeId})"
 
+def SystemState.alreadyOrdered : SystemState → RequestId → RequestId → Bool
+  | state, reqId, reqId' =>
+    match state.requests.getReq? reqId, state.requests.getReq? reqId' with
+      | some req, some req' =>
+        let scope := state.scopes.jointScope req.thread req'.thread
+        state.orderConstraints.lookup scope reqId reqId' || state.orderConstraints.lookup scope reqId' reqId
+      | _, _ => false
+
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState
  | state, readId, writeId =>
  let opRead := state.requests.getReq? readId
@@ -426,11 +511,24 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
    | some read, some write =>
      let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexBLe |>.toList
      let read' := read.setValue write.value?
+     let fail := match state.rmwGetWrite? readId with
+         | none => false
+         | some rmwWrite =>
+             let otherWrites := state.requests.filter
+               λ r => r.isWrite && r.address? == rmwWrite.address? && r.id != rmwWrite.id
+             otherWrites.all
+               λ write' =>
+                 let scope := state.scopes.jointScope write.thread write'.thread
+                 -- write' is either before the original write (that the RMW-read `read` is being satisfied by)
+                 state.orderConstraints.lookup scope write'.id write.id ||
+                 -- or write' is after the RMW-write.
+                 state.orderConstraints.lookup scope rmwWrite.id write'.id
+     -- Here we decide weather the in-flight RMW will fail
+     let write' := if fail then write.updateValue none else write.updateValue read'.value?
      let rmwWriteAfter? := state.atomicWriteAfterRead read.id
      let requests' := match rmwWriteAfter? with
-       | none => state.requests.remove readId
-       | some write => state.requests.remove readId |>.insert
-         (write.updateValue read'.value?)
+         | none => state.requests.remove readId
+         | some write => state.requests.remove readId |>.insert write'
      let removed' := (read'::state.removed).toArray.qsort
        (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
      { requests := requests', orderConstraints := state.orderConstraints,
@@ -477,3 +575,4 @@ def printResult : Except String (SystemState) → String
  | Except.error e => s!"Error: {e}"
 
 end Pop
+

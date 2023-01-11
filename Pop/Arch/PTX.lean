@@ -317,7 +317,7 @@ def mkFence (scope_sem : String) (_ : String) : BasicRequest :=
 
 def mkRMW (_ : String) (addr: Address) (_ : String) : BasicRequest × BasicRequest :=
   dbg_trace "unipmelmented RMWs in PTX"
-  let wr : WriteRequest := { addr := addr, val := .addOne, atomic := true}
+  let wr : WriteRequest := { addr := addr, val := .fetchAndAdd, atomic := true}
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none, atomic := true}
   (BasicRequest.read rr default, BasicRequest.write wr default)
 

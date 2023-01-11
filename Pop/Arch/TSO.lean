@@ -54,7 +54,7 @@ def mkWrite (_ : String) (addr : Address) (val : Value) (_ : String) : BasicRequ
 def mkFence (_ : String) (_ : String) : BasicRequest := BasicRequest.fence default
 
 def mkRMW (_ : String) (addr: Address) (_ : String) : BasicRequest × BasicRequest :=
-  let wr : WriteRequest := { addr := addr, val := .addOne, atomic := true}
+  let wr : WriteRequest := { addr := addr, val := .fetchAndAdd, atomic := true}
   let rr : ReadRequest := { addr := addr, reads_from := none, val := none, atomic := true}
   (BasicRequest.read rr default, BasicRequest.write wr default)
 

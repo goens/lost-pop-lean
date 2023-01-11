@@ -10,15 +10,15 @@ def ThreadId := Nat deriving Ord, LT, LE, ToString, Inhabited, Hashable, Decidab
 inductive ConditionalValue
   | const : Nat → ConditionalValue
   --| transaction : Nat → ConditionalValue
-  | addOne : ConditionalValue
+  | fetchAndAdd : ConditionalValue
   | failed : ConditionalValue
   deriving BEq, Inhabited
 
 def updateConditionalValue : ConditionalValue → Value → ConditionalValue
   | c@(.const _), _ => c
   | .failed , _ => .failed
-  | .addOne, some v => .const (v + 1)
-  | .addOne, none => .failed
+  | .fetchAndAdd, some v => .const (v + 1)
+  | .fetchAndAdd, none => .failed
 
 def RequestId.toNat : RequestId → Nat := λ x => x
 def ThreadId.toNat : ThreadId → Nat := λ x => x
@@ -38,7 +38,7 @@ instance : BEq ThreadId := @instBEq ThreadId instThreadIdDecidableEq
 instance : Lean.Quote ThreadId where quote := λ n => Lean.quote (ThreadId.toNat n)
 instance : ToString ConditionalValue where toString
   | .const n => s!"{n}"
-  | .addOne => s!"n + 1"
+  | .fetchAndAdd => s!"n + 1"
   | .failed => "FAILED"
 
 instance : LawfulBEq ThreadId := inferInstance
@@ -165,11 +165,11 @@ def BasicRequest.updateType : BasicRequest → (ArchReq.type → ArchReq.type) �
   | .write  wr t, f => .write wr (f t)
   | .fence t, f => .fence (f t)
 
-def BasicRequest.setValue : (BasicRequest) → Value → (BasicRequest)
+def BasicRequest.setValue : BasicRequest → Value → BasicRequest
   | BasicRequest.read rr rt, v => BasicRequest.read {rr with val := v} rt
   | br@_ , _ => br
 
-def BasicRequest.updateValue : (BasicRequest) → Value → (BasicRequest)
+def BasicRequest.updateValue : BasicRequest → Value → BasicRequest
   | BasicRequest.write wr rt, v => BasicRequest.write {wr with val := updateConditionalValue wr.val v} rt
   | br@_ , _ => br
 
@@ -177,8 +177,12 @@ def BasicRequest.value? : BasicRequest → Value
   | BasicRequest.read rr _ => rr.val
   | BasicRequest.write wr _ => match wr.val with
     | .const n => some n
-    | .addOne => none
+    | .fetchAndAdd => none
     | .failed => none
+  | _ => none
+
+def BasicRequest.conditionalValue? : BasicRequest → Option ConditionalValue
+  | .write wr _ => some wr.val
   | _ => none
 
 structure ValidScopes where

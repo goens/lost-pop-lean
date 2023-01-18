@@ -246,7 +246,7 @@ instance : Arch where
 
 namespace Litmus
 def mkRead (scope_sem : String ) (addr : Address) (_ : String) : BasicRequest :=
-  let rr : ReadRequest := { addr := addr, reads_from := none, val := none, atomic := false}
+  let rr : ReadRequest := { addr := addr, reads_from := none, val := none, atomicity := .nonatomic}
   match scope_sem.splitOn "_" with
     | [""] => BasicRequest.read rr
               {scope := Scope.sys, sem := Semantics.rlx}
@@ -270,8 +270,8 @@ def mkRead (scope_sem : String ) (addr : Address) (_ : String) : BasicRequest :=
 
 def mkWrite (scope_sem : String) (addr : Address) (val : Value) (_ : String) : BasicRequest :=
   let wr : WriteRequest := match val with
-    | some v => { addr := addr, val := .const v, atomic := false}
-    | none => { addr := addr, val := .failed, atomic := false}
+    | some v => { addr := addr, val := .const v, atomicity := .nonatomic}
+    | none => { addr := addr, val := .failed, atomicity := .nonatomic}
   match scope_sem.splitOn "_" with
     | [""] => BasicRequest.write wr
               {scope := Scope.sys, sem := Semantics.rlx}
@@ -317,8 +317,8 @@ def mkFence (scope_sem : String) (_ : String) : BasicRequest :=
 
 def mkRMW (_ : String) (addr: Address) (_ : String) : BasicRequest × BasicRequest :=
   dbg_trace "unipmelmented RMWs in PTX"
-  let wr : WriteRequest := { addr := addr, val := .fetchAndAdd, atomic := true}
-  let rr : ReadRequest := { addr := addr, reads_from := none, val := none, atomic := true}
+  let wr : WriteRequest := { addr := addr, val := .fetchAndAdd, atomicity := .transactional}
+  let rr : ReadRequest := { addr := addr, reads_from := none, val := none, atomicity := .transactional}
   (BasicRequest.read rr default, BasicRequest.write wr default)
 
 def mkInitState (n : Nat) :=

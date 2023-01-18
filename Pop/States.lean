@@ -9,16 +9,24 @@ def Address := Nat deriving ToString, BEq, Inhabited
 def ThreadId := Nat deriving Ord, LT, LE, ToString, Inhabited, Hashable, DecidableEq
 inductive ConditionalValue
   | const : Nat → ConditionalValue
+  | tentative : Nat → ConditionalValue
   --| transaction : Nat → ConditionalValue
   | fetchAndAdd : ConditionalValue
   | failed : ConditionalValue
   deriving BEq, Inhabited
 
-def updateConditionalValue : ConditionalValue → Value → ConditionalValue
-  | c@(.const _), _ => c
+def ConditionalValue.update : ConditionalValue → Value → ConditionalValue
+  | c@(.const v), some v' => if v == v' then c else .failed
+  | c@(.tentative v), some v' => if v == v' then c else .failed
+  | (.const _), none => .failed
+  | (.tentative _), none => .failed
   | .failed , _ => .failed
-  | .fetchAndAdd, some v => .const (v + 1)
+  | .fetchAndAdd, some v => .tentative (v + 1)
   | .fetchAndAdd, none => .failed
+
+def ConditionalValue.validate : ConditionalValue → ConditionalValue
+  | .tentative v => .const v
+  | c => c
 
 def RequestId.toNat : RequestId → Nat := λ x => x
 def ThreadId.toNat : ThreadId → Nat := λ x => x
@@ -38,7 +46,8 @@ instance : BEq ThreadId := @instBEq ThreadId instThreadIdDecidableEq
 instance : Lean.Quote ThreadId where quote := λ n => Lean.quote (ThreadId.toNat n)
 instance : ToString ConditionalValue where toString
   | .const n => s!"{n}"
-  | .fetchAndAdd => s!"n + 1"
+  | .tentative n => s!"{n}?"
+  | .fetchAndAdd => s!"(n+1)"
   | .failed => "FAILED"
 
 instance : LawfulBEq ThreadId := inferInstance
@@ -83,17 +92,28 @@ class ArchReq where
 
 variable [ArchReq]
 
+inductive Atomicity where
+  | nonatomic : Atomicity
+  | transactional : Atomicity
+  | atomic : Atomicity
+  deriving BEq, Inhabited
+
+instance : ToString Atomicity where toString
+  | .nonatomic => ""
+  | .transactional => "t"
+  | .atomic => "a"
+
 structure ReadRequest where
  addr : Address
  reads_from : Option RequestId
- atomic : Bool
+ atomicity : Atomicity
  val : Value
  deriving BEq, Inhabited
 
 structure WriteRequest where
  addr : Address
  val : ConditionalValue
- atomic : Bool
+ atomicity : Atomicity
  deriving BEq, Inhabited
 
 instance : BEq ArchReq.type := ArchReq.instBEq
@@ -108,15 +128,18 @@ inductive BasicRequest
 
 instance : Inhabited BasicRequest where default := BasicRequest.fence default
 
+def BasicRequest.atomicity : BasicRequest → Atomicity
+  | .read rr _ => rr.atomicity
+  | .write wr _ => wr.atomicity
+  | .fence _ => .nonatomic
+
 def BasicRequest.toString : BasicRequest → String
   | BasicRequest.read  rr ty =>
     let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
-    let atomicStr := if rr.atomic then "a" else ""
-    s!"R{atomicStr}{tyStr} {rr.addr.prettyPrint}" ++ match rr.val with | none => "" | some v => s!" // {v}"
+    s!"R{rr.atomicity}{tyStr} {rr.addr.prettyPrint}" ++ match rr.val with | none => "" | some v => s!" // {v}"
   | BasicRequest.write  wr ty =>
-    let atomicStr := if wr.atomic then "a" else ""
     let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
-    s!"W{atomicStr}{tyStr} {wr.addr.prettyPrint} {wr.val}"
+    s!"W{wr.atomicity}{tyStr} {wr.addr.prettyPrint} {wr.val}"
   | BasicRequest.fence ty =>
     let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
     s!"Fence{tyStr}"
@@ -126,17 +149,15 @@ def BasicRequest.prettyPrint : BasicRequest → String
     let valStr := match rr.val with
       | none => ""
       | some val => s!"({val})"
-    let atomicStr := if rr.atomic then "a" else ""
     let tyStr := match s!"{ArchReq.prettyPrint ty}" with
       | "" => ""
       | str => s!".{str}"
-    s!"R{atomicStr}{tyStr} {rr.addr.prettyPrint}{valStr}"
+    s!"R{rr.atomicity}{tyStr} {rr.addr.prettyPrint}{valStr}"
   | BasicRequest.write  wr ty =>
-    let atomicStr := if wr.atomic then "a" else ""
     let tyStr := match s!"{ArchReq.prettyPrint ty}" with
       | "" => ""
       | str => s!".{str}"
-    s!"W{atomicStr}{tyStr} {wr.addr.prettyPrint}({wr.val})"
+    s!"W{wr.atomicity}{tyStr} {wr.addr.prettyPrint}({wr.val})"
   | BasicRequest.fence ty =>
     let tyStr := match s!"{ArchReq.prettyPrint ty}" with
       | "" => ""
@@ -167,18 +188,21 @@ def BasicRequest.updateType : BasicRequest → (ArchReq.type → ArchReq.type) �
 
 def BasicRequest.setValue : BasicRequest → Value → BasicRequest
   | BasicRequest.read rr rt, v => BasicRequest.read {rr with val := v} rt
-  | br@_ , _ => br
+  | br, _ => br
 
 def BasicRequest.updateValue : BasicRequest → Value → BasicRequest
-  | BasicRequest.write wr rt, v => BasicRequest.write {wr with val := updateConditionalValue wr.val v} rt
-  | br@_ , _ => br
+  | BasicRequest.write wr rt, v => BasicRequest.write {wr with val := wr.val.update v} rt
+  | br, _ => br
+
+def BasicRequest.validateWrite : BasicRequest → BasicRequest
+  | BasicRequest.write wr rt => BasicRequest.write {wr with val := wr.val.validate} rt
+  | br => br
 
 def BasicRequest.value? : BasicRequest → Value
   | BasicRequest.read rr _ => rr.val
   | BasicRequest.write wr _ => match wr.val with
     | .const n => some n
-    | .fetchAndAdd => none
-    | .failed => none
+    |  _ => none
   | _ => none
 
 def BasicRequest.conditionalValue? : BasicRequest → Option ConditionalValue
@@ -246,6 +270,7 @@ structure Request where
   thread : ThreadId
   basic_type : BasicRequest
   occurrence : Nat
+  pairedRequest? : Option RequestId
   -- scope : Scope
   -- type : α
   deriving BEq
@@ -253,7 +278,7 @@ structure Request where
 
 def Request.default : Request :=
   {id := 0, propagated_to := [], predecessor_at := [], thread := 0,
-   occurrence := 0, basic_type := BasicRequest.fence Inhabited.default}
+   occurrence := 0, basic_type := BasicRequest.fence Inhabited.default, pairedRequest? := none}
 instance : Inhabited (Request) where default := Request.default
 
 def Request.toString : Request → String
@@ -267,7 +292,8 @@ def BasicRequest.isRead    (r : BasicRequest) : Bool := match r with | read  _ _
 def BasicRequest.isWrite   (r : BasicRequest) : Bool := match r with | write _ _ => true | _ => false
 def BasicRequest.isFence (r : BasicRequest) : Bool := match r with | fence _ => true | _ => false
 
-def BasicRequest.isAtomic (r : BasicRequest) : Bool := match r with | .read rr _ => rr.atomic | .write wr _ => wr.atomic | .fence _ => false
+def BasicRequest.isAtomic (r : BasicRequest) : Bool := match r with | .read rr _ => rr.atomicity == .atomic | .write wr _ => wr.atomicity == .atomic | .fence _ => false
+def BasicRequest.isTransactional (r : BasicRequest) : Bool := match r with | .read rr _ => rr.atomicity == .transactional | .write wr _ => wr.atomicity == .transactional | .fence _ => false
 def Request.isRead    (r : Request) : Bool := r.basic_type.isRead
 def Request.isWrite   (r : Request) : Bool := r.basic_type.isWrite
 def Request.isFence (r : Request) : Bool := r.basic_type.isFence
@@ -278,11 +304,13 @@ def Request.value? (r : Request) : Value := r.basic_type.value?
 def Request.setValue (r : Request) (v : Value) : Request := { r with basic_type := r.basic_type.setValue v}
 def Request.updateValue (r : Request) (v : Value) : Request :=
   { r with basic_type := r.basic_type.updateValue v}
+def Request.validateWrite (r : Request) : Request := { r with basic_type := r.basic_type.validateWrite}
 def Request.isSatisfied (r : Request) : Bool := match r.basic_type with
   | .read rr _ => rr.val.isSome
   | _ => false
 
 def Request.isAtomic (r : Request) : Bool := r.basic_type.isAtomic
+def Request.isTransactional (r : Request) : Bool := r.basic_type.isTransactional
 
 def BasicRequest.address? (r : BasicRequest) : Option Address := match r with
   | read  req _ => some req.addr

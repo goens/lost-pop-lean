@@ -136,7 +136,29 @@ def predsDone (state : SystemState) (fenceLike : Request) : Bool :=
   let preds := memopsNotDone state fenceLike |>.filter λ p => p.isPredecessorAt fenceLike.thread
   preds.isEmpty
 
-def SystemState.atomicWriteAfterRead : SystemState → RequestId → Option Request
+def SystemState.getPairedRequest? : SystemState → RequestId → Option Request
+  | state, reqId => match state.requests.getReq? reqId with
+    | none => none
+    | some req => match req.pairedRequest? with
+      | none => none
+      | some id => state.findMaybeRemoved? id
+
+def SystemState.rmwGetPreviousWrite? : SystemState → RequestId → Option Request
+  | state, reqId => match state.requests.getReq? reqId with
+    | none => none
+    | some req => if !req.isWrite then none
+      else match state.getPairedRequest? reqId with
+        | none => none
+        | some rmwRead =>
+          let satisifiedWrites := state.satisfied.filter
+            (λ (r,_) => r == rmwRead.id) |>.map
+              λ (_,w) => w
+          match satisifiedWrites.head? with
+            | none => none
+            | some writeId =>
+              state.requests.getReq? writeId
+
+/-
   | state, readId => match state.requests.getReq? readId with
     | none => none
     | some read =>
@@ -147,6 +169,7 @@ def SystemState.atomicWriteAfterRead : SystemState → RequestId → Option Requ
       let firstAfterRead := afterRead.filter λ req => afterRead.all
                    λ req' => req.id == req'.id || ocLookup req.id req'.id
       firstAfterRead.head?
+-/
 
 -- TODO: add also for atomics
 def SystemState.blockedOnRequests (state : SystemState) : List Request := Id.run do
@@ -195,7 +218,7 @@ def SystemState.rmwPairsBlocking : SystemState → List (Request × Request)
     -- quadratic, but shouldn't often by many pairs anyway
     let rmw_pairs := filterNones $ atomics.map
       λ req => if !req.isRead then none else
-        let succ_write? := state.atomicWriteAfterRead req.id
+        let succ_write? := state.getPairedRequest? req.id
         match succ_write? with
           | none => none
           | some write => some (req,write)
@@ -227,7 +250,6 @@ RequestId → ThreadId → @OrderConstraints state.scopes
         !(state.orderConstraints.lookup scope req'.id req.id)
       let newObsReqs := state.requests.filter λ r => newobs r
       let newObsConstraints := newObsReqs.map λ req' => (req.id, req'.id)
-        --dbg_trace "adding {newRFConstraints} on propagate"
       state.orderConstraints.addSubscopes state.scopes.systemScope newObsConstraints
 
 -- TODO: refactor this all into one update, including the predecessors
@@ -240,6 +262,7 @@ def SystemState.updateOrderConstraintsAfterPropagate (state : SystemState) : Thr
     for req in predreqs do
       for req' in threadreqs do
         let sc := Arch.scopeIntersection state.scopes req req'
+        if req.id == req'.id then continue
         if oc.lookup sc req.id req'.id then continue
         if oc.lookup sc req'.id req.id then continue
         if Arch.orderCondition state.scopes req req' then
@@ -286,14 +309,31 @@ def SystemState.freshId : SystemState → RequestId
 def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId → SystemState × RequestId
   | state, reqType, tId => Id.run do
   let prelimReq : Request :=
-    {propagated_to := [tId], thread := tId, predecessor_at := [],
+    {propagated_to := [tId], thread := tId, predecessor_at := [], pairedRequest? := none,
      basic_type := reqType, id := state.freshId, occurrence := 0} -- should never stay as 0
+  -- The write updates both the read and itself for the rmw pair.
+   -- TODO: get the other request here
   let previous := state.requests.filter λ r => prelimReq.equivalent r
   let removed := state.removed.filter λ r => prelimReq.equivalent r
   let occurrences := previous.map Request.occurrence ++ removed.map Request.occurrence
   let req := { prelimReq with occurrence := (occurrences.maximum + 1) }
+  let pairedRequest? := if reqType.isWrite && (reqType.isTransactional || reqType.isAtomic) then
+    let threadReads := state.requests.filter
+      λ r => r.thread == tId && r.isRead && r.address? == req.address? && (r.isAtomic || r.isTransactional)
+    let ocLookup := state.orderConstraints.lookup (state.scopes.jointScope tId tId)
+    let paired := threadReads.filter
+      λ r => threadReads.all
+       λ r' => r.id == r'.id || ocLookup r'.id r.id
+    paired.head?
+    else none
   --dbg_trace s!"accepting {req}, requests.val : {state.requests.val}"
-  let requests' := state.requests.insert req
+  let requests' :=
+    match pairedRequest? with
+      | none => state.requests.insert req
+      | some paired =>
+        let paired' := {paired with pairedRequest? := some req.id}
+        let req' := {req with pairedRequest? := some paired.id}
+        state.requests.insert req' |>.insert paired'
   let orderConstraints' := state.updateOrderConstraintsAccept req
   let mut st :=
    { requests := requests', scopes := state.scopes,
@@ -364,34 +404,19 @@ def Request.conditionalUndecided : Request → Bool
     | some _ => true
     | none => false
 
-def SystemState.rmwGetWrite? : SystemState → RequestId → Option Request
-  | state, reqId =>
-    match state.requests.getReq? reqId with
-      | none => none
-      | some req =>
-        if !req.isAtomic then
-          none -- TODO: change if changing atomics
-        else if req.isRead  then
-          let writes := state.requests.filter
-            λ req' => req'.isWrite && req'.thread == req.thread
-          let scope := state.scopes.reqThreadScope req
-          let rmwWrite := writes.filter
-            λ wr => state.orderConstraints.lookup scope req.id wr.id && writes.all
-              -- all other writes come after (i.e. is orderConstraints first)
-              λ wr' => wr'.id == wr.id || state.orderConstraints.lookup scope wr.id wr'.id
-          match rmwWrite with
-            | wr::_ => some wr
-            | [] => none
-        else none
-    
+def Request.conditionalTentativeOrSuccessful : Request → Bool
+  | req => match req.conditionalValue? with
+    | some (.const _) => true
+    | some (.tentative _) => true
+    | _ => false
 
-def SystemState.inFlightRMWs : SystemState → List (Request × Request)
+def SystemState.inFlightTransactions : SystemState → List (Request × Request)
   | state =>
     let satisfiedReads := filterNones $ state.satisfied.map λ (r_id,w_id) =>
       match (state.requests.getReq? r_id, state.requests.getReq? w_id) with
         | (some read, some write) => some (read, write)
         | _ => none
-    satisfiedReads.filter λ (read, _) => read.isAtomic -- TODO: when implementing atomics that cannot fail I should change this flag to distinguish them
+    satisfiedReads.filter λ (read, _) => read.isTransactional
 
 def Request.isPropagated : Request → ThreadId → Bool
   | req, thId => req.propagated_to.elem thId
@@ -410,17 +435,17 @@ def requestBlocksPropagateRequest : SystemState → ThreadId → Request → Req
     else
       return state.orderConstraints.lookup state.scopes.systemScope block.id propagate.id && !(block.propagatedTo thId)
 
-def SystemState.rmwBlocking : SystemState → RequestId → ThreadId → Bool
+def SystemState.transactionsBlocking : SystemState → RequestId → ThreadId → Bool
   | state, reqId, thId =>
     match state.requests.getReq? reqId with
       | none => false
       | some req =>
       if !req.isWrite then false else
-        let inFlight := state.inFlightRMWs.map (λ (_,rd) => state.rmwGetWrite? rd.id)
+        let inFlight := state.inFlightTransactions.map (λ (_,rd) => state.getPairedRequest? rd.id)
           |> filterNones |>.filter (λ wr => wr.address? == req.address? && wr.thread == thId)
         let scope := state.scopes.jointScope thId req.thread
         -- the incoming request must already be ordered with all in-flight RMWs
-        inFlight.all λ wr => state.orderConstraints.lookup scope wr.id reqId || state.orderConstraints.lookup scope reqId wr.id
+        inFlight.any λ wr => !state.orderConstraints.lookup scope wr.id reqId && !state.orderConstraints.lookup scope reqId wr.id
 
 def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | state, reqId, thId =>
@@ -430,9 +455,9 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
   | some req =>
     if !req.isMem then -- fences don't propagate
       false else
-    if req.conditionalUndecided then -- can't propagate until decided
+    if (req.isAtomic || req.isTransactional) && req.isWrite && !req.conditionalTentativeOrSuccessful then -- can't propagate until decided
       false else
-    if state.rmwBlocking reqId thId then
+    if state.transactionsBlocking reqId thId then
       false else
     let unpropagated := !req.isPropagated thId
     let blockingReqs := state.requests.filter (requestBlocksPropagateRequest state thId req)
@@ -440,7 +465,6 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
         λ r => r.thread == req.thread &&
         (state.orderConstraints.lookup (state.scopes.reqThreadScope req) r.id req.id || r.id == req.id)
     --dbg_trace "propagate {reqId}, \n{blockingFenceLikes} not blocked? {propagateConstraintsAux state req blockingFenceLikes}"
-
     let fenceLikes := propagateConstraintsAux state req blockingFenceLikes
     --dbg_trace "can {req} propagate to thread {thId}?\n blockingReqs = {blockingReqs}"
     let rmw_pairs_done := state.rmwPairsBlocking.all λ (read, write) => write.id == reqId && read.propagatedTo thId
@@ -449,8 +473,7 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
 def Request.propagate : Request → ThreadId → Request
   | req, thId =>
     let sorted := (thId :: req.propagated_to).toArray.qsort (λ x y => Nat.ble x y)
-    --if req.conditionalUndecided then
-    { req with propagated_to := sorted.toList}
+    { req.validateWrite with propagated_to := sorted.toList}
 
 def SystemState.propagate : SystemState → RequestId → ThreadId → SystemState
   | state, reqId, thId => Id.run do
@@ -461,6 +484,12 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
     let requests' := state.requests.insert req
     let scope := state.scopes.jointScope thId req.thread
     let orderConstraints' := state.updateOrderConstraintsPropagate scope reqId thId
+    -- TODO: update rmwWrites to fail if this write goes in between
+    let rmwWrites := if req.isWrite
+      then state.requests.filter
+        λ req' => req'.thread == thId && req.address? == req'.address? && req'.isTransactional &&
+                  true--state.orderConstraints.lookup scope req'.id -- TODO: change this to "goes in between "
+      else []
     let mut res :=
     { requests := requests', orderConstraints := orderConstraints',
       threadTypes := state.threadTypes,
@@ -480,6 +509,7 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
     | some (some read), some (some write) =>
       if !read.isRead || !write.isWrite then false
       else if read.address? != write.address? then false
+      else if write.conditionalFailed then false
       else if (blesort read.propagated_to) != (blesort write.propagated_to) then false
       else
         let scope := state.scopes.jointScope read.thread write.thread
@@ -490,9 +520,9 @@ def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Boo
         --dbg_trace s!"between {writeId} and {readId}: {betweenIds}"
         let between := state.idsToReqs betweenIds
         let writesToAddrBetween := between.filter λ r =>
-          r.address? == write.address? && !(state.isSatisfied r.id)
+          r.address? == write.address? && !(state.isSatisfied r.id) && !r.conditionalFailed -- TODO: sure about this?
         let rmwPairs := state.rmwPairsBlocking
-        arch && oc && writesToAddrBetween.length == 0 && write.value?.isSome && rmwPairs.isEmpty
+        arch && oc && writesToAddrBetween.length == 0 && (write.conditionalTentativeOrSuccessful )&& rmwPairs.isEmpty
     | _, _ => panic! s!"unknown request ({readId} or {writeId})"
 
 def SystemState.alreadyOrdered : SystemState → RequestId → RequestId → Bool
@@ -503,6 +533,34 @@ def SystemState.alreadyOrdered : SystemState → RequestId → RequestId → Boo
         state.orderConstraints.lookup scope reqId reqId' || state.orderConstraints.lookup scope reqId' reqId
       | _, _ => false
 
+def SystemState.validateWrite : SystemState → RequestId → RequestArray
+  | state, writeId =>
+    match state.requests.getReq? writeId with
+      | none => state.requests
+      | some rmwWrite => if !rmwWrite.isWrite then state.requests else
+        match state.rmwGetPreviousWrite? rmwWrite.id with
+          | none => state.requests
+          | some previousWrite =>
+            let otherWrites := state.requests.filter
+              λ r => r.isWrite && r.address? == rmwWrite.address? &&
+                     r.id != rmwWrite.id && r.id != previousWrite.id
+            let systemScope := state.scopes.systemScope
+            let ocLookup := state.orderConstraints.lookup systemScope
+            let failed := otherWrites.any
+              λ wr => ocLookup previousWrite.id wr.id && ocLookup wr.id rmwWrite.id
+            let rmwWrite' := if failed then rmwWrite.updateValue none else rmwWrite.validateWrite
+            -- update other writes
+            let updated := otherWrites.map
+              λ wr => match state.rmwGetPreviousWrite? wr.id with
+                | none => wr
+                | some previousWrite' => if previousWrite'.id == previousWrite.id -- TODO: is this sufficient?
+                  then wr.updateValue none -- fail
+                  else wr
+            updated.foldl RequestArray.insert (state.requests.insert rmwWrite')
+
+--def SystemState.cleanupTransactions : SystemState → SystemState
+ -- TODO: refactor code from satisfy to here
+
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState
  | state, readId, writeId =>
  let opRead := state.requests.getReq? readId
@@ -511,26 +569,35 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
    | some read, some write =>
      let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexBLe |>.toList
      let read' := read.setValue write.value?
-     let fail := match state.rmwGetWrite? readId with
-         | none => false
+     -- update rmwWrites
+     dbg_trace "satisfying read: {readId} with write: {writeId}"
+     let requestsPrelim := match state.getPairedRequest? readId with
+         | none => state.validateWrite writeId |>.remove readId
          | some rmwWrite =>
              let otherWrites := state.requests.filter
                λ r => r.isWrite && r.address? == rmwWrite.address? && r.id != rmwWrite.id
-             otherWrites.all
+             -- Satisfy won't add new edges. This means that a failed write should be decided by this point.
+             -- However, other RMWs that are in-flight might conflict with this. Thus, we need to decide
+             -- that these will fail at this point.
+             let failedWriteBetween := otherWrites.any
                λ write' =>
                  let scope := state.scopes.jointScope write.thread write'.thread
-                 -- write' is either before the original write (that the RMW-read `read` is being satisfied by)
-                 state.orderConstraints.lookup scope write'.id write.id ||
-                 -- or write' is after the RMW-write.
-                 state.orderConstraints.lookup scope rmwWrite.id write'.id
-     -- Here we decide weather the in-flight RMW will fail
-     let write' := if fail then write.updateValue none else write.updateValue read'.value?
-     let rmwWriteAfter? := state.atomicWriteAfterRead read.id
-     let requests' := match rmwWriteAfter? with
-         | none => state.requests.remove readId
-         | some write => state.requests.remove readId |>.insert write'
-     let removed' := (read'::state.removed).toArray.qsort
+                 -- write' is between the original write (that the RMW-read `read` is being satisfied by) and the RMW-write.
+                 state.orderConstraints.lookup scope write.id write'.id &&
+                   state.orderConstraints.lookup scope write'.id rmwWrite.id
+             let failedOtherRMW := otherWrites.filter
+               (λ req => Option.map Request.id (state.rmwGetPreviousWrite? req.id) == some writeId)
+               |>.any Request.conditionalSucceeded
+             let failed := failedWriteBetween || failedOtherRMW
+             let rmwWrite' := if failed then
+                 rmwWrite.updateValue none else
+                 rmwWrite.updateValue write.value?
+             state.validateWrite writeId |>.remove readId
+                                         |>.insert rmwWrite'
+     let removedWrites := requestsPrelim.filter Request.conditionalFailed
+     let removed' := (removedWrites ++ read'::state.removed).toArray.qsort
        (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
+     let requests' := removedWrites.foldl (λ arr req => arr.remove req.id) requestsPrelim
      { requests := requests', orderConstraints := state.orderConstraints,
        removed := removed', satisfied := satisfied',
        threadTypes := state.threadTypes, removedCoherent := sorry,

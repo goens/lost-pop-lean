@@ -71,18 +71,18 @@ def compoundTSOReqToCompoundPTX : @BasicRequest Compound.instArchReq → @BasicR
 def _root_.Pop.Request.toPTX? (req : @Request Compound.instArchReq) : Option (@Request PTX.instArchReq) :=
   match compoundReqToPTX req.basic_type with
     | none => none
-    | some bt => @Request.mk PTX.instArchReq req.id req.propagated_to req.predecessor_at req.thread bt req.occurrence
+    | some bt => @Request.mk PTX.instArchReq req.id req.propagated_to req.predecessor_at req.thread bt req.occurrence req.pairedRequest?
 
 def _root_.Pop.Request.toTSO? (req : @Request Compound.instArchReq) : Option (@Request x86.instArchReq) :=
   match compoundReqToTSO req.basic_type with
     | none => none
-    | some bt => @Request.mk x86.instArchReq req.id req.propagated_to req.predecessor_at req.thread bt req.occurrence
+    | some bt => @Request.mk x86.instArchReq req.id req.propagated_to req.predecessor_at req.thread bt req.occurrence none
 
 
 def _root_.Pop.Request.toPTX!? (req : @Request Compound.instArchReq) : Option (@Request PTX.instArchReq) :=
   match compoundReqToPTX (compoundTSOReqToCompoundPTX req.basic_type) with
     | none => none
-    | some bt => @Request.mk PTX.instArchReq req.id req.propagated_to req.predecessor_at req.thread bt req.occurrence
+    | some bt => @Request.mk PTX.instArchReq req.id req.propagated_to req.predecessor_at req.thread bt req.occurrence req.pairedRequest?
 
 def order : ValidScopes → Request → Request → Bool
   | V, r₁, r₂ => match r₁.toTSO?, r₂.toTSO? with

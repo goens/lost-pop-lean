@@ -470,6 +470,45 @@ def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
     let rmw_pairs_done := state.rmwPairsBlocking.all λ (read, write) => write.id == reqId && read.propagatedTo thId
     arch && unpropagated && blockingReqs.isEmpty && fenceLikes && rmw_pairs_done
 
+def SystemState.cleanupTransactions : SystemState → SystemState
+   | state =>
+     let rmwWrites := state.requests.filter
+       λ req => req.isWrite && (req.isTransactional || req.isAtomic)
+     rmwWrites.foldl (init := state)
+       λ state rmwWrite =>
+         match state.rmwGetPreviousWrite? rmwWrite.id with
+           | none => state
+           | some previousWrite =>
+               let otherWrites := state.requests.filter
+                 λ r => r.isWrite && r.address? == rmwWrite.address? &&
+                        r.id != rmwWrite.id && r.id != previousWrite.id
+               let failedWriteBetween := otherWrites.any
+                 λ write' =>
+                   -- write' is between the original write (that the RMW-read `read` is being satisfied by) and the RMW-write.
+                   let scope1 := state.scopes.jointScope previousWrite.thread write'.thread
+                   state.orderConstraints.lookup scope1 previousWrite.id write'.id &&
+                   let scope2 := state.scopes.jointScope rmwWrite.thread write'.thread
+                   state.orderConstraints.lookup scope2 write'.id rmwWrite.id
+               let failedOtherRMW := otherWrites.filter
+                 (λ req => Option.map Request.id (state.rmwGetPreviousWrite? req.id) == some previousWrite.id)
+                 |>.any Request.conditionalSucceeded
+               let failed := failedWriteBetween || failedOtherRMW
+               dbg_trace "{rmwWrite.id} failedWriteBetween? {failedWriteBetween}, failedOtherRMW? {failedOtherRMW}"
+               let rmwWrite' := if failed then
+                   rmwWrite.updateValue none else
+                   -- this is part of satisfy, but we do it here anyway (idempotent on const c).
+                   if rmwWrite.conditionalUndecided then
+                       rmwWrite.updateValue previousWrite.value?
+                   else
+                       rmwWrite
+               let removedWrites := state.requests.filter Request.conditionalFailed
+               let removed' := (removedWrites ++ state.removed).toArray.qsort
+                 (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
+               let requests' := removedWrites.foldl (λ arr req => arr.remove req.id) state.requests
+                 |>.insert rmwWrite'
+               {state with requests := requests', removed := removed', removedCoherent := sorry}
+
+
 def Request.propagate : Request → ThreadId → Request
   | req, thId =>
     let sorted := (thId :: req.propagated_to).toArray.qsort (λ x y => Nat.ble x y)
@@ -484,22 +523,13 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
     let requests' := state.requests.insert req
     let scope := state.scopes.jointScope thId req.thread
     let orderConstraints' := state.updateOrderConstraintsPropagate scope reqId thId
-    -- TODO: update rmwWrites to fail if this write goes in between
-    let rmwWrites := if req.isWrite
-      then state.requests.filter
-        λ req' => req'.thread == thId && req.address? == req'.address? && req'.isTransactional &&
-                  true--state.orderConstraints.lookup scope req'.id -- TODO: change this to "goes in between "
-      else []
-    let mut res :=
-    { requests := requests', orderConstraints := orderConstraints',
-      threadTypes := state.threadTypes,
-      removed := state.removed, satisfied := state.satisfied,
-      removedCoherent := sorry}
+    let mut res := { state with
+      requests := requests', orderConstraints := orderConstraints', removedCoherent := sorry}
     let successors := res.orderConstraints.successors (res.scopes.jointScope req.thread thId) reqId res.seen
     for reqId' in successors do
       if let some req' := res.requests.getReq? reqId' then
         res := addNewPredecessors res req req' thId
-    return res
+    return res.cleanupTransactions
 
 def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Bool
   | state, readId, writeId =>
@@ -548,6 +578,7 @@ def SystemState.validateWrite : SystemState → RequestId → RequestArray
             let ocLookup := state.orderConstraints.lookup systemScope
             let failed := otherWrites.any
               λ wr => ocLookup previousWrite.id wr.id && ocLookup wr.id rmwWrite.id
+            dbg_trace "{rmwWrite.id} valiadion failed? {failed} (otherWrites: {otherWrites})"
             let rmwWrite' := if failed then rmwWrite.updateValue none else rmwWrite.validateWrite
             -- update other writes
             let updated := otherWrites.map
@@ -558,9 +589,6 @@ def SystemState.validateWrite : SystemState → RequestId → RequestArray
                   else wr
             updated.foldl RequestArray.insert (state.requests.insert rmwWrite')
 
---def SystemState.cleanupTransactions : SystemState → SystemState
- -- TODO: refactor code from satisfy to here
-
 def SystemState.satisfy : SystemState → RequestId → RequestId → SystemState
  | state, readId, writeId =>
  let opRead := state.requests.getReq? readId
@@ -570,38 +598,14 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
      let satisfied' := (readId,writeId)::state.satisfied |>.toArray.qsort lexBLe |>.toList
      let read' := read.setValue write.value?
      -- update rmwWrites
-     dbg_trace "satisfying read: {readId} with write: {writeId}"
-     let requestsPrelim := match state.getPairedRequest? readId with
-         | none => state.validateWrite writeId |>.remove readId
-         | some rmwWrite =>
-             let otherWrites := state.requests.filter
-               λ r => r.isWrite && r.address? == rmwWrite.address? && r.id != rmwWrite.id
-             -- Satisfy won't add new edges. This means that a failed write should be decided by this point.
-             -- However, other RMWs that are in-flight might conflict with this. Thus, we need to decide
-             -- that these will fail at this point.
-             let failedWriteBetween := otherWrites.any
-               λ write' =>
-                 let scope := state.scopes.jointScope write.thread write'.thread
-                 -- write' is between the original write (that the RMW-read `read` is being satisfied by) and the RMW-write.
-                 state.orderConstraints.lookup scope write.id write'.id &&
-                   state.orderConstraints.lookup scope write'.id rmwWrite.id
-             let failedOtherRMW := otherWrites.filter
-               (λ req => Option.map Request.id (state.rmwGetPreviousWrite? req.id) == some writeId)
-               |>.any Request.conditionalSucceeded
-             let failed := failedWriteBetween || failedOtherRMW
-             let rmwWrite' := if failed then
-                 rmwWrite.updateValue none else
-                 rmwWrite.updateValue write.value?
-             state.validateWrite writeId |>.remove readId
-                                         |>.insert rmwWrite'
-     let removedWrites := requestsPrelim.filter Request.conditionalFailed
-     let removed' := (removedWrites ++ read'::state.removed).toArray.qsort
+     let requests' := state |>.validateWrite writeId |>.remove readId
+     let removed' := read'::state.removed |>.toArray.qsort
        (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
-     let requests' := removedWrites.foldl (λ arr req => arr.remove req.id) requestsPrelim
-     { requests := requests', orderConstraints := state.orderConstraints,
-       removed := removed', satisfied := satisfied',
-       threadTypes := state.threadTypes, removedCoherent := sorry,
-     }
+     let result := { requests := requests', orderConstraints := state.orderConstraints,
+                     removed := removed', satisfied := satisfied',
+                     threadTypes := state.threadTypes, removedCoherent := sorry
+                     : SystemState}
+     result.cleanupTransactions
    | _, _ => unreachable!
 
 open Transition in

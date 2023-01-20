@@ -202,6 +202,7 @@ def BasicRequest.value? : BasicRequest → Value
   | BasicRequest.read rr _ => rr.val
   | BasicRequest.write wr _ => match wr.val with
     | .const n => some n
+    | .tentative n => some n
     |  _ => none
   | _ => none
 

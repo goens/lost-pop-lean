@@ -497,15 +497,18 @@ def SystemState.cleanupTransactions : SystemState → SystemState
                let rmwWrite' := if failed then
                    rmwWrite.updateValue none else
                    -- this is part of satisfy, but we do it here anyway (idempotent on const c).
-                   if rmwWrite.conditionalUndecided then
+                   if !rmwWrite.conditionalTentativeOrSuccessful then
                        rmwWrite.updateValue previousWrite.value?
                    else
                        rmwWrite
-               let removedWrites := state.requests.filter Request.conditionalFailed
+               let removedWrites := state.requests.filter Request.conditionalFailed ++
+                 if failed then [rmwWrite'] else []
+               dbg_trace "removedWrites = {removedWrites}"
                let removed' := (removedWrites ++ state.removed).toArray.qsort
                  (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
-               let requests' := removedWrites.foldl (λ arr req => arr.remove req.id) state.requests
-                 |>.insert rmwWrite'
+               let requestsRemoved := removedWrites.foldl (λ arr req => arr.remove req.id) state.requests
+               -- Don't reeinsert removed rmwWrite' if failed.
+               let requests' := if failed then requestsRemoved else requestsRemoved.insert rmwWrite'
                {state with requests := requests', removed := removed', removedCoherent := sorry}
 
 

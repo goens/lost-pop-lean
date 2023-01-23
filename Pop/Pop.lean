@@ -579,7 +579,6 @@ def SystemState.validateWrite : SystemState → RequestId → RequestArray
             let ocLookup := state.orderConstraints.lookup systemScope
             let failed := otherWrites.any
               λ wr => ocLookup previousWrite.id wr.id && ocLookup wr.id rmwWrite.id
-            dbg_trace "{rmwWrite.id} valiadion failed? {failed} (otherWrites: {otherWrites})"
             let rmwWrite' := if failed then rmwWrite.updateValue none else rmwWrite.validateWrite
             -- update other writes
             let updated := otherWrites.map

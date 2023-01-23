@@ -19,7 +19,13 @@ structure ReadOutcome where
   occurrence : Nat
   deriving BEq, Inhabited
 
-def ReadOutcome.toString (out : ReadOutcome) : String := s!"{out.occurrence}-th read {out.address} at thread {out.thread} with value {out.value}"
+def ReadOutcome.toString (out : ReadOutcome) : String :=
+  let occurrence := match out.occurrence with
+    | 1 => "1-st"
+    | 2 => "2-nd"
+    | 3 => "3-rd"
+    | n => s!"{n}-th"
+  s!"{occurrence} read {out.address} at thread {out.thread} with value {out.value}"
 instance : ToString ReadOutcome where toString := ReadOutcome.toString
 
 abbrev Outcome := List ReadOutcome
@@ -58,10 +64,12 @@ variable [Arch]
 def SystemState.partialOutcome : SystemState → Litmus.Outcome
 | state =>
   let reqToReadOutcome := λ rd : Request =>
-    { thread := rd.thread, address := rd.address?.get!, value := rd.value?,
-      occurrence := rd.occurrence : Litmus.ReadOutcome}
-  let removed : List Litmus.ReadOutcome := state.removed.map reqToReadOutcome
-  let satisfied := state.requests.filter Request.isSatisfied |>.map reqToReadOutcome
+    if rd.isRead then
+    some { thread := rd.thread, address := rd.address?.get!, value := rd.value?,
+           occurrence := rd.occurrence : Litmus.ReadOutcome}
+    else none
+  let removed : List Litmus.ReadOutcome := filterNones $ state.removed.map reqToReadOutcome
+  let satisfied := filterNones $ state.requests.filter Request.isSatisfied |>.map reqToReadOutcome
   removed ++ satisfied
 
 def outcomeSubset : Litmus.Outcome → Litmus.Outcome → Bool
@@ -307,6 +315,7 @@ def mkRequest : String × String × Address × Value → ThreadId → String →
 
 def mkReadOutcomeTriple : String × String × Address × Value → ThreadId → Option (ThreadId × Address × Value)
   | ("R", _, addr, val@(some _)), thId  => some (thId,addr,val)
+  | ("RMW", _, addr, val@(some _)), thId  => some (thId,addr,val)
   | _, _ => none
 
 def mkOutcome : List (ThreadId × Address × Value) → Litmus.Outcome

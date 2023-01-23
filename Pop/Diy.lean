@@ -80,4 +80,3 @@ def parse (input : String) : IO Lean.Syntax := do
   match Lean.Parser.runParserCategory env `test preprocessed with
     | .error msg => IO.println s!"Error: {msg}"; return default
     | .ok stx => return stx
-

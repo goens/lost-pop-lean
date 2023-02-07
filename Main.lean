@@ -113,6 +113,7 @@ def mainCmd := `[Cli|
       l, "litmus" : String;                 "Name of a specific litmus test"
       t, "filter-num-threads" : Array Nat;  "Print witnesses when exploring"
       p, "partial-trace" : Array Nat     ;  "Provide a partial (guide) to start the litmus test"
+      w, "print-witnesses"               ;  "Print witnesses when exploring"
     ]
 
 

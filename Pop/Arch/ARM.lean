@@ -9,12 +9,14 @@ namespace ARM
 inductive Req
   | rel
   | acq
+  | dmb_sy -- just sy for now
   | other
   deriving Inhabited, BEq
 
 def Req.toString : Req → String
-  | .rel => "rel "
-  | .acq => "acq "
+  | .rel => "rel"
+  | .acq => "acq"
+  | .dmb_sy => "dmb sy"
   | .other => ""
 
 instance : ToString Req where toString := Req.toString
@@ -39,6 +41,7 @@ private def _root_.Pop.Request.isWriteRel : Request → Bool :=
 
 infixl:85 "b⇒" => λ a b => !a || b
 
+-- This is from the original ARM POP model (non-MCA). Revise?
 def order : ValidScopes → Request → Request → Bool
   | _, r_old, r_new =>
   let relacq₁ := (r_old.isReadAcq && r_new.isWriteRel) && (r_old.address? == r_new.address?)
@@ -57,21 +60,34 @@ def satisfyRead (state : SystemState) (r_read_addr : RequestId) (r_write_addr : 
     b⇒ r_write.fullyPropagated state.scopes.systemScope
   | _, _ => panic! s!"invalid read request ({r_read_addr}) and/or write request ({r_write_addr})"
 
+-- TODO: replace these blocking semantics with the actual ones
+def reqBlockingSemantics (req : Req) : BlockingSemantics :=
+  match req with
+    | .rel => [.Read2WritePred, .Write2Write]
+    | .acq => [.Read2ReadPred, .Read2WritePred]
+    | .dmb_sy => [.Read2ReadPred, .Read2WritePred, .Write2Read, .Write2Write]
+    | .other => []
+
+def blockingSemantics : Request → BlockingSemantics
+    | req => reqBlockingSemantics req.basic_type.type
+
 instance : Arch where
   req := instArchReq
   orderCondition :=  order
+  blockingSemantics := blockingSemantics
 
 namespace Litmus
 
 def mkRead (reqtype : String ) (addr : Address) (_ : String): BasicRequest :=
-  let rr : ReadRequest := { addr := addr, reads_from := none, val := none}
+  let rr : ReadRequest := { addr := addr, reads_from := none, val := none, atomicity := .nonatomic }
   match reqtype with
     | "" => BasicRequest.read rr Req.other
     | "acq" => BasicRequest.read rr Req.acq
     | _ => panic! "invalid read request type: {reqtype}"
 
 def mkWrite (reqtype : String) (addr : Address) (val : Value) (_ : String): BasicRequest :=
-  let wr : WriteRequest := { addr := addr, val := val}
+  let condVal : ConditionalValue := match val with | none => .failed | some v => .const v
+  let wr : WriteRequest := { addr := addr, val := condVal, atomicity := .nonatomic }
   match reqtype with
     | "" => BasicRequest.write wr Req.other
     | "rel" => BasicRequest.write wr Req.rel
@@ -79,12 +95,20 @@ def mkWrite (reqtype : String) (addr : Address) (val : Value) (_ : String): Basi
 
 def mkFence (reqtype : String) (_ : String): BasicRequest :=
   match reqtype with
-    | "" => BasicRequest.fence Req.other
+    | "" => BasicRequest.fence Req.dmb_sy
+    | "dmb_sy" => BasicRequest.fence Req.dmb_sy
     | _ => panic! "invalid fence type: {reqtype}"
+
+def mkRMW (_ : String) (addr: Address) (_ : String) : BasicRequest × BasicRequest :=
+  dbg_trace "unipmelmented RMWs in ARM"
+  let wr : WriteRequest := { addr := addr, val := .fetchAndAdd, atomicity := .transactional}
+  let rr : ReadRequest := { addr := addr, reads_from := none, val := none, atomicity := .transactional}
+  (BasicRequest.read rr default, BasicRequest.write wr default)
 
 instance : LitmusSyntax where
   mkRead := mkRead
   mkWrite := mkWrite
   mkFence := mkFence
+  mkRMW := mkRMW
 
 end Litmus

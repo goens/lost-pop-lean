@@ -185,7 +185,8 @@ def importTSOLitmus : @Litmus.Test x86.instArch → @Litmus.Test Compound.instAr
     program := (@Litmus.Test.program x86.instArch test).map λ th => th.map importTSOTransition,
     guideTraces := (@Litmus.Test.guideTraces x86.instArch test).map λ tr => tr.map importTSOTransition
     initTransitions := (@Litmus.Test.initTransitions x86.instArch test).map importTSOTransition
-    initState := importTSOSystemInit (@Litmus.Test.initState x86.instArch test)
+    initState := importTSOSystemInit (@Litmus.Test.initState x86.instArch test),
+    description := (@Litmus.Test.description x86.instArch test),
     : Litmus.Test}
 
 def importPTXTransition : @Transition PTX.instArch → @Transition Compound.instArch
@@ -209,6 +210,7 @@ def importPTXLitmus : @Litmus.Test PTX.instArch → @Litmus.Test Compound.instAr
     guideTraces := (@Litmus.Test.guideTraces PTX.instArch test).map λ tr => tr.map importPTXTransition
     initTransitions := (@Litmus.Test.initTransitions PTX.instArch test).map importPTXTransition
     initState := importPTXSystemInit (@Litmus.Test.initState PTX.instArch test)
+    description := (@Litmus.Test.description PTX.instArch test),
     : Litmus.Test}
 
 

@@ -47,6 +47,7 @@ structure Test where
  (initTransitions : List Transition)
  (program : ProgramState)
  (expected : Outcome)
+ (description : String)
  (initState : SystemState)
  (name : String)
  (axiomaticAllowed : AxiomaticAllowed)
@@ -111,7 +112,7 @@ variable [Arch]
 def Test.initalized (test : Test) : SystemState := test.initState.applyTrace! test.initTransitions
 def Test.runTrace (test : Test) (trace : List Transition) : Except String SystemState := test.initState.applyTrace (test.initTransitions ++ trace)
 
-instance : Inhabited Test where default := { initTransitions := [], program := #[], expected := [], initState := default, name := "default", axiomaticAllowed := .unknown, guideTraces := []}
+instance : Inhabited Test where default := { initTransitions := [], program := #[], expected := [], initState := default, name := "default", axiomaticAllowed := .unknown, guideTraces := [], description := "" }
 
 def addressValuePretty : Address × Value → String
   | (_, none) => "invalid outcome!"
@@ -420,7 +421,8 @@ def createLitmus (list : List (List RequestSyntax))
     | none => SystemState.init (mkValidScopes fullThreads.length) threadTypes
   { initTransitions := initWrites ++ initPropagates,
     program := reqs.toArray, expected := outcomes,
-    initState, name := metadata.name, axiomaticAllowed := metadata.allowed, guideTraces}
+    initState, name := metadata.name, axiomaticAllowed := metadata.allowed,
+    guideTraces, description := "" }
 
 macro_rules
   | `(`[req| $r ]) => `(request| $r)

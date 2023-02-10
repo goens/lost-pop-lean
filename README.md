@@ -7,7 +7,7 @@ This repository contains the Lean4 implementation of the LOST-POP model.
 To build this repository, you need Lean4, which you can set up [here](https://leanprover.github.io/lean4/doc/quickstart.html).
 With Lean4 installed you can build the project by running
 ```
-lake build
+lake update && lake build
 ```
 
 # Running

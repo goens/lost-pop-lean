@@ -90,6 +90,25 @@ def explore : Cli.Parsed → IO UInt32
     IO.println $ @Pop.printMultipleLitmusResults arch.getInstArch litmusRes (printWitnesses := args.hasFlag "print-witnesses")
     return 0
 
+def alloy : Cli.Parsed → IO UInt32
+  | args => do
+    let some arch ← parseArchIO args
+      | return 1
+    let outputDir : System.FilePath := match args.flag? "output-dir" with
+      | some dir => dir.as! String
+      | none => "alloy_generated" / s!"{arch}/"
+    let tests ← match parseLitmus arch (args.flag? "litmus") with
+      | .ok [] => pure arch.getLitmusTests
+      | .ok ts => pure ts
+      | .error msg => IO.println msg; return 1
+    IO.println s!"generating Alloy {tests.length} tests for {arch}"
+    for litmus in tests do
+       IO.FS.createDirAll outputDir
+       let outputFile := outputDir / (@Litmus.Test.name arch.getInstArch litmus ++ ".als")
+       IO.FS.writeFile outputFile $ @toAlloyLitmus arch.getInstArch arch.getInstLitmusSyntax litmus
+    return 0
+
+
 def selectMode : Cli.Parsed → IO UInt32
   | args => do
     if args.hasFlag "list-archs" then
@@ -97,6 +116,8 @@ def selectMode : Cli.Parsed → IO UInt32
       return 0
     if args.hasFlag "explore" then
       explore args
+    else if args.hasFlag "axiomatic-alloy" then
+      alloy args
     else -- default: interact
       interact args
 
@@ -112,8 +133,10 @@ def mainCmd := `[Cli|
       i, "iterations" : Nat;                "Maximum number of iterations (unlimited if not provided)"
       l, "litmus" : String;                 "Name of a specific litmus test"
       t, "filter-num-threads" : Array Nat;  "Print witnesses when exploring"
-      p, "partial-trace" : Array Nat     ;  "Provide a partial (guide) to start the litmus test"
-      w, "print-witnesses"               ;  "Print witnesses when exploring"
+      p, "partial-trace" : Array Nat;       "Provide a partial (guide) to start the litmus test"
+      w, "print-witnesses";                 "Print witnesses when exploring"
+      A,"axiomatic-alloy";                  "Generate axomatic version of test in Alloy format"
+      D,"output-dir" : String;              "Output directory"
     ]
 
 

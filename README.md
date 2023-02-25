@@ -14,7 +14,7 @@ lake update && lake build
 
 After compiling, you should be able to run the executable with the interactive mode by running
 ```
-/build/bin/pop
+build/bin/pop
 ```
 
 An automatic exploration, among other options, can be configured using the command following flags:

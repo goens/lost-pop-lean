@@ -1,3 +1,6 @@
+-- Author(s): Andrés Goens
+-- See Copyright Notice in LICENSE
+
 import Lean
 import Std
 open Std.HashMap

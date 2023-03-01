@@ -1,3 +1,6 @@
+-- Author(s): Andrés Goens
+-- See Copyright Notice in LICENSE
+
 import Pop.Arch.TSO
 import Litmus.TSOTraces
 namespace x86

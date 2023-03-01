@@ -1,3 +1,6 @@
+-- Author(s): Andrés Goens
+-- See Copyright Notice in LICENSE
+
 import Pop.Arch.PTX
 import Pop.Arch.TSO
 import Pop.Arch.ARM

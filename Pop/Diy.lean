@@ -1,3 +1,6 @@
+-- Author(s): Andrés Goens
+-- See Copyright Notice in LICENSE
+
 import Pop.Litmus
 import Pop.Arch
 import Pop.Util

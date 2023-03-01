@@ -1,3 +1,6 @@
+-- Author(s): Andrés Goens
+-- See Copyright Notice in LICENSE
+
 import Pop.Util
 import Pop.Pop
 import Pop.States

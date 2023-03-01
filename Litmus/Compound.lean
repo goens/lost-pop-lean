@@ -1,3 +1,6 @@
+-- Author(s): Andrés Goens, Susmit Sarkar
+-- See Copyright Notice in LICENSE
+
 import Pop.Arch.Compound
 import Litmus.CompoundTraces
 namespace Compound

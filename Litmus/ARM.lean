@@ -1,3 +1,6 @@
+-- Author(s): Andrés Goens
+-- See Copyright Notice in LICENSE
+
 import Pop.Arch.ARM
 import Litmus.ARMTraces
 namespace ARM

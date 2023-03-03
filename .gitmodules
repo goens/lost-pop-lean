@@ -1,3 +1,6 @@
 [submodule "cmm-axiomatic"]
 	path = cmm-axiomatic
 	url = git@github.com:goens/cmm-axiomatic.git
+[submodule "org.alloytools.alloy"]
+	path = org.alloytools.alloy
+	url = git@github.com:goens/org.alloytools.alloy.git

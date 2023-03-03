@@ -426,7 +426,7 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
   | test, resExcept , printWitness, printHead, nameColWidth =>
      --  (reslit, pts)
      let outcome_res := match resExcept with
-       | .error _ => "?"
+       | .error _ => "𐄂?"
        | .ok (reslit,_) => if reslit.any λ out => outcomeEquiv out test.expected
          then "✓"
          else "𐄂"
@@ -443,13 +443,14 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
        | some _ => toString $ pt.map Transition.toString
      let axiomatic := test.axiomaticAllowed.toString
      let ptNums := buildInteractiveNumbering test pt
+     let outcomeStr := if outcome_res == "𐄂?" then outcome_res else (outcome_res ++ " ")
      let uncolored := s!"| {test.name}" ++ (String.mk $ List.replicate (nameColWidth - test.name.length - 3) ' ') ++
-                   s!"| {axiomatic}         | {outcome_res}   |"
-     let resStr := if axiomatic != "?" && outcome_res != "?" && axiomatic != outcome_res
+                   s!"| {axiomatic}         | {outcomeStr}  |"
+     let resStr := if axiomatic != "?" && outcome_res != "𐄂?" && axiomatic != outcome_res
        then colorString .red uncolored
-       else if (outcome_res == "?" && axiomatic == "𐄂" || axiomatic == "?")
+       else if (outcome_res == "𐄂?" && axiomatic == "𐄂" || axiomatic == "?")
        then colorString .cyan uncolored
-       else if outcome_res == "?" && axiomatic == "✓"
+       else if outcome_res == "𐄂?" && axiomatic == "✓"
        then colorString .yellow uncolored
        else uncolored
      let witnessStr := if outcome_res == "✓" && printWitness && ptNums.isSome

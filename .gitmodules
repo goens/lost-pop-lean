@@ -1,0 +1,3 @@
+[submodule "cmm-axiomatic"]
+	path = cmm-axiomatic
+	url = git@github.com:goens/cmm-axiomatic.git

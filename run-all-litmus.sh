@@ -59,4 +59,5 @@ for ARCH in `echo $ARCHITECTURES | sed 's/,/ /g'`; do
     fi
   done;
 done
-cat $OUTPUT
+
+Rscript analysis.R

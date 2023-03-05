@@ -14,9 +14,15 @@ assume_timeouts <- results %>%
   filter( architecture == "PTX" |
           architecture == "TSO" |
           architecture == "Compound") %>%
-  mutate(operational = ifelse(operational == "𐄂?", "𐄂",operational))
-  
+  mutate(operational_timeout = ifelse(operational == "𐄂?", "𐄂",operational))
+
+matches <- assume_timeouts %>%
+  group_by(architecture) %>%
+  summarize(matches = sum(axiomatic == operational_timeout))
+print("matching litmus tests per architecture:")
+print(matches)
+
 discrepancies <- assume_timeouts %>%
-  filter(axiomatic != operational)
+  filter(axiomatic != operational_timeout)
 print("following discrepancies found:")
-print(discrepancies)
+print(select(discrepancies,architecture,test,operational,axiomatic))

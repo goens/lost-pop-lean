@@ -8,7 +8,7 @@
 # hints, a significantly smaller number of iterations
 # is sufficient for finding most witnesses, even if
 # the exploration is not exhaustive.
-NUM_ITERATIONS=10000 #100000
+NUM_ITERATIONS=1000 #100000
 ARCHITECTURES=TSO,PTX,Compound,XC,XCTSO
 
 
@@ -35,7 +35,6 @@ echo "=============================================="
 echo "          Running Litmus Tests"
 echo "=============================================="
 
-
 echo "architecture,test,operational,axiomatic" > $OUTPUT
 for ARCH in `echo $ARCHITECTURES | sed 's/,/ /g'`; do
    #Build Axiomatic Alloy litmus tests
@@ -59,5 +58,9 @@ for ARCH in `echo $ARCHITECTURES | sed 's/,/ /g'`; do
     fi
   done;
 done
+
+echo "=============================================="
+echo "          Running Analysis Script             "
+echo "=============================================="
 
 Rscript analysis.R

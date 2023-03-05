@@ -308,8 +308,8 @@ def mkRequest : String × String × Address × Value → ThreadId → String →
   | ("R", typeStr, addr, _), thId, thTy => [Pop.Transition.acceptRequest (mkRead typeStr addr thTy) thId]
   | ("W",typeStr , addr, val), thId, thTy  => [Pop.Transition.acceptRequest (mkWrite typeStr addr val thTy) thId]
   | ("Fence", typeStr, _, _), thId, thTy => [Pop.Transition.acceptRequest (mkFence typeStr thTy) thId]
-  | ("Dependency", _, _, _), thId, thTy => [Pop.Transition.acceptRequest (mkFence "sys_dep" thTy) thId] -- hack: sys_dep
-  -- | ("Dependency", _, _, _), _, _ => some $ Pop.Transition.dependency none
+  -- | ("Dependency", _, _, _), thId, thTy => [Pop.Transition.acceptRequest (mkFence "sys_dep" thTy) thId] -- hack: sys_dep
+  | ("Dependency", _, _, _), _, _ => [Pop.Transition.dependency none]
   | ("RMW", typeStr, addr, _), thId, thTy => [Pop.Transition.acceptRequest (mkRMW typeStr addr thTy).1 thId,
                                               Pop.Transition.acceptRequest (mkRMW typeStr addr thTy).2 thId]
     --I don't know why this doesn't work...

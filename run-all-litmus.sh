@@ -46,15 +46,16 @@ for ARCH in `echo $ARCHITECTURES | sed 's/,/ /g'`; do
   cp $AXIOMATIC_DIR/*.als $DIR
   for TESTFILE in $TESTS; do
     TEST=`basename $TESTFILE .als`
-     echo "Running Litmus Test $ARCH/${TEST}"
+     echo -n "Running Litmus Test $ARCH/${TEST}: "
      echo -n $ARCH, >> $OUTPUT
      echo -n $TEST, >> $OUTPUT
-    ./build/bin/pop -e -a $ARCH -i $NUM_ITERATIONS -l $TEST | grep -o -e "𐄂" -e "✓" -e "𐄂?" | tr '\n' ',' | cut -d ',' -f 2 | tr '\n' ',' | tee -a $OUTPUT
+    ./build/bin/pop -e -a $ARCH -i $NUM_ITERATIONS -l $TEST | grep -o -e "𐄂" -e "✓" -e "𐄂?" -e " ?" | tr '\n' ',' | cut -d ',' -f 2 | tr '\n' ',' | tee -a $OUTPUT
      #echo -n "," >> $OUTPUT
     if [ "$ARCH" = "TSO" ] || [ "$ARCH" = "PTX" ] || [ "$ARCH" = "Compound" ]; then
       java -jar $ALLOY_JAR exec $TESTFILE 2>> litmus_alloy.log | grep -o -e "INSTANCE" -e "UNSAT" | sed -e 's/INSTANCE/✓/g' -e 's/UNSAT/𐄂/g' | tee -a $OUTPUT
     else
       echo "?" >> $OUTPUT
+      echo ""
     fi
   done;
 done

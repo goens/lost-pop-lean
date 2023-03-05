@@ -135,7 +135,7 @@ def mainCmd := `[Cli|
       r, "random-seed" : Nat;               "Random seed for exploration"
       i, "iterations" : Nat;                "Maximum number of iterations (unlimited if not provided)"
       l, "litmus" : String;                 "Name of a specific litmus test"
-      t, "filter-num-threads" : Array Nat;  "Print witnesses when exploring"
+      t, "filter-num-threads" : Array Nat;  "Filter litmus tests by given number of threads"
       p, "partial-trace" : Array Nat;       "Provide a partial (guide) to start the litmus test"
       w, "print-witnesses";                 "Print witnesses when exploring"
       A,"axiomatic-alloy";                  "Generate axomatic version of test in Alloy format"

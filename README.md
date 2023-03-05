@@ -30,7 +30,8 @@ An automatic exploration, among other options, can be configured using the comma
     -i, --iterations : Nat                Maximum number of iterations
                                           (unlimited if not provided)
     -l, --litmus : String                 Name of a specific litmus test
-    -t, --filter-num-threads : Array Nat  Print witnesses when exploring
+    -t, --filter-num-threads : Array Nat  Filter litmus tests by given number of
+                                          threads
     -p, --partial-trace : Array Nat       Provide a partial (guide) to start the
                                           litmus test
     -w, --print-witnesses                 Print witnesses when exploring
@@ -165,3 +166,12 @@ Exploring PTX: 1 tests with [2, 3, 4] threads, with batch size 6, unlimited iter
 ~~~
 **CAUTION**: For larger litmus tests (especially those with 4 threads), without a maximum number of iterations, this command will probably not finish in any reasonable amount of time. We recommend always adding a timeout.
 ~~~
+
+You can also run multiple tests at the same time (and in parallel) if you choose by specifying multiple litmus tests explicitly:
+```
+./build/bin/pop -a PTX -t 2,3 -e -l WRC_sc_dep,WRC_two_deps -i 100000
+```
+or by specifying the numbers of threads to filter:
+```
+./build/bin/pop -a Compound -t 2,3 -e
+```

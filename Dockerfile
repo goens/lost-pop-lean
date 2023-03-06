@@ -6,7 +6,11 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     sudo \
+    r-base \
     vim
+
+#Install R packages
+RUN Rscript -e "install.packages(c('dplyr','readr'), repos='https://cran.rstudio.com')"
 
 # Create a regular user
 RUN useradd --user-group --system --create-home --no-log-init user

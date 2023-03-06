@@ -1,6 +1,47 @@
-# POP - Lean
+# LOST-POP - Lean
 
 This repository contains the Lean4 implementation of the LOST-POP model.
+
+
+# Artifact
+
+This README is found on the artifact for the PLDI'23 submission "Compound Memory Models". This artifact can be run from a docker container or built and executed locally.
+
+## Docker
+
+To execute this from within a docker container, start an instance of the docker image in the artifact. This can be done from within the GUI e.g. in Windows/MacOS or in Linux e.g. with
+```
+sudo docker run -it DOCKER_IMAGE /usr/bin/bash
+```
+From within the image, to run these models just go to the corresponding folder and run the script that executes them all:
+```
+cd /home/user/models
+./run-all-litmus.sh
+```
+
+To run individual files, see [Running](#Running) and the [examples](#examples) below.
+
+## Native installation
+
+You can also install and run this repository in your native environment, without docker. You will need to have some dependencies installed in your machine:
+ - Lean4, see [here](https://leanprover.github.io/lean4/doc/quickstart.html).
+ - git, e.g. by `sudo apt install git` in Debian-based systems like Debian or Ubuntu.
+ - Optional: A java runtime environment for running alloy and axiomatic tests, e.g. by `sudo apt install openjdk-16-jdk` in Debian-based systems.
+ - Optional: R and dplyr for running the analysis in the end. You can get this e.g. by running the following in a Debian-based system:
+  ```
+  sudo apt install r-base
+  Rscript -e "install.packages(c('dplyr','readr'), repos='https://cran.rstudio.com')"
+  ```
+
+Once you have everything installed, you can first clone this repository and all its dependencies:
+```
+git clone --branch PLDI-AE git@github.com:goens/pop-lean.git --recursive
+```
+You can then run everything with the script given here:
+```
+./run-all-litmus.sh
+```
+To run individual litmus tests, see [Running](#Running) and the [examples](#examples) below.
 
 # Building
 
@@ -175,3 +216,96 @@ or by specifying the numbers of threads to filter:
 ```
 ./build/bin/pop -a Compound -t 2,3 -e
 ```
+
+# Specifying your own Litmus tests
+
+You can specify your own Litmus test by adding it to the corresponding file in `Litmus/ARCH.lean`. For example, to add a Compound x86TSO-PTX test we add it to `Litmus/Compound.lean`.
+
+## Basic Syntax
+The LOST-POP implementation has custom syntax to define litmus tests more simply, for example, consider the following message passing litmus test:
+```
+deflitmus MP := {|  W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0 |} 
+```
+
+The `deflitmus` keyword is used in general to define a new litmus test, followed by the name of the litmus test and the `:=`. Enclosed by the brackets `{|` and `|}` we can specify the operations of the litmus test:
+  - A write with the syntax `W <variable> = <value>`
+  - A read with the syntax `R <variable> // <expected value>`
+  - A fence with the syntax `Fence`.
+Multiple instructions in a thread are separated by `;`, and the different threads are separated by `||`. The example above thus has two threads, each executing three instructions (write, fence, write and read, fence, read respectively).
+
+## Annotations
+
+Most of the time, a litmus test needs precise annotations for the instructions it uses, like the type of a fence. This can also be added to a Litmus test, as follows:
+ - Writes: `W. <annotations> <variable> = <value>`
+ - Reads: `R. <annotations> <variable> // <expected value>`
+ - Fences: `Fence. <annotations>`
+ - Dependencies: These are annotated on the semicolon separating the two instructions: `<instruction1> ;dep <instruction2>;`
+ For example, consider the following WRC litmus test for PTX:
+```
+deflitmus WRC := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|}
+```
+Here, the `R. sys_acq` marks that read as a system-scoped acquire read, and the `;dep`separator on the other thread marks a dependency between the read of `y` and the read of `x`.
+
+## Compound Systems and Scopes
+
+We can use this syntax to describe the system, including different scopes and architectures.
+The syntax is ``` where sys := <system description>` and the system description are nested blocks of threads enclosed in `{` and `}`, with the thread names. For example
+```
+deflitmus MP_writes_tso := {|  W x=1; W y=1 ||  R y // 1; R x // 0 |}
+  where sys := { {T0}. x86, {T1}. PTX}
+```
+This litmus test describes a heterogeneous litmus test with x86 and PTX threads. On the other hand, the following PTX litmus test has threads in different CTAs:
+```
+deflitmus IRIW_3ctas_1scoped_w := {| W. cta_rlx x=1 ||  R x // 1 ; Fence. cta_sc;  R y // 0 || R y // 1; Fence. cta_sc; R x // 0 || W y=1 |}
+  where sys := { {T0}, {T1, T2}, {T3} } ✓
+```
+
+# Defining new Architectures
+
+To define a new architecture, we need to add an implementation in:
+`Pop/Arch/<NEWARCH>.lean` and then add it to the `Pop/Arch.lean` file, like the other architectures.
+
+The architecture in the model is described by two typeclasses, `ArchReq` and `Arch`:
+```
+class ArchReq where
+  (type : Type 0)
+  (instBEq : BEq type)
+  (instInhabited : Inhabited type)
+```
+The `ArchReq` typeclass marks a type as being a type of request, it has to have an instance of boolean equality `BEq` and `Inhabited`, as well as a `ToString` instance for printing.
+
+The `Arch` typeclass, on the other hand, describes the architecture itself:
+```
+class Arch where
+  (req : ArchReq)
+  (orderCondition : ValidScopes → Request → Request → Bool)
+  (blockingSemantics : Request → BlockingSemantics)
+  (scopeIntersection : (valid : ValidScopes) → Request → Request → @Scope valid := λ v _ _ => v.systemScope)
+```
+
+It builds upon the request type `req`, and adds an `orderCondition`, a `blockingSemantics`, which is a list of `BlockingKinds`:
+```
+inductive BlockingKinds
+  | Read2ReadPred
+  | Read2ReadNoPred
+  | Read2WritePred
+  | Read2WriteNoPred
+  | Write2Read
+  | Write2Write
+
+abbrev BlockingSemantics := List BlockingKinds
+```
+Finally, an optional architecture-specific `scopeIntersection` function can be specified here as well.
+
+## Litmus Syntax
+
+To define your own litums tests in your self-defined architecture, there is an additional typeclass:
+```
+class LitmusSyntax where
+  mkRead : String → Address → String → BasicRequest
+  mkRMW : String → Address → String → BasicRequest × BasicRequest
+  mkWrite : String → Address → Value → String → BasicRequest
+  mkFence : String → String → BasicRequest
+```
+
+This typeclass tells you how to build your own `ReqType` from the annotation strings and other values (like `Address`es and `Value`s).

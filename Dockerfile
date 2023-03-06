@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     vim
 
 # Create a regular user
-RUN useradd -rm -d /home/user -s /bin/bash -g root -G sudo -u 1001 user
+RUN useradd --user-group --system --create-home --no-log-init user
 USER user
 WORKDIR /home/user
 
@@ -20,11 +20,19 @@ RUN ./elan-install.sh -y
 RUN . /home/user/.elan/env
 RUN /home/user/.elan/bin/elan self update
 
+#WORKDIR /home/user/models
+COPY --chown=user . models
 WORKDIR /home/user/models
-COPY --chown=user . .
+
+
+#Build Alloy
+RUN cd org.alloytools.alloy && ./gradlew build
+
+#USER root
+#COPY . .
+
+#Build Pop
 RUN /home/user/.elan/bin/lake update
-
-USER root
 RUN    /home/user/.elan/bin/lake build
-CMD ["/usr/bin/bash"]
 
+CMD ["/usr/bin/bash"]

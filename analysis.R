@@ -14,7 +14,7 @@ assume_timeouts <- results %>%
   filter( architecture == "PTX" |
           architecture == "TSO" |
           architecture == "Compound") %>%
-  mutate(operational_timeout = ifelse(operational == "𐄂?", "𐄂",operational))
+  mutate(operational_timeout = ifelse(operational == "disallowed?", "disallowed",operational))
 
 matches <- assume_timeouts %>%
   group_by(architecture) %>%

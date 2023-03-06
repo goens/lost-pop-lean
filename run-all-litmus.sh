@@ -17,16 +17,16 @@ AXIOMATIC_DIR=$PROJECT_ROOT/cmm-axiomatic
 ALLOY_JAR=$PROJECT_ROOT/org.alloytools.alloy/org.alloytools.alloy.cli/target/org.alloytools.alloy.cli.jar
 OUTPUT=results.csv
 
-echo "=============================================="
-echo "          Building Tools"
-echo "=============================================="
-
-# Build binary in case it's not already built
-lake update && lake build
-# Build Alloy
-cd org.alloytools.alloy
-./gradlew build
-cd $PROJECT_ROOT
+#echo "=============================================="
+#echo "          Building Tools"
+#echo "=============================================="
+#
+## Build binary in case it's not already built
+#lake update && lake build
+## Build Alloy
+#cd org.alloytools.alloy
+#./gradlew build
+#cd $PROJECT_ROOT
 
 #cleanup
 rm -rf litmus_alloy*
@@ -48,10 +48,10 @@ for ARCH in `echo $ARCHITECTURES | sed 's/,/ /g'`; do
      echo -n "Running Litmus Test $ARCH/${TEST}: "
      echo -n $ARCH, >> $OUTPUT
      echo -n $TEST, >> $OUTPUT
-    ./build/bin/pop -e -a $ARCH -i $NUM_ITERATIONS -l $TEST | grep -o -e "𐄂" -e "✓" -e "𐄂?" -e " ?" | tr '\n' ',' | cut -d ',' -f 2 | tr '\n' ',' | tee -a $OUTPUT
+    ./build/bin/pop -e -a $ARCH -i $NUM_ITERATIONS -l $TEST | grep -o -e "𐄂" -e "✓" -e "𐄂?" -e " ?" | tr '\n' ',' | cut -d ',' -f 2 | tr '\n' ',' | sed -e 's/✓/allowed/g' -e 's/𐄂/disallowed/g' | tee -a $OUTPUT
      #echo -n "," >> $OUTPUT
     if [ "$ARCH" = "TSO" ] || [ "$ARCH" = "PTX" ] || [ "$ARCH" = "Compound" ]; then
-      java -jar $ALLOY_JAR exec $TESTFILE 2>> litmus_alloy.log | grep -o -e "INSTANCE" -e "UNSAT" | sed -e 's/INSTANCE/✓/g' -e 's/UNSAT/𐄂/g' | tee -a $OUTPUT
+      java -jar $ALLOY_JAR exec $TESTFILE 2>> litmus_alloy.log | grep -o -e "INSTANCE" -e "UNSAT" | sed -e 's/INSTANCE/allowed/g' -e 's/UNSAT/disallowed/g' | tee -a $OUTPUT
     else
       echo "?" >> $OUTPUT
       echo ""

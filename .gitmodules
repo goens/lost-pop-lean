@@ -4,3 +4,7 @@
 [submodule "org.alloytools.alloy"]
 	path = org.alloytools.alloy
 	url = git@github.com:goens/org.alloytools.alloy.git
+[submodule "gem5"]
+	path = simulation
+	url = git@github.com:sukarnagarwal/ArtifactEvaluation.git
+	branch = untarred

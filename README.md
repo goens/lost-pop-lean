@@ -2,19 +2,18 @@
 
 This repository contains the Lean4 implementation of the LOST-POP model.
 
-
 # Artifact
 
 This README is found on the artifact for the PLDI'23 submission "Compound Memory Models". This artifact can be run from a docker container or built and executed locally.
 
 ## Docker
 
-To execute this from within a docker container, start an instance of the docker image in the artifact. This can be done from within the GUI e.g. in Windows/MacOS or in Linux e.g. with
-```
-sudo docker run -it DOCKER_IMAGE /usr/bin/bash
+To execute this from within a docker container, start an instance of the docker image in the artifact. This can be done from within the GUI e.g. in Windows/MacOS or in Linux e.g. with:
+```shell
+sudo docker run -it $THIS_DOCKER_IMAGE /usr/bin/bash
 ```
 From within the image, to run these models just go to the corresponding folder and run the script that executes them all:
-```
+```shell
 cd /home/user/models
 ./run-all-litmus.sh
 ```
@@ -28,17 +27,17 @@ You can also install and run this repository in your native environment, without
  - git, e.g. by `sudo apt install git` in Debian-based systems like Debian or Ubuntu.
  - Optional: A java runtime environment for running alloy and axiomatic tests, e.g. by `sudo apt install openjdk-16-jdk` in Debian-based systems.
  - Optional: R and dplyr for running the analysis in the end. You can get this e.g. by running the following in a Debian-based system:
-  ```
+  ```shell
   sudo apt install r-base
   Rscript -e "install.packages(c('dplyr','readr'), repos='https://cran.rstudio.com')"
   ```
 
 Once you have everything installed, you can first clone this repository and all its dependencies:
-```
+```shell
 git clone --branch PLDI-AE git@github.com:goens/pop-lean.git --recursive
 ```
 You can then run everything with the script given here:
-```
+```shell
 ./run-all-litmus.sh
 ```
 To run individual litmus tests, see [Running](#Running) and the [examples](#examples) below.
@@ -47,14 +46,14 @@ To run individual litmus tests, see [Running](#Running) and the [examples](#exam
 
 To build this repository, you need Lean4, which you can set up [here](https://leanprover.github.io/lean4/doc/quickstart.html).
 With Lean4 installed you can build the project by running
-```
+```shell
 lake update && lake build
 ```
 
 # Running
 
 After compiling, you should be able to run the executable with the interactive mode by running
-```
+```shell
 build/bin/pop
 ```
 
@@ -84,11 +83,11 @@ An automatic exploration, among other options, can be configured using the comma
 ## Examples
 
 You can simply run
-```
+```shell
 ./build/bin/pop
 ```
 This gives you an option to choose an architecture and litmus test manually:
-```
+```shell-session
 Select Architecture. Available:
 1. PTX
 2. TSO
@@ -136,11 +135,11 @@ Possible transitions:
 
 You can also choose the architecture and litmus test from the command line, as well as part of the trace (selections) from the command. For example, to run the compound litums test named 'MP_writes_tso_ptx_acq_cta' and accept the first option for the first four transitions (which results in the litmus test accepting all four requests first), you can run the following:
 
-```
+```shell
  ./build/bin/pop -a Compound -l MP_writes_tso_ptx_acq_cta -p 1,1,1,1.
 ```
 This allows you to explore the litmus test manually from there by choosing options:
-```
+```shell-session
 ======================================
 MP_writes_tso_ptx_acq_cta, program state:
  ||
@@ -176,7 +175,7 @@ Possible transitions:
 3: Propagate Req4 (W x(1)) to Thread 1
 ```
 If the litmus test has a trace hint, as is the case here, the options in the trace are marked with a `*`. Here it coincides with the partial trace we gave it and continues with transition `2*: Propagate Req3 (R x) to Thread 0 `). In this case, if we follow the trace hint until the end, we get a result allowing the behavior in this litmus test:
-```
+```shell-session
 =========================
 =======  SUMMARY  =======
 =========================
@@ -186,12 +185,12 @@ hint for MP_writes_tso_ptx_acq_cta := [Accept (R. cta_acq y) at Thread 1, Accept
 ```
 
 You can also let the tool automatically explore a litmus test automatically. If we consider the test 'MP_writes_tso_ptx_acq_sys' we can explore it by running:
-```
-❯ ./build/bin/pop -a PTX -l ISA2_fences_rel -e -i 10000
+```shell
+./build/bin/pop -a PTX -l ISA2_fences_rel -e -i 10000
 ```
 
 Which will run this for 10000 iterations. We get the result:
-```
+```shell-session
 Exploring PTX: 1 tests with [2, 3, 4] threads, with batch size 6, maximum 10000 iterations...
 | Litmus test      | Axiomatic | POP |
 --------------------------------------
@@ -199,7 +198,7 @@ Exploring PTX: 1 tests with [2, 3, 4] threads, with batch size 6, maximum 10000 
 ```
 
 In this case, 10000 iterations is not enough to exhaustively explore the design space; the summary results returns `𐄂?` for the operational model. It means it could not find a witness within the given number of iterations. The litmus test is probably disallowed. If we leave out `-i 10000` option, the command will run until it finishes.
-```
+```shell-session
 ❯ time ./build/bin/pop -a PTX -l ISA2_fences_rel -e`
 Exploring PTX: 1 tests with [2, 3, 4] threads, with batch size 6, unlimited iterations...
 ```
@@ -207,11 +206,11 @@ Exploring PTX: 1 tests with [2, 3, 4] threads, with batch size 6, unlimited iter
 **CAUTION**: For larger litmus tests (especially those with 4 threads), without a maximum number of iterations, this command will probably not finish in any reasonable amount of time. We recommend always adding a timeout.
 
 You can also run multiple tests at the same time (and in parallel) if you choose by specifying multiple litmus tests explicitly:
-```
+```shell
 ./build/bin/pop -a PTX -t 2,3 -e -l WRC_sc_dep,WRC_two_deps -i 100000
 ```
 or by specifying the numbers of threads to filter:
-```
+```shell
 ./build/bin/pop -a Compound -t 2,3 -e
 ```
 
@@ -268,7 +267,7 @@ To define a new architecture, we need to add an implementation in:
 `Pop/Arch/<NEWARCH>.lean` and then add it to the `Pop/Arch.lean` file, like the other architectures.
 
 The architecture in the model is described by two [typeclasses](https://leanprover.github.io/functional_programming_in_lean/type-classes/pos.html#classes-and-instances), `ArchReq` and `Arch`:
-```
+```lean
 class ArchReq where
   (type : Type 0)
   (instBEq : BEq type)
@@ -277,7 +276,7 @@ class ArchReq where
 The `ArchReq` typeclass marks a type as being a type of request, it has to have an instance of boolean equality `BEq` and `Inhabited`, as well as a `ToString` instance for printing.
 
 The `Arch` typeclass, on the other hand, describes the architecture itself:
-```
+```lean
 class Arch where
   (req : ArchReq)
   (orderCondition : ValidScopes → Request → Request → Bool)
@@ -286,7 +285,7 @@ class Arch where
 ```
 
 It builds upon the request type `req`, and adds an `orderCondition`, a `blockingSemantics`, which is a list of `BlockingKinds`:
-```
+```lean
 inductive BlockingKinds
   | Read2ReadPred
   | Read2ReadNoPred
@@ -302,7 +301,7 @@ Finally, an optional architecture-specific `scopeIntersection` function can be s
 ## Litmus Syntax
 
 To define your own litums tests in your self-defined architecture, there is an additional typeclass:
-```
+```lean
 class LitmusSyntax where
   mkRead : String → Address → String → BasicRequest
   mkRMW : String → Address → String → BasicRequest × BasicRequest

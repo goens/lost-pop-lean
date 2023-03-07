@@ -204,9 +204,7 @@ In this case, 10000 iterations is not enough to exhaustively explore the design 
 Exploring PTX: 1 tests with [2, 3, 4] threads, with batch size 6, unlimited iterations...
 ```
 
-~~~
 **CAUTION**: For larger litmus tests (especially those with 4 threads), without a maximum number of iterations, this command will probably not finish in any reasonable amount of time. We recommend always adding a timeout.
-~~~
 
 You can also run multiple tests at the same time (and in parallel) if you choose by specifying multiple litmus tests explicitly:
 ```
@@ -224,7 +222,7 @@ You can specify your own Litmus test by adding it to the corresponding file in `
 ## Basic Syntax
 The LOST-POP implementation has custom syntax to define litmus tests more simply, for example, consider the following message passing litmus test:
 ```
-deflitmus MP := {|  W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0 |} 
+deflitmus MP := {|  W x=1; Fence; W y=1 ||  R y // 1; Fence; R x // 0 |}
 ```
 
 The `deflitmus` keyword is used in general to define a new litmus test, followed by the name of the litmus test and the `:=`. Enclosed by the brackets `{|` and `|}` we can specify the operations of the litmus test:
@@ -239,12 +237,14 @@ Most of the time, a litmus test needs precise annotations for the instructions i
  - Writes: `W. <annotations> <variable> = <value>`
  - Reads: `R. <annotations> <variable> // <expected value>`
  - Fences: `Fence. <annotations>`
- - Dependencies: These are annotated on the semicolon separating the two instructions: `<instruction1> ;dep <instruction2>;`
+ - Dependencies: These are annotated on the semicolon separating the two instructions: `<instruction1> ;dep <instruction2>`
  For example, consider the following WRC litmus test for PTX:
 ```
-deflitmus WRC := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|}
+deflitmus WRC := {| W x=1 || R. sys_acq x // 1; W y = 1 || R y // 1 ;dep R x // 0|} ✓
 ```
 Here, the `R. sys_acq` marks that read as a system-scoped acquire read, and the `;dep`separator on the other thread marks a dependency between the read of `y` and the read of `x`.
+
+You can also add an annotation at the end of the litmus test that tells what the expected (axiomatic) behavior is for this test, either `✓` (allowed) or `𐄂` (disallowed).
 
 ## Compound Systems and Scopes
 
@@ -260,12 +260,14 @@ deflitmus IRIW_3ctas_1scoped_w := {| W. cta_rlx x=1 ||  R x // 1 ; Fence. cta_sc
   where sys := { {T0}, {T1, T2}, {T3} } ✓
 ```
 
+Note that the (axiomatic) allowed/disallowed annotations now go after this system description.
+
 # Defining new Architectures
 
 To define a new architecture, we need to add an implementation in:
 `Pop/Arch/<NEWARCH>.lean` and then add it to the `Pop/Arch.lean` file, like the other architectures.
 
-The architecture in the model is described by two typeclasses, `ArchReq` and `Arch`:
+The architecture in the model is described by two [typeclasses](https://leanprover.github.io/functional_programming_in_lean/type-classes/pos.html#classes-and-instances), `ArchReq` and `Arch`:
 ```
 class ArchReq where
   (type : Type 0)

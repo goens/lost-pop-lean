@@ -162,8 +162,8 @@ RUN    /home/user/.elan/bin/lake build
 
 #WORKDIR /home/user/models
 RUN mv simulation ../
-WORKDIR /home/user/simulation/gem5
-RUN scons -sQ -j4 build/GCN3_X86/gem5.opt
+WORKDIR /home/user/simulation
+RUN ./setup.sh
 
 
 CMD ["/usr/bin/bash"]

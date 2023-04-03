@@ -6,6 +6,7 @@ cd simulation
 echo "Running models litmus tests..."
 cd ../models
 ./run-all-litmus.sh
+cd ../
 
 TABLE1='table1.csv'
 TABLE2='table2.csv'

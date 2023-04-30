@@ -175,6 +175,11 @@ deflitmus two_r_two_w := {| R. cta_rlx x // 0;dep  W. cta_rlx x=1; R. cta_rlx x 
 
 deflitmus z6_3_lwsync_lwsync_dep := {| W x=1; Fence. sys_acqrel; W y=1; R y // 2 || W y = 2; Fence. sys_acqrel; W z = 1 || R z // 1 ;dep R x // 0|}
 
+deflitmus soham_counterexample_all_leading := {| Fence. sys_sc; W X = 1; W. sys_rel Z = 1 || R. sys_acq Z // 1; Fence. sys_sc; W Y = 1; R Y // 2 || Fence. sys_sc; W Y = 2; W. sys_rel A = 1 || R. sys_acq A // 1; Fence. sys_sc; R. sys_acq X // 0 |}
+deflitmus soham_counterexample_all_trailing := {| W. sys_rel X = 1; Fence. sys_sc; W. sys_rel Z = 1 || R. sys_acq Z // 1; W. sys_rel Y = 1; Fence. sys_sc; R Y // 2 ||  W. sys_rel Y = 2; Fence. sys_sc; W. sys_rel A = 1 || R. sys_acq A // 1;  R X // 0; Fence. sys_sc |}
+deflitmus soham_counterexample_mixed := {| Fence. sys_sc; W X = 1; W. sys_rel Z = 1 || R. sys_acq Z // 1; W. sys_rel Y = 1; Fence. sys_sc; R Y // 2 || Fence. sys_sc; W Y = 2; W. sys_rel A = 1 || R. sys_acq A // 1;  R X // 0; Fence. sys_sc |}
+
+
 -- deflitmus IRIW_rmw := {| RMW x //0 ||  R x // 1 ; Fence. sys_acq; R y // 0 || R y // 1; Fence. sys_acq; R x // 0 || RMW y//0 |}
 
 def allTests : List Litmus.Test := litmusTests!

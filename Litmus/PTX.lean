@@ -175,11 +175,17 @@ deflitmus two_r_two_w := {| R. cta_rlx x // 0;dep  W. cta_rlx x=1; R. cta_rlx x 
 
 deflitmus z6_3_lwsync_lwsync_dep := {| W x=1; Fence. sys_acqrel; W y=1; R y // 2 || W y = 2; Fence. sys_acqrel; W z = 1 || R z // 1 ;dep R x // 0|}
 
-deflitmus soham_counterexample_all_leading := {| W X = 1; W. sys_rel Z = 1 || R. sys_acq Z // 1; Fence. sys_sc; W Y = 1; R Y // 2 || W Y = 2; W. sys_rel A = 1 || R. sys_acq A // 1; Fence. sys_sc; R. sys_acq X // 0 |}
+deflitmus soham_counterexample_all_leading := {| W x = 1; W. sys_rel z = 1 || R. sys_acq z // 1; Fence. sys_sc; W y = 1; R y // 2 || W y = 2; W. sys_rel w = 1 || R. sys_acq w // 1; Fence. sys_sc; R. sys_acq x // 0 |}
 
-deflitmus soham_counterexample_all_trailing := {| W. sys_rel X = 1; Fence. sys_sc; W. sys_rel Z = 1 || R. sys_acq Z // 1; W. sys_rel Y = 1; Fence. sys_sc; R Y // 2 ||  W. sys_rel Y = 2; Fence. sys_sc; W. sys_rel A = 1 || R. sys_acq A // 1;  R X // 0 |}
+deflitmus soham_counterexample_all_trailing := {| W. sys_rel x = 1; Fence. sys_sc; W. sys_rel z = 1 || R. sys_acq z // 1; W. sys_rel y = 1; Fence. sys_sc; R y // 2 ||  W. sys_rel y = 2; Fence. sys_sc; W. sys_rel w = 1 || R. sys_acq w // 1;  R x // 0 |}
 
-deflitmus soham_counterexample_mixed := {| W X = 1; W. sys_rel Z = 1 || R. sys_acq Z // 1; W. sys_rel Y = 1; Fence. sys_sc; R Y // 2 || W Y = 2; W. sys_rel A = 1 || R. sys_acq A // 1;  R X // 0 |}
+deflitmus soham_counterexample_mixed := {| W x = 1; W. sys_rel z = 1 || R. sys_acq z // 1; W. sys_rel y = 1; Fence. sys_sc; R y // 2 || W y = 2; W. sys_rel w = 1 || R. sys_acq w // 1;  R x // 0 |}
+
+deflitmus soham_counterexample_all_leading_scopes := {| W x = 1; W. cta_rel z = 1 || R. cta_acq z // 1; Fence. sys_sc; W y = 1; R y // 2 || W y = 2; W. sys_rel w = 1 || R. sys_acq w // 1; Fence. sys_sc; R. sys_acq x // 0 |}
+  where  sys := { {T0, T1}, {T2, T3} }
+
+deflitmus soham_counterexample_mixed_scopes := {| W x = 1; W. cta_rel z = 1 || R. cta_acq z // 1; W. sys_rel y = 1; Fence. sys_sc; R y // 2 || W y = 2; W. sys_rel w = 1 || R. sys_acq w // 1;  R x // 0 |}
+  where sys := { {T0, T1}, {T2, T3} }
 
 
 -- deflitmus IRIW_rmw := {| RMW x //0 ||  R x // 1 ; Fence. sys_acq; R y // 0 || R y // 1; Fence. sys_acq; R x // 0 || RMW y//0 |}

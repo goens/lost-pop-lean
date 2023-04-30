@@ -386,6 +386,7 @@ def mkRequestSimple : RequestSyntax → ThreadId → String → List Transition
     | "x" => Pop.mkRequest (syn.reqKind, syn.reqType, 0, syn.value)
     | "y" => Pop.mkRequest (syn.reqKind, syn.reqType, 1, syn.value)
     | "z" => Pop.mkRequest (syn.reqKind, syn.reqType, 2, syn.value)
+    | "w" => Pop.mkRequest (syn.reqKind, syn.reqType, 3, syn.value)
     | "" => Pop.mkRequest (syn.reqKind, syn.reqType, 42, syn.value)
     | v => panic! s!"Unsupported variable in guide: {v}"
 

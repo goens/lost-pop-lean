@@ -158,4 +158,4 @@ def toAlloyLitmus (litmus : Litmus.Test ) : String :=
   "pred generated_litmus_test {\n" ++
   s!"{toSizes litmus}" ++
   s!"{toPreds litmus}" ++
-  "}\n" ++ "run generated_litmus_test for 10"
+  "}\n" ++ "run generated_litmus_test for 15"

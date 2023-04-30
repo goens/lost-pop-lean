@@ -1,4 +1,4 @@
-# POP - Lean
+# LOST-POP
 
 This repository contains the Lean4 implementation of the LOST-POP model, as described in: 
 Andrés Goens, Soham Chakraborty, Susmit Sarkar, Sukarn Agarwal, Nicolai Oswald and Vijay Nagarajan, "Compound Memory Models", (conditionally) accepted for publication in Proceedings of the 44th ACM SIGPLAN International Conference on Programming Language Design and Implementation (PLDI ’23), June 17-21, 2023, Orlando, Florida, USA.

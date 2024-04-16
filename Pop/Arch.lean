@@ -5,6 +5,7 @@ import Pop.Arch.PTX
 import Pop.Arch.TSO
 import Pop.Arch.ARM
 import Pop.Arch.XC
+import Pop.Arch.SC
 import Pop.Arch.Compound
 import Pop.Arch.CompoundXCTSO
 import Pop.Util
@@ -12,6 +13,7 @@ import Litmus.PTX
 import Litmus.TSO
 import Litmus.ARM
 import Litmus.XC
+import Litmus.SC
 import Litmus.Compound
 import Litmus.CompoundXCTSO
 
@@ -20,6 +22,7 @@ inductive ArchType
   | TSO
   | ARM
   | XC
+  | SC
   | Compound
   | CompoundXCTSO
   deriving Inhabited
@@ -29,6 +32,7 @@ instance : ToString ArchType where toString := λ a => match a with
   | .TSO => "TSO"
   | .ARM => "ARM"
   | .XC => "XC"
+  | .SC => "SC"
   | .CompoundXCTSO => "Compound XC TSO"
   | .Compound => "Compound TSO-PTX"
 
@@ -51,6 +55,7 @@ def parseArchitectureString : String → Except String ArchType
   | "TSO" => .ok ArchType.TSO
   | "ARM" => .ok ArchType.ARM
   | "XC" => .ok ArchType.XC
+  | "SC" => .ok ArchType.SC
   | "XCTSO" => .ok ArchType.CompoundXCTSO
   | "Compound" => .ok ArchType.Compound
   | s => .error s!"Unknown architecture ({s}). Available: {ArchType.available}"
@@ -67,6 +72,7 @@ def ArchType.getInstArch : ArchType → Pop.Arch
   | .TSO => x86.instArch
   | .ARM => ARM.instArch
   | .XC => XC.instArch
+  | .SC => SC.instArch
   | .Compound => Compound.instArch
   | .CompoundXCTSO => CompoundXCTSO.instArch
 
@@ -74,6 +80,7 @@ def ArchType.getInstLitmusSyntax : (arch : ArchType) → @Pop.LitmusSyntax arch.
   | .PTX => PTX.Litmus.instLitmusSyntaxInstArch
   | .TSO => x86.Litmus.instLitmusSyntaxInstArch
   | .XC => XC.Litmus.instLitmusSyntaxInstArch
+  | .SC => SC.Litmus.instLitmusSyntaxInstArch
   | .ARM => ARM.Litmus.instLitmusSyntaxInstArch
   | .Compound => Compound.Litmus.instLitmusSyntaxInstArch
   | .CompoundXCTSO => CompoundXCTSO.Litmus.instLitmusSyntaxInstArch
@@ -87,5 +94,6 @@ def ArchType.getLitmusTests : (arch : ArchType) → List (@Litmus.Test arch.getI
   | .TSO => x86.Litmus.allTests
   | .ARM => ARM.Litmus.allTests
   | .XC => XC.Litmus.allTests
+  | .SC => SC.Litmus.allTests
   | .CompoundXCTSO => CompoundXCTSO.Litmus.allTests ++ xcImported
   | .Compound => Compound.Litmus.allTests ++ x86Imported ++ ptxImported

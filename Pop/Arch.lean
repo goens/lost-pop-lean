@@ -48,7 +48,7 @@ def parseArchitecture :  List ArchType → String → Except String ArchType
     | Except.error s!"Invalid index ({n}), must be between 1 and {archs.length}"
   Except.ok arch
 
-def ArchType.available : List ArchType := [ArchType.PTX, ArchType.TSO, ArchType.Compound, ArchType.XC, ArchType.CompoundXCTSO]
+def ArchType.available : List ArchType := [ArchType.PTX, ArchType.TSO, ArchType.Compound, ArchType.XC, ArchType.CompoundXCTSO, ArchType.SC]
 
 def parseArchitectureString : String → Except String ArchType
   | "PTX" => .ok ArchType.PTX

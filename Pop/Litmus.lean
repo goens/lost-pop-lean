@@ -83,7 +83,7 @@ def outcomeEquiv : Litmus.Outcome → Litmus.Outcome → Bool
   | out₁, out₂ => outcomeSubset out₁ out₂ && outcomeSubset out₂ out₁
 
 def SystemState.outcomePossible : Litmus.Outcome → ProgramState → SystemState → Bool
- | expectedOutcome, program, state => Id.run do
+ | expectedOutcome, _, state => Id.run do
    -- Commented out: this pruning should be better/stronger, but it seems to make things slower and/or be wrong
    -- let rfpairs := expectedOutcome.toRFPairs program
    -- for ((readTrans,readNum),opWrite) in rfpairs do
@@ -122,7 +122,7 @@ def addressValuePretty : Address × Value → String
 
 def Outcome.prettyPrint : Litmus.Outcome → String
   | outcome =>
-  let threads : List Litmus.Outcome := outcome.groupBy (·.thread == ·.thread)
+  let threads : List Litmus.Outcome := outcome.splitBy (·.thread == ·.thread)
     |>.toArray.qsort (λ t₁ t₂ => Nat.ble t₁.head!.thread t₂.head!.thread) |>.toList
   let threadStrings := threads.map
     λ th => String.intercalate "; " $ th.map (λ readOut => addressValuePretty $ (readOut.address, readOut.value))
@@ -346,7 +346,7 @@ state.applyTrace writeReqs
 
 def mkPropagateTransitions : List RequestId → List ThreadId → List (Transition)
 | writeReqIds, threads =>
-  List.join $ writeReqIds.map λ wr => threads.foldl (λ reqs thId => (Pop.Transition.propagateToThread wr thId) :: reqs) []
+  List.flatten $ writeReqIds.map λ wr => threads.foldl (λ reqs thId => (Pop.Transition.propagateToThread wr thId) :: reqs) []
 
 def SystemState.initZeroesPropagateTransitions : SystemState → List Address → List (Transition)
   | state, addresses =>
@@ -402,23 +402,23 @@ def createLitmus (list : List (List RequestSyntax))
     | none => λ _ => "default"
     | some (_,f) => f
   let variablesRaw := list.map λ thread => thread.map (λ r => if r.varName.length == 0 then none else some r.varName)
-  let variables := removeDuplicates $ filterNones $ List.join variablesRaw
+  let variables := removeDuplicates $ filterNones $ List.flatten variablesRaw
   let variableNums := variables.zip (List.range variables.length)
-  let variableMap := Lean.mkHashMap (capacity := variableNums.length) |> variableNums.foldl λ acc (k, v) => acc.insert k v
-  let replaceVar := λ r => match variableMap.find? r.varName with
+  let variableMap := Std.HashMap.empty (capacity := variableNums.length) |> variableNums.foldl λ acc (k, v) => acc.insert k v
+  let replaceVar := λ r => match variableMap.get? r.varName with
     | some varName => (r.reqKind, r.reqType, varName ,r.value)
     | none => (r.reqKind, r.reqType, 0 ,r.value)
   let replacedVariablesNat : List (List (String × String × Nat × Option Nat)) :=  list.map λ thread => thread.map replaceVar
   let replacedVariables : List (List (String × String × Address × Value)) := replacedVariablesNat.map λ l => l.map (λ (str,rtype,addr,val) => (str,rtype,Address.ofNat addr, val))
   let fullThreads := replacedVariables.zip (List.range replacedVariables.length)
-  let mkThread := λ (reqs, thId) => List.join $ List.map (λ r => mkRequest r thId (threadTypes thId)) reqs
+  let mkThread := λ (reqs, thId) => List.flatten <| List.map (λ r => mkRequest r thId (threadTypes thId)) reqs
   let mkOutcomeThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkReadOutcomeTriple r thId) reqs
   let reqs := fullThreads.map λ t => mkThread t |>.toArray
-  let outcomes := mkOutcome $ List.join $ fullThreads.map λ t => mkOutcomeThread t
+  let outcomes := mkOutcome $ List.flatten $ fullThreads.map λ t => mkOutcomeThread t
   let initWrites := initZeroesUnpropagatedTransitions (threadTypes 0) (List.range variables.length)
   let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
   let guideTraces : List (List Transition) := metadata.guideTraceGens.map λ tr =>
-    List.join $ tr.map λ (thId, genFun) => genFun (threadTypes thId)
+    List.flatten $ tr.map λ (thId, genFun) => genFun (threadTypes thId)
   let initState := match validScopes with
     | some scopes => SystemState.init scopes threadTypes
     | none => SystemState.init (mkValidScopes fullThreads.length) threadTypes
@@ -544,7 +544,7 @@ partial def mkSysAux (mapping : String → Option ThreadId) (desc : TSyntax `sys
     | `(system_desc| { $[$sds:system_desc],* }) => do
       let (sdsTrees, names) := (← sds.mapM $ mkSysAux mapping).toList.unzip
       let join := blesort $ setJoin $ sdsTrees.map (@ListTree.listType ThreadId _)
-      return (← @ListTree.mkParent ThreadId _ join sdsTrees, names.join)
+      return (← @ListTree.mkParent ThreadId _ join sdsTrees, names.flatten)
     | _ => Except.error "unexpected syntax in system description"
 
 def mkSys (desc : TSyntax `system_desc) : Except String (ValidScopes × (List $ List ThreadId × String)) :=

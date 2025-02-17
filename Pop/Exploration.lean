@@ -104,7 +104,7 @@ def SystemState.possiblePropagateTransitions (state :  SystemState) : List (Tran
   let removedIds := state.removed.map Request.id
   let requests_active := requests_not_fully_propagated.filter λ r => (state.seen.elem r.id) && (!removedIds.elem r.id)
   -- dbg_trace s!"active requests: {requests_active}"
-  List.join $ requests_active.map λ r => r.possiblePropagateTransitions state
+  List.flatten $ requests_active.map λ r => r.possiblePropagateTransitions state
 
 def Request.possibleSatisfyTransitions (read : Request) (state : SystemState) : List (Transition) :=
   if !read.isRead then [] else
@@ -119,7 +119,7 @@ def Request.possibleSatisfyTransitions (read : Request) (state : SystemState) : 
 def SystemState.possibleSatisfyTransitions (state :  SystemState) : List (Transition) :=
   let requests := filterNones state.requests.val.toList
   let unsatisfied_reads := requests.filter λ r => r.isRead && !(state.isSatisfied r.id)
-  List.join $ unsatisfied_reads.map λ r => r.possibleSatisfyTransitions state
+  List.flatten $ unsatisfied_reads.map λ r => r.possibleSatisfyTransitions state
 
 def SystemState.possibleTransitions (state : SystemState) (unaccepted : ProgramState) :=
   let allaccepts := unaccepted.map λ th => th.filter (λ tr => tr.isAccept || tr.isDependency)
@@ -163,7 +163,7 @@ def SystemState._runWithList  : SystemState →  ProgramState → List Nat → E
         | Except.error e => Except.error e
 
 def SystemState.runWithList  : SystemState →  ProgramState → List Nat → Except String (SystemState)
-  | state, accepts, ns => if !(List.join (accepts.map Array.toList).toList |>.all Transition.isAccept)
+  | state, accepts, ns => if !(List.flatten (accepts.map Array.toList).toList |>.all Transition.isAccept)
   then throw "Running with non-accept transition inputs"
   else SystemState._runWithList state accepts ns
 
@@ -334,7 +334,7 @@ match inittuple with
                 idx := (idx + n) % unexplored.size
             if let transition::rest := guide then
               unless unexplored[0]!.fst.isEmpty do
-                let (first,last) := unexplored.split
+                let (first,last) := unexplored.partition
                   λ (pt,_,_)t => pt.getLast? == some transition
                 let firstSorted := first.qsort λ (pt,_,_)t (pt',_,_)t => Nat.ble pt'.length pt.length -- longest first!
                 unexplored := firstSorted ++ last
@@ -343,7 +343,7 @@ match inittuple with
                 idx := 0
             let some unexplored_cur := unexplored[idx]?
               | panic! "index error, this shouldn't happen" -- TODO: prove i is fine
-            unexplored := unexplored.eraseIdx idx
+            unexplored := unexplored.eraseIdx! idx
             if !options.breadthFirst then
               explored := explored.push unexplored_cur
             let task := Task.spawn λ _ => stepFun #[unexplored_cur]
@@ -468,7 +468,7 @@ def printMultipleLitmusResults : List (Litmus.Test × (Except String $ List Litm
   | results, printWitnesses => Id.run do
   let mut first := true
   let mut resStr := ""
-  let colLength := match List.maximum? $ results.map λ (t,_) => t.name.length with
+  let colLength := match List.max? $ results.map λ (t,_) => t.name.length with
     | none => 40
     | some l => l + 5
   for (test,res) in results do

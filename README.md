@@ -3,11 +3,11 @@
 This repository contains the Lean4 implementation of the LOST-POP model, as described in: 
 Andrés Goens, Soham Chakraborty, Susmit Sarkar, Sukarn Agarwal, Nicolai Oswald and Vijay Nagarajan, "Compound Memory Models", (conditionally) accepted for publication in Proceedings of the 44th ACM SIGPLAN International Conference on Programming Language Design and Implementation (PLDI ’23), June 17-21, 2023, Orlando, Florida, USA.
 
-[Paper](https://www.research.ed.ac.uk/en/publications/compound-memory-models)
+[Paper](https://dl.acm.org/doi/10.1145/3591267)
 
 # Building
 
-To build this repository, you need Lean4, which you can set up [here](https://leanprover.github.io/lean4/doc/quickstart.html).
+To build this repository, you need Lean4, which you can set up [here](https://lean-lang.org/lean4/doc/quickstart.html).
 With Lean4 installed you can build the project by running
 ```
 lake update && lake build
@@ -17,7 +17,7 @@ lake update && lake build
 
 After compiling, you should be able to run the executable with the interactive mode by running
 ```
-build/bin/pop
+lake exe pop
 ```
 
 An automatic exploration, among other options, can be configured using the command following flags:
@@ -47,7 +47,7 @@ An automatic exploration, among other options, can be configured using the comma
 
 You can simply run
 ```
-./build/bin/pop
+lake exe pop
 ```
 This gives you an option to choose an architecture and litmus test manually:
 ```
@@ -99,7 +99,7 @@ Possible transitions:
 You can also choose the architecture and litmus test from the command line, as well as part of the trace (selections) from the command. For example, to run the compound litums test named 'MP_writes_tso_ptx_acq_cta' and accept the first option for the first four transitions (which results in the litmus test accepting all four requests first), you can run the following:
 
 ```
- ./build/bin/pop -a Compound -l MP_writes_tso_ptx_acq_cta -p 1,1,1,1.
+ lake exe pop -a Compound -l MP_writes_tso_ptx_acq_cta -p 1,1,1,1.
 ```
 This allows you to explore the litmus test manually from there by choosing options:
 ```
@@ -149,7 +149,7 @@ hint for MP_writes_tso_ptx_acq_cta := [Accept (R.cta_acq y) at Thread 1, Accept 
 
 You can also let the tool automatically explore a litmus test automatically. If we consider the test 'MP_writes_tso_ptx_acq_sys' we can explore it by running:
 ```
-❯ ./build/bin/pop -a PTX -l ISA2_fences_rel -e -i 10000
+❯ lake exe pop -a PTX -l ISA2_fences_rel -e -i 10000
 ```
 
 Which will run this for 10000 iterations. We get the result:
@@ -162,7 +162,7 @@ Exploring PTX: 1 tests with [2, 3, 4] threads, with batch size 6, maximum 10000 
 
 In this case, 10000 iterations is not enough to exhaustively explore the design space; the summary results returns `𐄂?` for the operational model. It means it could not find a witness within the given number of iterations. The litmus test is probably disallowed. If we leave out `-i 10000` option, the command will run until it finishes.
 ```
-❯ time ./build/bin/pop -a PTX -l ISA2_fences_rel -e`
+❯ time lake exe pop -a PTX -l ISA2_fences_rel -e`
 Exploring PTX: 1 tests with [2, 3, 4] threads, with batch size 6, unlimited iterations...
 ```
 
@@ -172,9 +172,9 @@ Exploring PTX: 1 tests with [2, 3, 4] threads, with batch size 6, unlimited iter
 
 You can also run multiple tests at the same time (and in parallel) if you choose by specifying multiple litmus tests explicitly:
 ```
-./build/bin/pop -a PTX -t 2,3 -e -l WRC_sc_dep,WRC_two_deps -i 100000
+lake exe pop -a PTX -t 2,3 -e -l WRC_sc_dep,WRC_two_deps -i 100000
 ```
 or by specifying the numbers of threads to filter:
 ```
-./build/bin/pop -a Compound -t 2,3 -e
+lake exe pop -a Compound -t 2,3 -e
 ```

@@ -6,6 +6,7 @@ import Pop.Arch.TSO
 import Pop.Arch.ARM
 import Pop.Arch.XC
 import Pop.Arch.SC
+import Pop.Arch.ScopedRC
 import Pop.Arch.Compound
 import Pop.Arch.CompoundXCTSO
 import Pop.Util
@@ -14,6 +15,7 @@ import Litmus.TSO
 import Litmus.ARM
 import Litmus.XC
 import Litmus.SC
+import Litmus.ScopedRC
 import Litmus.Compound
 import Litmus.CompoundXCTSO
 
@@ -23,6 +25,7 @@ inductive ArchType
   | ARM
   | XC
   | SC
+  | ScopedRC
   | Compound
   | CompoundXCTSO
   deriving Inhabited
@@ -33,6 +36,7 @@ instance : ToString ArchType where toString := λ a => match a with
   | .ARM => "ARM"
   | .XC => "XC"
   | .SC => "SC"
+  | .ScopedRC => "ScopedRC"
   | .CompoundXCTSO => "Compound XC TSO"
   | .Compound => "Compound TSO-PTX"
 
@@ -48,7 +52,7 @@ def parseArchitecture :  List ArchType → String → Except String ArchType
     | Except.error s!"Invalid index ({n}), must be between 1 and {archs.length}"
   Except.ok arch
 
-def ArchType.available : List ArchType := [ArchType.PTX, ArchType.TSO, ArchType.Compound, ArchType.XC, ArchType.CompoundXCTSO, ArchType.SC]
+def ArchType.available : List ArchType := [ArchType.PTX, ArchType.TSO, ArchType.Compound, ArchType.XC, ArchType.CompoundXCTSO, ArchType.SC, ArchType.ScopedRC]
 
 def parseArchitectureString : String → Except String ArchType
   | "PTX" => .ok ArchType.PTX
@@ -57,6 +61,7 @@ def parseArchitectureString : String → Except String ArchType
   | "XC" => .ok ArchType.XC
   | "SC" => .ok ArchType.SC
   | "XCTSO" => .ok ArchType.CompoundXCTSO
+  | "ScopedRC" => .ok ArchType.ScopedRC
   | "Compound" => .ok ArchType.Compound
   | s => .error s!"Unknown architecture ({s}). Available: {ArchType.available}"
 
@@ -73,6 +78,7 @@ def ArchType.getInstArch : ArchType → Pop.Arch
   | .ARM => ARM.instArch
   | .XC => XC.instArch
   | .SC => SC.instArch
+  | .ScopedRC => ScopedRC.instArch
   | .Compound => Compound.instArch
   | .CompoundXCTSO => CompoundXCTSO.instArch
 
@@ -82,6 +88,7 @@ def ArchType.getInstLitmusSyntax : (arch : ArchType) → @Pop.LitmusSyntax arch.
   | .XC => XC.Litmus.instLitmusSyntax
   | .SC => SC.Litmus.instLitmusSyntax
   | .ARM => ARM.Litmus.instLitmusSyntax
+  | .ScopedRC => ScopedRC.Litmus.instLitmusSyntax
   | .Compound => Compound.Litmus.instLitmusSyntax
   | .CompoundXCTSO => CompoundXCTSO.Litmus.instLitmusSyntax
 
@@ -95,5 +102,6 @@ def ArchType.getLitmusTests : (arch : ArchType) → List (@Litmus.Test arch.getI
   | .ARM => ARM.Litmus.allTests
   | .XC => XC.Litmus.allTests
   | .SC => SC.Litmus.allTests
+  | .ScopedRC => ScopedRC.Litmus.allTests
   | .CompoundXCTSO => CompoundXCTSO.Litmus.allTests ++ xcImported
   | .Compound => Compound.Litmus.allTests ++ x86Imported ++ ptxImported

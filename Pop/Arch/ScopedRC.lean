@@ -1,4 +1,4 @@
--- Author(s): Andrés Goens
+-- Author(s): Andrés Goens, Fletch Rydell
 -- See Copyright Notice in LICENSE
 
 import Pop.States
@@ -53,7 +53,6 @@ def Req.toString (req : Req) : String :=
 
 instance : ToString Req where toString := Req.toString
 
-
 def reqBlockingSemantics (req : Req) : BlockingSemantics :=
   match req.sem with
     | .rlx => []
@@ -85,14 +84,6 @@ def scopeInclusive (V : ValidScopes) (r₁ r₂ : Request) : Bool :=
   let scope₂ := requestScope V r₂
   scope₁.threads.contains t₂ && scope₂.threads.contains t₁
 
-/-
-  SC fence only considers its scope for order constraints.
-  Scopes for rel, acq, acqrel (i.e. non-SC) fences:
-    | W → Fence | Fence |
-    | Fence → W |   ∩   |
-    | R → Fence |   ∩   |
-    | Fence → R | Fence |
--/
 def scopeIntersection : (V : ValidScopes) → Request → Request → @Pop.Scope V
   | V, r_old, r_new => Id.run do
     let old_scope := ScopedRC.requestScope V r_old
@@ -120,27 +111,11 @@ def order : ValidScopes → Request → Request → Bool
   let readtowrite := (r_old.thread == r_new.thread) && (r_old.isRead && r_new.isWrite)
   let reltoacq := (r_old.thread == r_new.thread) && (isRel r_old) && (isAcq r_new)
   let acqtoany := (r_old.thread == r_new.thread) && (isAcq r_old)
-  let anytorel := (r_old.thread == r_new.thread) && (isRel r_new)
-
-  -- dbg_trace "[order] {r_old} {r_new}"
-  -- dbg_trace "[order] acqtoany : {acqtoany}"
-  -- dbg_trace "[order] anytorel : {anytorel}"
-  -- dbg_trace "[order] reltoacq : {reltoacq}"
-  -- dbg_trace "[order] readtowrite : {readtowrite}"
-  -- dbg_trace "[order] scopes match: {scopesMatch V r_old r_new}"
-
-  /- Other PTX things--do we need any?
+  let pred := r_old.isPredecessorAt r_new.thread && (isRel r_new)
+  let newrel := (isRel r_new) && (r_new.thread == r_old.thread || r_old.isPredecessorAt r_new.thread)
   let samemem_reads := r_old.address? == r_new.address? && r_old.isRead && r_new.isRead
-  let acqafter := r_old.isGeqAcq && (r_new.thread == r_old.thread)
-  let acqread :=  r_new.isGeqAcq && (r_new.thread == r_old.thread && r_old.isRead)
-  let newrel := r_new.isGeqRel && (r_new.thread == r_old.thread || r_old.isPredecessorAt r_new.thread)
-  let relwrite := r_old.isGeqRel && r_new.thread == r_old.thread && r_new.isWrite
-  let dep_old := r_old.isDep && r_new.isMem && r_new.thread == r_old.thread
-  let dep_new := r_new.isDep && r_old.isRead && r_new.thread == r_old.thread
-  let pred := r_old.isPredecessorAt r_new.thread && r_new.isGeqRel
-  -/
-
-  scopesMatch V r_old r_new && (readtowrite || acqtoany || anytorel || reltoacq)
+  scopesMatch V r_old r_new &&
+  (readtowrite || acqtoany || newrel || reltoacq || pred || samemem_reads)
 
 def blockingSemantics : Request → BlockingSemantics
     | req => reqBlockingSemantics req.basic_type.type

@@ -138,13 +138,13 @@ def BasicRequest.atomicity : BasicRequest → Atomicity
 
 def BasicRequest.toString : BasicRequest → String
   | BasicRequest.read  rr ty =>
-    let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
+    let tyStr := match s!"{ty}" with | "" => "" | str => s!".{str}"
     s!"R{rr.atomicity}{tyStr} {rr.addr.prettyPrint}" ++ match rr.val with | none => "" | some v => s!" // {v}"
   | BasicRequest.write  wr ty =>
-    let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
-    s!"W{wr.atomicity}{tyStr} {wr.addr.prettyPrint} {wr.val}"
+    let tyStr := match s!"{ty}" with | "" => "" | str => s!".{str}"
+    s!"W{wr.atomicity}{tyStr} {wr.addr.prettyPrint} = {wr.val}"
   | BasicRequest.fence ty =>
-    let tyStr := match s!"{ty}" with | "" => "" | str => s!". {str}"
+    let tyStr := match s!"{ty}" with | "" => "" | str => s!".{str}"
     s!"Fence{tyStr}"
 
 def BasicRequest.prettyPrint : BasicRequest → String

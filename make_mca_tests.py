@@ -2,11 +2,12 @@
 # --------------------------
 # Utilities
 # --------------------------
+two_threads = ["T0", "T1"]
 three_threads = ["T0", "T1", "T2"]
 four_threads = ["T0", "T1", "T2", "T3"]
 
 scope_mappings = {
-  "SCOPE_SYSTEM" : "sys",
+#  "SCOPE_SYSTEM" : "sys",
   "SCOPE_DEVICE" : "gpu",
   "SCOPE_BLOCK" : "cta"
 }
@@ -67,7 +68,7 @@ def make_tests(output, tb_combinations, variants, fence_variants, make_test):
       for variant in variants:
         full_name = f"{name_format_combo}_{scope}_NO_FENCE_{variant}"
         write_test(make_test(full_name, mapped_scope, "", variant))
-     
+
       # Variants with fences
       for f_scope in scope_mappings.keys():
         mapped_f_scope = scope_mappings[f_scope]
@@ -106,14 +107,14 @@ def iriw_fences(f_scope, variant):
     fences["t1_fence"] = f"Fence.{f_scope}_acqrel;"
   if variant == "THREAD_3_FENCE" or variant == "BOTH_FENCE":
     fences["t3_fence"] = f"Fence.{f_scope}_acqrel;"
-  
+
   return fences
 
 def make_iriw_test(full_name, scope, f_scope, variant):
   mem_orders = iriw_mem_orders(scope, variant)
   fences = iriw_fences(f_scope, variant)
   return f"deflitmus iriw_TB_{full_name} := W.{scope}_rlx x=1 || R.{mem_orders['t1_load']} x // 1; {fences['t1_fence']} R.{scope}_rlx y // 0 || W.{scope}_rlx y=1 || R.{mem_orders['t3_load']} y // 1; {fences['t3_fence']} R.{scope}_rlx x // 0"
-        
+
 def iriw_tests(output):
   tb_combos = sort_combinations(make_combinations(four_threads))
   variants = ["ACQUIRE", "RELAXED"]
@@ -135,7 +136,7 @@ def isa2_mem_orders(scope, variant):
   ## T0 store
   if variant in ["ACQUIRE", "RELEASE", "THREAD_1_FENCE", "THREAD_2_FENCE_ACQ", "THREAD_2_FENCE_REL", "THREAD_1_2_FENCE"]:
     mem_orders["t0_store"] = f"{scope}_rel"
-  
+
   ## T1 load
   if variant in ["ACQUIRE", "THREAD_0_FENCE_ACQ", "THREAD_2_FENCE_ACQ", "THREAD_0_2_FENCE_ACQ"]:
     mem_orders["t1_load"] = f"{scope}_acq"
@@ -147,7 +148,7 @@ def isa2_mem_orders(scope, variant):
   ## T2 load
   if variant in ["ACQUIRE", "RELEASE", "THREAD_0_FENCE_ACQ", "THREAD_0_FENCE_REL", "THREAD_1_FENCE", "THREAD_0_1_FENCE"]:
     mem_orders["t2_load"] = f"{scope}_acq"
-  
+
   return mem_orders
 
 def isa2_fences(f_scope, variant):
@@ -164,7 +165,7 @@ def isa2_fences(f_scope, variant):
   ## T1 fence
   if variant in ["ALL_FENCE", "THREAD_1_FENCE", "THREAD_0_1_FENCE", "THREAD_1_2_FENCE"]:
     fences["t1_fence"] = f"Fence.{f_scope}_acqrel;"
-   
+
   ## T2 fence
   if variant in ["ALL_FENCE", "THREAD_2_FENCE_ACQ", "THREAD_2_FENCE_REL", "THREAD_0_2_FENCE_ACQ", "THREAD_0_2_FENCE_REL", "THREAD_1_2_FENCE"]:
     fences["t2_fence"] = f"Fence.{f_scope}_acqrel;"
@@ -183,16 +184,61 @@ def isa2_tests(output):
   make_tests(output, tb_combos, variants, fence_variants, make_isa2_test)
 
 # -------------------------------------------------------------------------
-# Paper Example
+# Paper Example 1
 # -------------------------------------------------------------------------
 
-def paper_example(output):
-  test = "deflitmus paper_example_DEFAULT_DEFAULT_NO_FENCE_DEFAULT := Fence.gpu_sc; W.gpu_rel x=1; W.gpu_rel z=1 || R.gpu_acq z // 1; W.gpu_rel y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || Fence.gpu_sc; W.gpu_rel y=2; W.gpu_rel a=1 || R.gpu_acq a // 1; R.gpu_acq x // 0; Fence.gpu_sc"
+def make_paper_example1_test(variant, output):
+  if variant == "DISALLOWED":
+    mem_orders = {
+      "store_order": "rel",
+      "load_order": "acq"
+    }
+  else:
+    mem_orders = {
+      "store_order": "rlx",
+      "load_order": "rlx"
+    }
+  test = f"deflitmus paper_example1_TB_0_1_2_3_SCOPE_DEVICE_NO_FENCE_{variant} := W.gpu_{mem_orders['store_order']} x=1; W.gpu_{mem_orders['store_order']} y=1 || R.gpu_{mem_orders['load_order']} y // 1; W.gpu_{mem_orders['store_order']} z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_{mem_orders['store_order']} z=2; W.gpu_{mem_orders['store_order']} a=1 || R.gpu_{mem_orders['load_order']} a // 1; R.gpu_{mem_orders['load_order']} x // 0"
+
   config = " where sys := {{T0}, {T1}, {T2}, {T3}}"
+
   output.write(test)
   output.write("\n")
   output.write(config)
   output.write("\n\n")
+
+def paper_example1(output):
+  make_paper_example1_test("DISALLOWED", output)
+  make_paper_example1_test("RELAXED", output)
+
+# -------------------------------------------------------------------------
+# Paper Example 2
+# -------------------------------------------------------------------------
+
+def make_paper_example2_test(variant, output):
+  if variant == "DISALLOWED":
+    mem_orders = {
+      "store_order": "rel",
+      "load_order": "acq"
+    }
+  else:
+    mem_orders = {
+      "store_order": "rlx",
+      "load_order": "rlx"
+    }
+  test = f"deflitmus paper_example2_TB_0_1_2_3_SCOPE_DEVICE_NO_FENCE_{variant} := W.gpu_{mem_orders['store_order']} x=1; W.gpu_{mem_orders['store_order']} y=1 || R.gpu_{mem_orders['load_order']} y // 1; R.gpu_{mem_orders['load_order']} z // 0 || W.gpu_{mem_orders['store_order']} z=1; W.gpu_{mem_orders['store_order']} a=1 || R.gpu_{mem_orders['load_order']} a // 1; R.gpu_{mem_orders['load_order']} x // 0"
+
+  config = " where sys := {{T0}, {T1}, {T2}, {T3}}"
+
+  output.write(test)
+  output.write("\n")
+  output.write(config)
+  output.write("\n\n")
+
+def paper_example2(output):
+  make_paper_example2_test("DISALLOWED", output)
+  make_paper_example2_test("RELAXED", output)
+
 
 # -------------------------------------------------------------------------
 # RWC
@@ -212,11 +258,11 @@ def rwc_mem_orders(scope, variant):
   ## T2 store
   if variant in ["STORE_SC", "THREAD_1_FENCE_STORE_SC"]:
     mem_orders["t2_store"] = f"{scope}_sc"
-  
+
   ## T2 load
   if variant in ["LOAD_SC", "THREAD_1_FENCE_LOAD_SC"]:
     mem_orders["t2_load"] = f"{scope}_sc"
-  
+
   return mem_orders
 
 def rwc_fences(f_scope, variant):
@@ -228,7 +274,7 @@ def rwc_fences(f_scope, variant):
   ## T1 fence
   if variant in ["BOTH_FENCE", "THREAD_1_FENCE_STORE_SC", "THREAD_1_FENCE_LOAD_SC"]:
     fences["t1_fence"] = f"Fence.{f_scope}_acqrel;"
-  
+
   ## T2 fence
   if variant in ["BOTH_FENCE", "THREAD_2_FENCE"]:
     fences["t2_fence"] = f"Fence.{f_scope}_sc;"
@@ -266,11 +312,11 @@ def wrc_mem_orders(scope, variant):
   ## T1 store
   if variant in ["RELEASE", "THREAD_2_FENCE_REL"]:
     mem_orders["t1_store"] = f"{scope}_rel"
-  
+
   ## T2 load
   if variant in ["ACQUIRE", "RELEASE", "THREAD_1_FENCE"]:
     mem_orders["t2_load"] = f"{scope}_acq"
-  
+
   return mem_orders
 
 def wrc_fences(f_scope, variant):
@@ -282,7 +328,7 @@ def wrc_fences(f_scope, variant):
   ## T1 fence
   if variant in ["BOTH_FENCE", "THREAD_1_FENCE"]:
     fences["t1_fence"] = f"Fence.{f_scope}_acqrel;"
-  
+
   ## T2 fence
   if variant in ["BOTH_FENCE", "THREAD_2_FENCE_ACQ", "THREAD_2_FENCE_REL"]:
     fences["t2_fence"] = f"Fence.{f_scope}_acqrel;"
@@ -318,11 +364,11 @@ def wrw_2w_mem_orders(scope, variant):
   ## T1 store
   if variant in ["RELEASE", "THREAD_2_FENCE_REL"]:
     mem_orders["t1_store"] = f"{scope}_rel"
-  
+
   ## T2 store
   if variant in ["ACQUIRE", "RELEASE", "THREAD_1_FENCE"]:
     mem_orders["t2_store"] = f"{scope}_rel"
-  
+
   return mem_orders
 
 def wrw_2w_fences(f_scope, variant):
@@ -334,7 +380,7 @@ def wrw_2w_fences(f_scope, variant):
   ## T1 fence
   if variant in ["BOTH_FENCE", "THREAD_1_FENCE"]:
     fences["t1_fence"] = f"Fence.{f_scope}_acqrel;"
-  
+
   ## T2 fence
   if variant in ["BOTH_FENCE", "THREAD_2_FENCE_ACQ", "THREAD_2_FENCE_REL"]:
     fences["t2_fence"] = f"Fence.{f_scope}_acqrel;"
@@ -344,7 +390,7 @@ def wrw_2w_fences(f_scope, variant):
 def make_wrw_2w_test(full_name, scope, f_scope, variant):
   mem_orders = wrw_2w_mem_orders(scope, variant)
   fences = wrw_2w_fences(f_scope, variant)
-  return f"deflitmus wrw_2w_TB_{full_name} := W.{scope}_rlx x=2 || R.{mem_orders['t1_load']} x // 2; {fences['t1_fence']} W.{mem_orders['t1_store']} y=1; Fence.sys_sc; R.sys_rlx y // 2 || W.{scope}_rlx y=2; {fences['t2_fence']} W.{mem_orders['t2_store']} x=1; Fence.sys_sc; R.sys_rlx x // 2"
+  return f"deflitmus wrw_2w_TB_{full_name} := W.{scope}_rlx x=2 || R.{mem_orders['t1_load']} x // 2; {fences['t1_fence']} W.{mem_orders['t1_store']} y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.{scope}_rlx y=2; {fences['t2_fence']} W.{mem_orders['t2_store']} x=1; Fence.gpu_sc; R.gpu_rlx x // 2"
 
 def wrw_2w_tests(output):
   tb_combos = make_combinations(three_threads)
@@ -371,7 +417,7 @@ def wwc_mem_orders(scope, variant):
   ## T1 store
   if variant in ["REL_ACQ", "REL_REL", "THREAD_2_FENCE_REL"]:
     mem_orders["t1_store"] = f"{scope}_rel"
-  
+
   ## T2 load
   if variant in ["ACQ_ACQ", "REL_ACQ", "THREAD_1_FENCE_ACQ"]:
     mem_orders["t2_load"] = f"{scope}_acq"
@@ -379,7 +425,7 @@ def wwc_mem_orders(scope, variant):
    ## T2 store
   if variant in ["ACQ_REL", "REL_REL", "THREAD_1_FENCE_REL"]:
     mem_orders["t2_store"] = f"{scope}_rel"
- 
+
   return mem_orders
 
 def wwc_fences(f_scope, variant):
@@ -391,7 +437,7 @@ def wwc_fences(f_scope, variant):
   ## T1 fence
   if variant in ["BOTH_FENCE", "THREAD_1_FENCE_ACQ", "THREAD_1_FENCE_REL"]:
     fences["t1_fence"] = f"Fence.{f_scope}_acqrel;"
-  
+
   ## T2 fence
   if variant in ["BOTH_FENCE", "THREAD_2_FENCE_ACQ", "THREAD_2_FENCE_REL"]:
     fences["t2_fence"] = f"Fence.{f_scope}_acqrel;"
@@ -401,7 +447,7 @@ def wwc_fences(f_scope, variant):
 def make_wwc_test(full_name, scope, f_scope, variant):
   mem_orders = wwc_mem_orders(scope, variant)
   fences = wwc_fences(f_scope, variant)
-  return f"deflitmus wwc_TB_{full_name} := W.{scope}_rlx x=2 || R.{mem_orders['t1_load']} x // 2; {fences['t1_fence']} W.{mem_orders['t1_store']} y=1 || R.{mem_orders['t2_load']} y // 1; {fences['t2_fence']} W.{mem_orders['t2_store']} x=1; Fence.sys_sc; R.sys_rlx x // 2"
+  return f"deflitmus wwc_TB_{full_name} := W.{scope}_rlx x=2 || R.{mem_orders['t1_load']} x // 2; {fences['t1_fence']} W.{mem_orders['t1_store']} y=1 || R.{mem_orders['t2_load']} y // 1; {fences['t2_fence']} W.{mem_orders['t2_store']} x=1; Fence.gpu_sc; R.gpu_rlx x // 2"
 
 def wwc_tests(output):
   tb_combos = make_combinations(three_threads)
@@ -410,7 +456,162 @@ def wwc_tests(output):
   make_tests(output, tb_combos, variants, fence_variants, make_wwc_test)
 
 # -------------------------------------------------------------------------
-# Write Output 
+# 2+2W
+# -------------------------------------------------------------------------
+def two_plus_two_write_mem_orders(scope, variant):
+  mem_orders = {
+    "t0_store": f"{scope}_rlx",
+    "t1_store": f"{scope}_rlx"
+  }
+
+  if variant == "RELEASE" or variant == "FENCE_1":
+    mem_orders["t0_store"] = f"{scope}_rel"
+  if variant == "RELEASE" or variant == "FENCE_0":
+    mem_orders["t1_store"] = f"{scope}_rel"
+
+  return mem_orders
+
+def two_plus_two_write_fences(f_scope, variant):
+  fences = {
+    "t0_fence": "",
+    "t1_fence": ""
+  }
+
+  if variant == "FENCE_0" or variant == "BOTH_FENCE":
+    fences["t0_fence"] = f"Fence.{f_scope}_acqrel;"
+  if variant == "FENCE_1" or variant == "BOTH_FENCE":
+    fences["t1_fence"] = f"Fence.{f_scope}_acqrel;"
+
+  return fences
+
+def make_two_plus_two_write_test(full_name, scope, f_scope, variant):
+  mem_orders = two_plus_two_write_mem_orders(scope, variant)
+  fences = two_plus_two_write_fences(f_scope, variant)
+  return f"deflitmus two_2w_TB_{full_name} := W.{scope}_rlx x=1; {fences['t0_fence']} W.{mem_orders['t0_store']} y=2; Fence.gpu_sc; R.gpu_rlx y // 1 || W.{scope}_rlx y=1; {fences['t1_fence']} W.{mem_orders['t1_store']} x=2; Fence.gpu_sc; R.gpu_rlx x // 1"
+
+def two_plus_two_write_tests(output):
+  tb_combos = sort_combinations(make_combinations(two_threads))
+  variants = ["RELEASE", "RELAXED"]
+  fence_variants = ["FENCE_0", "FENCE_1", "BOTH_FENCE"]
+  make_tests(output, tb_combos, variants, fence_variants, make_two_plus_two_write_test)
+
+# -------------------------------------------------------------------------
+# 3.2W
+# -------------------------------------------------------------------------
+
+def three_two_write_mem_orders(scope, variant):
+  mem_orders = {
+    "t0_store": f"{scope}_rlx",
+    "t1_store": f"{scope}_rlx",
+    "t2_store": f"{scope}_rlx"
+  }
+
+  ## T0 store
+  if variant in ["RELEASE", "ALL_FENCE", "FENCE_1", "FENCE_2", "FENCE_12"]:
+    mem_orders["t0_store"] = f"{scope}_rel"
+
+  ## T1 store
+  if variant in ["RELEASE", "ALL_FENCE", "FENCE_0", "FENCE_2", "FENCE_02"]:
+    mem_orders["t1_store"] = f"{scope}_rel"
+
+  ## T2 store
+  if variant in ["RELEASE", "ALL_FENCE", "FENCE_0", "FENCE_1", "FENCE_01"]:
+    mem_orders["t2_store"] = f"{scope}_rel"
+
+  return mem_orders
+
+def three_two_write_fences(f_scope, variant):
+  fences = {
+    "t0_fence": "",
+    "t1_fence": "",
+    "t2_fence": ""
+  }
+
+  ## T0 fence
+  if variant in ["ALL_FENCE", "FENCE_0", "FENCE_01", "FENCE_02"]:
+    fences["t0_fence"] = f"Fence.{f_scope}_acqrel;"
+
+  ## T1 fence
+  if variant in ["ALL_FENCE", "FENCE_1", "FENCE_01", "FENCE_12"]:
+    fences["t1_fence"] = f"Fence.{f_scope}_acqrel;"
+
+  ## T2 fence
+  if variant in ["ALL_FENCE", "FENCE_2", "FENCE_02", "FENCE_12"]:
+    fences["t2_fence"] = f"Fence.{f_scope}_acqrel;"
+
+  return fences
+
+def make_three_two_write_test(full_name, scope, f_scope, variant):
+  mem_orders = three_two_write_mem_orders(scope, variant)
+  fences = three_two_write_fences(f_scope, variant)
+  return f"deflitmus three_2w_TB_{full_name} := W.{scope}_rlx x=2; {fences['t0_fence']} W.{mem_orders['t0_store']} y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.{scope}_rlx y=2; {fences['t1_fence']} W.{mem_orders['t1_store']} z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.{scope}_rlx z=2; {fences['t2_fence']} W.{mem_orders['t2_store']} x=1; Fence.gpu_sc; R.gpu_rlx x // 2"
+
+def three_two_write_tests(output):
+  tb_combos = make_combinations(three_threads)
+  variants = ["RELAXED", "ACQUIRE", "RELEASE"]
+  fence_variants = ["ALL_FENCE", "FENCE_0", "FENCE_1", "FENCE_2", "FENCE_01", "FENCE_02", "FENCE_12"]
+  make_tests(output, tb_combos, variants, fence_variants, make_three_two_write_test)
+
+# -------------------------------------------------------------------------
+# Z6.3
+# -------------------------------------------------------------------------
+
+def z6_3_mem_orders(scope, variant):
+  mem_orders = {
+    "t0_store": f"{scope}_rlx",
+    "t1_store": f"{scope}_rlx",
+    "t2_load": f"{scope}_rlx"
+  }
+
+  ## T0 store
+  if variant in ["ACQ_REL", "ALL_FENCE", "FENCE_1", "FENCE_2", "FENCE_12"]:
+    mem_orders["t0_store"] = f"{scope}_rel"
+
+  ## T1 store
+  if variant in ["ACQ_REL", "ALL_FENCE", "FENCE_0", "FENCE_2", "FENCE_02"]:
+    mem_orders["t1_store"] = f"{scope}_rel"
+
+  ## T2 load
+  if variant in ["ACQ_REL", "ALL_FENCE", "FENCE_0", "FENCE_1", "FENCE_01"]:
+    mem_orders["t2_load"] = f"{scope}_acq"
+
+  return mem_orders
+
+def z6_3_fences(f_scope, variant):
+  fences = {
+    "t0_fence": "",
+    "t1_fence": "",
+    "t2_fence": ""
+  }
+
+  ## T0 fence
+  if variant in ["ALL_FENCE", "FENCE_0", "FENCE_01", "FENCE_02"]:
+    fences["t0_fence"] = f"Fence.{f_scope}_acqrel;"
+
+  ## T1 fence
+  if variant in ["ALL_FENCE", "FENCE_1", "FENCE_01", "FENCE_12"]:
+    fences["t1_fence"] = f"Fence.{f_scope}_acqrel;"
+
+  ## T2 fence
+  if variant in ["ALL_FENCE", "FENCE_2", "FENCE_02", "FENCE_12"]:
+    fences["t2_fence"] = f"Fence.{f_scope}_acqrel;"
+
+  return fences
+
+def make_z6_3_test(full_name, scope, f_scope, variant):
+  mem_orders = z6_3_mem_orders(scope, variant)
+  fences = z6_3_fences(f_scope, variant)
+  return f"deflitmus z6_3_TB_{full_name} := W.{scope}_rlx x=1; {fences['t0_fence']} W.{mem_orders['t0_store']} y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.{scope}_rlx y=2; {fences['t1_fence']} W.{mem_orders['t1_store']} z=1 || R.{mem_orders['t2_load']} z // 1; {fences['t2_fence']} R.{scope}_rlx x // 0"
+
+def z6_3_tests(output):
+  tb_combos = make_combinations(three_threads)
+  variants = ["RELAXED", "ACQ_REL"]
+  fence_variants = ["ALL_FENCE", "FENCE_0", "FENCE_1", "FENCE_2", "FENCE_01", "FENCE_02", "FENCE_12"]
+  make_tests(output, tb_combos, variants, fence_variants, make_z6_3_test)
+
+
+# -------------------------------------------------------------------------
+# Write Output
 # -------------------------------------------------------------------------
 
 output_file = "Litmus/PTX_MCA.lean"
@@ -424,11 +625,15 @@ namespace Litmus
 
   iriw_tests(output)
   isa2_tests(output)
-  paper_example(output)
+  paper_example1(output)
+  paper_example2(output)
   rwc_tests(output)
   wrc_tests(output)
   wrw_2w_tests(output)
   wwc_tests(output)
+  two_plus_two_write_tests(output)
+  three_two_write_tests(output)
+  z6_3_tests(output)
 
   output.write("""def allTests : List Litmus.Test := litmusTests!
 

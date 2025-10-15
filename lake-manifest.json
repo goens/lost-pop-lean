@@ -5,7 +5,7 @@
    "type": "git",
    "subDir": null,
    "scope": "leanprover",
-   "rev": "c53b3371dd0fe5f3dd75a2df543c3550e246465a",
+   "rev": "91c18fa62838ad0ab7384c03c9684d99d306e1da",
    "name": "Cli",
    "manifestFile": "lake-manifest.json",
    "inputRev": "main",

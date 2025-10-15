@@ -405,7 +405,7 @@ structure OrderConstraints {V : ValidScopes} where
 def OrderConstraints.empty {V : ValidScopes} (numReqs : optParam Nat 10) : @OrderConstraints V :=
  let scopes := V.scopes.toList
  { default := false, val :=
- Std.HashMap.empty (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.HashMap.empty (capacity := numReqs))
+ Std.HashMap.emptyWithCapacity (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.HashMap.emptyWithCapacity (capacity := numReqs))
  }
 
 -- TODO: make scope an optional parameter and just do the intersection by default?
@@ -641,7 +641,7 @@ def reqIds : (RequestArray) → List RequestId
 
 def growArray {α : Type} (a : Array (Option α)) (n : Nat) : Array (Option α) :=
   --dbg_trace s!"growing array of size {a.size} by {n}"
-  a.append (Array.mkArray (a.size - n) none)
+  a.append (Array.replicate (a.size - n) none)
 
 private def RequestArray._insert : RequestArray → Request → Array (Option (Request))
   | arr, req =>

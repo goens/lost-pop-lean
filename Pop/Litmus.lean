@@ -404,7 +404,7 @@ def createLitmus (list : List (List RequestSyntax))
   let variablesRaw := list.map λ thread => thread.map (λ r => if r.varName.length == 0 then none else some r.varName)
   let variables := removeDuplicates $ filterNones $ List.flatten variablesRaw
   let variableNums := variables.zip (List.range variables.length)
-  let variableMap := Std.HashMap.empty (capacity := variableNums.length) |> variableNums.foldl λ acc (k, v) => acc.insert k v
+  let variableMap := Std.HashMap.emptyWithCapacity (capacity := variableNums.length) |> variableNums.foldl λ acc (k, v) => acc.insert k v
   let replaceVar := λ r => match variableMap.get? r.varName with
     | some varName => (r.reqKind, r.reqType, varName ,r.value)
     | none => (r.reqKind, r.reqType, 0 ,r.value)
@@ -499,10 +499,10 @@ macro_rules
     let desc ← match opdesc with
     | none => `( Option.none)
     | some desc => `( (some `[sys| $desc]))
-    let meta ← match opmeta with
+    let «meta» ← match opmeta with
     | none => `( { name := $(quote name.getId.toString) : Pop.LitmusMetadata })
     | some m => `( `[metadata| $name| $m] )
-    `( createLitmus `[req_set| $r] $desc $meta)
+    `( createLitmus `[req_set| $r] $desc $«meta»)
 
 
 def threadsGetAllNames (threadsSyntax : TSyntax `threads) : Array String :=

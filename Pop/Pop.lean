@@ -606,7 +606,8 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
        (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
      let result := { requests := requests', orderConstraints := state.orderConstraints,
                      removed := removed', satisfied := satisfied',
-                     threadTypes := state.threadTypes, removedCoherent := sorry
+                     threadTypes := state.threadTypes, removedCoherent := sorry,
+                     scopes := state.scopes
                      : SystemState}
      result.cleanupTransactions
    | _, _ => unreachable!

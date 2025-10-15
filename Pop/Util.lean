@@ -310,7 +310,7 @@ structure ScopedBinaryRelation (α β : Type 0) [Hashable α] [BEq α] [Hashable
   val : Std.HashMap (α × β × β) Bool
   defaultRes : Bool
 variable {α β : Type} [Hashable α] [BEq α] [Hashable β] [BEq β]
-def ScopedBinaryRelation.default : ScopedBinaryRelation α β := ScopedBinaryRelation.mk Std.HashMap.empty false
+def ScopedBinaryRelation.default : ScopedBinaryRelation α β := ScopedBinaryRelation.mk Std.HashMap.emptyWithCapacity false
 
 instance : Inhabited (ScopedBinaryRelation α β) where default := ScopedBinaryRelation.default
 

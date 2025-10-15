@@ -143,7 +143,7 @@ def SystemState.takeNthStep (state : SystemState) (acceptRequests : ProgramState
   if transitions.isEmpty then
     throw "No more transitions possible"
   else
-    let opTrans := transitions.get? (n.mod transitions.length)
+    let opTrans := transitions[n.mod transitions.length]?
     match opTrans with
       | none => unreachable!
       | some trans => Except.map (λ st => (trans, st)) (state.applyTransition trans)

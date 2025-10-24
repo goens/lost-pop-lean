@@ -29,6 +29,20 @@ deflitmus vijay_ws_leading := W.sys_rel X = 1; W.sys_rel Y = 1 || R.sys_acq Y //
 deflitmus vijay_ws_trailing_scoped := W.sys_rel X = 1; Fence; W.cta_rel Y = 1 || R.cta_acq Y // 1; W.sys_rel Z = 1; R Z // 2 || W.sys_rel Z = 2; Fence; W.cta_rel A = 1 || R.cta_acq A // 1; R.sys_acq X // 0
   where sys := { {T0, T1}, {T2, T3}}
 
+deflitmus dennis_counterexample_mapping_scopes :=
+  Fence.sys_sc; W.sys_rel Z = 1 ||
+  Fence.cta_sc; R.cta_acq Z // 1; Fence.cta_sc; W.cta_rel X = 1; R.cta_rlx X // 2 ||
+  Fence.sys_sc; W.sys_rel X = 2; W.sys_rel Y = 1 ||
+  R.sys_acq Y // 1; Fence.sys_sc; R.sys_acq Z // 0
+  where sys := { {T0, T1, T2}, {T3}}
+
+deflitmus dennis_counterexample_scopes_power :=
+    W.sys_rel X = 1; Fence.sys_sc; W.sys_rel Y = 1; R.sys_rlx X // 2 ||
+    R.sys_acq Y // 1; W.cta_rlx Z = 1; R.cta_rlx Z // 2 ||
+    W.cta_rlx Z = 2; W.sys_rel U = 1  ||
+    R.sys_acq U // 1; Fence.sys_sc; W.sys_rel X = 2
+    where sys := { {T0}, {T1, T2}, {T3}}
+
 def allTests : List Litmus.Test := litmusTests!
 
 end Litmus

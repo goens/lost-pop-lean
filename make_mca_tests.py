@@ -548,7 +548,7 @@ def make_three_two_write_test(full_name, scope, f_scope, variant):
 
 def three_two_write_tests(output):
   tb_combos = make_combinations(three_threads)
-  variants = ["RELAXED", "ACQUIRE", "RELEASE"]
+  variants = ["RELAXED", "RELEASE"]
   fence_variants = ["ALL_FENCE", "FENCE_0", "FENCE_1", "FENCE_2", "FENCE_01", "FENCE_02", "FENCE_12"]
   make_tests(output, tb_combos, variants, fence_variants, make_three_two_write_test)
 

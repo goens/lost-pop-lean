@@ -2963,9 +2963,6 @@ deflitmus two_2w_TB_01_SCOPE_BLOCK_FENCE_SCOPE_BLOCK_BOTH_FENCE := W.cta_rlx x=1
 deflitmus three_2w_TB_0_1_2_SCOPE_DEVICE_NO_FENCE_RELAXED := W.gpu_rlx x=2;  W.gpu_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0}, {T1}, {T2}}
 
-deflitmus three_2w_TB_0_1_2_SCOPE_DEVICE_NO_FENCE_ACQUIRE := W.gpu_rlx x=2;  W.gpu_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
- where sys := {{T0}, {T1}, {T2}}
-
 deflitmus three_2w_TB_0_1_2_SCOPE_DEVICE_NO_FENCE_RELEASE := W.gpu_rlx x=2;  W.gpu_rel y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rel z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rel x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0}, {T1}, {T2}}
 
@@ -3012,9 +3009,6 @@ deflitmus three_2w_TB_0_1_2_SCOPE_DEVICE_FENCE_SCOPE_BLOCK_FENCE_12 := W.gpu_rlx
  where sys := {{T0}, {T1}, {T2}}
 
 deflitmus three_2w_TB_0_1_2_SCOPE_BLOCK_NO_FENCE_RELAXED := W.cta_rlx x=2;  W.cta_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
- where sys := {{T0}, {T1}, {T2}}
-
-deflitmus three_2w_TB_0_1_2_SCOPE_BLOCK_NO_FENCE_ACQUIRE := W.cta_rlx x=2;  W.cta_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0}, {T1}, {T2}}
 
 deflitmus three_2w_TB_0_1_2_SCOPE_BLOCK_NO_FENCE_RELEASE := W.cta_rlx x=2;  W.cta_rel y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rel z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rel x=1; Fence.gpu_sc; R.gpu_rlx x // 2
@@ -3065,9 +3059,6 @@ deflitmus three_2w_TB_0_1_2_SCOPE_BLOCK_FENCE_SCOPE_BLOCK_FENCE_12 := W.cta_rlx 
 deflitmus three_2w_TB_01_2_SCOPE_DEVICE_NO_FENCE_RELAXED := W.gpu_rlx x=2;  W.gpu_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0, T1}, {T2}}
 
-deflitmus three_2w_TB_01_2_SCOPE_DEVICE_NO_FENCE_ACQUIRE := W.gpu_rlx x=2;  W.gpu_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
- where sys := {{T0, T1}, {T2}}
-
 deflitmus three_2w_TB_01_2_SCOPE_DEVICE_NO_FENCE_RELEASE := W.gpu_rlx x=2;  W.gpu_rel y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rel z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rel x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0, T1}, {T2}}
 
@@ -3114,9 +3105,6 @@ deflitmus three_2w_TB_01_2_SCOPE_DEVICE_FENCE_SCOPE_BLOCK_FENCE_12 := W.gpu_rlx 
  where sys := {{T0, T1}, {T2}}
 
 deflitmus three_2w_TB_01_2_SCOPE_BLOCK_NO_FENCE_RELAXED := W.cta_rlx x=2;  W.cta_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
- where sys := {{T0, T1}, {T2}}
-
-deflitmus three_2w_TB_01_2_SCOPE_BLOCK_NO_FENCE_ACQUIRE := W.cta_rlx x=2;  W.cta_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0, T1}, {T2}}
 
 deflitmus three_2w_TB_01_2_SCOPE_BLOCK_NO_FENCE_RELEASE := W.cta_rlx x=2;  W.cta_rel y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rel z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rel x=1; Fence.gpu_sc; R.gpu_rlx x // 2
@@ -3167,9 +3155,6 @@ deflitmus three_2w_TB_01_2_SCOPE_BLOCK_FENCE_SCOPE_BLOCK_FENCE_12 := W.cta_rlx x
 deflitmus three_2w_TB_1_02_SCOPE_DEVICE_NO_FENCE_RELAXED := W.gpu_rlx x=2;  W.gpu_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T1}, {T0, T2}}
 
-deflitmus three_2w_TB_1_02_SCOPE_DEVICE_NO_FENCE_ACQUIRE := W.gpu_rlx x=2;  W.gpu_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
- where sys := {{T1}, {T0, T2}}
-
 deflitmus three_2w_TB_1_02_SCOPE_DEVICE_NO_FENCE_RELEASE := W.gpu_rlx x=2;  W.gpu_rel y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rel z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rel x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T1}, {T0, T2}}
 
@@ -3216,9 +3201,6 @@ deflitmus three_2w_TB_1_02_SCOPE_DEVICE_FENCE_SCOPE_BLOCK_FENCE_12 := W.gpu_rlx 
  where sys := {{T1}, {T0, T2}}
 
 deflitmus three_2w_TB_1_02_SCOPE_BLOCK_NO_FENCE_RELAXED := W.cta_rlx x=2;  W.cta_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
- where sys := {{T1}, {T0, T2}}
-
-deflitmus three_2w_TB_1_02_SCOPE_BLOCK_NO_FENCE_ACQUIRE := W.cta_rlx x=2;  W.cta_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T1}, {T0, T2}}
 
 deflitmus three_2w_TB_1_02_SCOPE_BLOCK_NO_FENCE_RELEASE := W.cta_rlx x=2;  W.cta_rel y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rel z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rel x=1; Fence.gpu_sc; R.gpu_rlx x // 2
@@ -3269,9 +3251,6 @@ deflitmus three_2w_TB_1_02_SCOPE_BLOCK_FENCE_SCOPE_BLOCK_FENCE_12 := W.cta_rlx x
 deflitmus three_2w_TB_0_12_SCOPE_DEVICE_NO_FENCE_RELAXED := W.gpu_rlx x=2;  W.gpu_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0}, {T1, T2}}
 
-deflitmus three_2w_TB_0_12_SCOPE_DEVICE_NO_FENCE_ACQUIRE := W.gpu_rlx x=2;  W.gpu_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
- where sys := {{T0}, {T1, T2}}
-
 deflitmus three_2w_TB_0_12_SCOPE_DEVICE_NO_FENCE_RELEASE := W.gpu_rlx x=2;  W.gpu_rel y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rel z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rel x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0}, {T1, T2}}
 
@@ -3318,9 +3297,6 @@ deflitmus three_2w_TB_0_12_SCOPE_DEVICE_FENCE_SCOPE_BLOCK_FENCE_12 := W.gpu_rlx 
  where sys := {{T0}, {T1, T2}}
 
 deflitmus three_2w_TB_0_12_SCOPE_BLOCK_NO_FENCE_RELAXED := W.cta_rlx x=2;  W.cta_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
- where sys := {{T0}, {T1, T2}}
-
-deflitmus three_2w_TB_0_12_SCOPE_BLOCK_NO_FENCE_ACQUIRE := W.cta_rlx x=2;  W.cta_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0}, {T1, T2}}
 
 deflitmus three_2w_TB_0_12_SCOPE_BLOCK_NO_FENCE_RELEASE := W.cta_rlx x=2;  W.cta_rel y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rel z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rel x=1; Fence.gpu_sc; R.gpu_rlx x // 2
@@ -3371,9 +3347,6 @@ deflitmus three_2w_TB_0_12_SCOPE_BLOCK_FENCE_SCOPE_BLOCK_FENCE_12 := W.cta_rlx x
 deflitmus three_2w_TB_012_SCOPE_DEVICE_NO_FENCE_RELAXED := W.gpu_rlx x=2;  W.gpu_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0, T1, T2}}
 
-deflitmus three_2w_TB_012_SCOPE_DEVICE_NO_FENCE_ACQUIRE := W.gpu_rlx x=2;  W.gpu_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
- where sys := {{T0, T1, T2}}
-
 deflitmus three_2w_TB_012_SCOPE_DEVICE_NO_FENCE_RELEASE := W.gpu_rlx x=2;  W.gpu_rel y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.gpu_rlx y=2;  W.gpu_rel z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.gpu_rlx z=2;  W.gpu_rel x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0, T1, T2}}
 
@@ -3420,9 +3393,6 @@ deflitmus three_2w_TB_012_SCOPE_DEVICE_FENCE_SCOPE_BLOCK_FENCE_12 := W.gpu_rlx x
  where sys := {{T0, T1, T2}}
 
 deflitmus three_2w_TB_012_SCOPE_BLOCK_NO_FENCE_RELAXED := W.cta_rlx x=2;  W.cta_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
- where sys := {{T0, T1, T2}}
-
-deflitmus three_2w_TB_012_SCOPE_BLOCK_NO_FENCE_ACQUIRE := W.cta_rlx x=2;  W.cta_rlx y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rlx z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rlx x=1; Fence.gpu_sc; R.gpu_rlx x // 2
  where sys := {{T0, T1, T2}}
 
 deflitmus three_2w_TB_012_SCOPE_BLOCK_NO_FENCE_RELEASE := W.cta_rlx x=2;  W.cta_rel y=1; Fence.gpu_sc; R.gpu_rlx y // 2 || W.cta_rlx y=2;  W.cta_rel z=1; Fence.gpu_sc; R.gpu_rlx z // 2 || W.cta_rlx z=2;  W.cta_rel x=1; Fence.gpu_sc; R.gpu_rlx x // 2

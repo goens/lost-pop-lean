@@ -35,6 +35,20 @@ deflitmus dennis_counterexample := W.sys_sc X = 1; R.sys_rel X // 2 || W.cta_sc 
 deflitmus co := W.cta_rlx X = 1; W.cta_rlx X = 2 || R.cta_rlx X // 1; R.cta_rlx X // 2 || R.cta_rlx X // 2; R.cta_rlx X // 1
   where sys := {{T0},{T1,T2}}
 
+deflitmus dennis_counterexample_mapping_scopes :=
+  Fence.sys_sc; W.sys_rel Z = 1 ||
+  Fence.cta_sc; R.cta_acq Z // 1; Fence.cta_sc; W.cta_rel X = 1; R.cta_rlx X // 2 ||
+  Fence.sys_sc; W.sys_rel X = 2; W.sys_rel Y = 1 ||
+  R.sys_acq Y // 1; Fence.sys_sc; R.sys_acq Z // 0
+  where sys := { {T0, T1, T2}, {T3}}
+
+deflitmus dennis_counterexample_scopes_power :=
+    W.sys_rel X = 1; Fence.sys_sc; W.sys_rel Y = 1; R.sys_rlx X // 2 ||
+    R.sys_acq Y // 1; W.cta_rlx Z = 1; R.cta_rlx Z // 2 ||
+    W.cta_rlx Z = 2; W.sys_rel U = 1  ||
+    R.sys_acq U // 1; Fence.sys_sc; W.sys_rel X = 2
+    where sys := { {T0}, {T1, T2}, {T3}}
+
 def allTests : List Litmus.Test := litmusTests!
 
 end Litmus

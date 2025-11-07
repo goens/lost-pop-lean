@@ -29,6 +29,12 @@ deflitmus vijay_ws_leading := W.sys_rel X = 1; W.sys_rel Y = 1 || R.sys_acq Y //
 deflitmus vijay_ws_trailing_scoped := W.sys_rel X = 1; Fence; W.cta_rel Y = 1 || R.cta_acq Y // 1; W.sys_rel Z = 1; R Z // 2 || W.sys_rel Z = 2; Fence; W.cta_rel A = 1 || R.cta_acq A // 1; R.sys_acq X // 0
   where sys := { {T0, T1}, {T2, T3}}
 
+deflitmus dennis_counterexample := W.sys_sc X = 1; R.sys_rel X // 2 || W.cta_sc Z = 2; W.sys_rel V = 1; R.sys_rlx Z // 1 || R.sys_acq V // 1; W.cta_sc X = 2  || R.sys_sc X // 1; W.cta_rel Y = 1 || R.cta_acq Y // 1 ; W.cta_sc Z = 1
+  where sys := {{T0,T1,T2}, {T3,T4}}
+
+deflitmus co := W.cta_rlx X = 1; W.cta_rlx X = 2 || R.cta_rlx X // 1; R.cta_rlx X // 2 || R.cta_rlx X // 2; R.cta_rlx X // 1
+  where sys := {{T0},{T1,T2}}
+
 def allTests : List Litmus.Test := litmusTests!
 
 end Litmus

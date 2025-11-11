@@ -507,15 +507,15 @@ def three_two_write_mem_orders(scope, variant):
   }
 
   ## T0 store
-  if variant in ["RELEASE", "ALL_FENCE", "FENCE_1", "FENCE_2", "FENCE_12"]:
+  if variant in ["RELEASE", "FENCE_1", "FENCE_2", "FENCE_12"]:
     mem_orders["t0_store"] = f"{scope}_rel"
 
   ## T1 store
-  if variant in ["RELEASE", "ALL_FENCE", "FENCE_0", "FENCE_2", "FENCE_02"]:
+  if variant in ["RELEASE", "FENCE_0", "FENCE_2", "FENCE_02"]:
     mem_orders["t1_store"] = f"{scope}_rel"
 
   ## T2 store
-  if variant in ["RELEASE", "ALL_FENCE", "FENCE_0", "FENCE_1", "FENCE_01"]:
+  if variant in ["RELEASE", "FENCE_0", "FENCE_1", "FENCE_01"]:
     mem_orders["t2_store"] = f"{scope}_rel"
 
   return mem_orders
@@ -564,15 +564,15 @@ def z6_3_mem_orders(scope, variant):
   }
 
   ## T0 store
-  if variant in ["ACQ_REL", "ALL_FENCE", "FENCE_1", "FENCE_2", "FENCE_12"]:
+  if variant in ["ACQ_REL", "FENCE_1", "FENCE_2", "FENCE_12"]:
     mem_orders["t0_store"] = f"{scope}_rel"
 
   ## T1 store
-  if variant in ["ACQ_REL", "ALL_FENCE", "FENCE_0", "FENCE_2", "FENCE_02"]:
+  if variant in ["ACQ_REL", "FENCE_0", "FENCE_2", "FENCE_02"]:
     mem_orders["t1_store"] = f"{scope}_rel"
 
   ## T2 load
-  if variant in ["ACQ_REL", "ALL_FENCE", "FENCE_0", "FENCE_1", "FENCE_01"]:
+  if variant in ["ACQ_REL", "FENCE_0", "FENCE_1", "FENCE_01"]:
     mem_orders["t2_load"] = f"{scope}_acq"
 
   return mem_orders

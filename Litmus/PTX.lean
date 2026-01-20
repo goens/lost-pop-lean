@@ -49,6 +49,17 @@ deflitmus dennis_counterexample_scopes_power :=
     R.sys_acq U // 1; Fence.sys_sc; W.sys_rel X = 2
     where sys := { {T0}, {T1, T2}, {T3}}
 
+deflitmus two_plus_two2_rlx := W x=1; W y=2; R y // 1 || W y=1; W x=2 ; R x // 1 expect ✓
+
+deflitmus dennis_counterexample_scopes_power_no_fences :=
+    W.sys_rel X = 1; W.sys_rel Y = 1; R.sys_rlx X // 2 ||
+    R.sys_acq Y // 1; W.cta_rlx Z = 1; R.cta_rlx Z // 2 ||
+    W.cta_rlx Z = 2; W.sys_rel U = 1  ||
+    R.sys_acq U // 1; W.sys_rel X = 2
+    where sys := { {T0}, {T1, T2}, {T3}}
+
+deflitmus IRIW_relacq := W.sys_rel x=1 || R.sys_acq x // 1 ; R.sys_acq y // 0 || R.sys_acq y // 1; R.sys_acq x // 0 || W.sys_rel y=1  expect ✓
+
 def allTests : List Litmus.Test := litmusTests!
 
 end Litmus

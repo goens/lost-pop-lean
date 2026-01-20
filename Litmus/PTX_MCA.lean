@@ -2867,7 +2867,7 @@ deflitmus wwc_TB_012_SCOPE_BLOCK_FENCE_SCOPE_BLOCK_THREAD_2_FENCE_REL := W.cta_r
 deflitmus two_2w_TB_0_1_SCOPE_DEVICE_NO_FENCE_RELEASE := W.gpu_rlx x=1;  W.gpu_rel y=2; Fence.gpu_sc; R.gpu_rlx y // 1 || W.gpu_rlx y=1;  W.gpu_rel x=2; Fence.gpu_sc; R.gpu_rlx x // 1
  where sys := {{T0}, {T1}}
 
-deflitmus two_2w_TB_0_1_SCOPE_DEVICE_NO_FENCE_RELAXED := W.gpu_rlx x=1;  W.gpu_rlx y=2; Fence.gpu_sc; R.gpu_rlx y // 1 || W.gpu_rlx y=1;  W.gpu_rlx x=2; Fence.gpu_sc; R.gpu_rlx x // 1
+deflitmus two_2w_TB_0_1_SCOPE_DEVICE_NO_FENCE_RELAXED := W.gpu_rlx x=1;  W.gpu_rlx y=2; R.gpu_rlx y // 1 || W.gpu_rlx y=1;  W.gpu_rlx x=2;  R.gpu_rlx x // 1
  where sys := {{T0}, {T1}}
 
 deflitmus two_2w_TB_0_1_SCOPE_DEVICE_FENCE_SCOPE_DEVICE_FENCE_0 := W.gpu_rlx x=1; Fence.gpu_acqrel; W.gpu_rlx y=2; Fence.gpu_sc; R.gpu_rlx y // 1 || W.gpu_rlx y=1;  W.gpu_rel x=2; Fence.gpu_sc; R.gpu_rlx x // 1

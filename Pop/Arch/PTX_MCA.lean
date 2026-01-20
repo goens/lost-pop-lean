@@ -108,7 +108,7 @@ def toAlloy : String → BasicRequest → String
         | .acq => moduleName ++ s!"/{pref}FenceAcq"
         | _ => moduleName ++ s!"/UnknownFence"
 def alloyName := "ptx"
-def alloyPred := "ptx_mca_mm"
+def alloyPred := "ptx_mm"
 
 def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
   let containing := valid.containThread thread

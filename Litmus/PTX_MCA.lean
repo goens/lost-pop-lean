@@ -1424,6 +1424,12 @@ deflitmus paper_example2_TB_0_1_2_3_SCOPE_DEVICE_NO_FENCE_DISALLOWED := W.gpu_re
 deflitmus paper_example2_TB_0_1_2_3_SCOPE_DEVICE_NO_FENCE_RELAXED := W.gpu_rlx x=1; W.gpu_rlx y=1 || R.gpu_rlx y // 1; R.gpu_rlx z // 0 || W.gpu_rlx z=1; W.gpu_rlx a=1 || R.gpu_rlx a // 1; R.gpu_rlx x // 0
  where sys := {{T0}, {T1}, {T2}, {T3}}
 
+deflitmus paper_example3_TB_012_3_SCOPE_BLOCK_FENCE_SC_SCOPE_BLOCK := W.sys_rel x=1 || R.cta_acq z // 1; Fence.cta_sc; W.cta_rel y = 1 || W.sys_rel y=2; W.sys_rel z=1 || R.sys_acq z // 1; Fence.sys_sc; R.sys_acq x // 0
+ where sys := {{T0, T1, T2}, {T3}}
+
+deflitmus paper_example3_TB_02_13_SCOPE_BLOCK_FENCE_SC_SCOPE_BLOCK := W.sys_rel x=1 || R.cta_acq z // 1; Fence.cta_sc; W.cta_rel y = 1 || W.sys_rel y=2; W.sys_rel z=1 || R.sys_acq z // 1; Fence.sys_sc; R.sys_acq x // 0
+ where sys := {{T0, T2}, {T1, T3}}
+
 deflitmus rwc_TB_0_1_2_SCOPE_DEVICE_NO_FENCE_RELAXED := W.gpu_rlx x=1 || R.gpu_rlx x // 1;  R.gpu_rlx y // 0 || W.gpu_rlx y=1;  R.gpu_rlx x // 0
  where sys := {{T0}, {T1}, {T2}}
 

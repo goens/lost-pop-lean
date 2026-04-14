@@ -609,6 +609,129 @@ def z6_3_tests(output):
   fence_variants = ["ALL_FENCE", "FENCE_0", "FENCE_1", "FENCE_2", "FENCE_01", "FENCE_02", "FENCE_12"]
   make_tests(output, tb_combos, variants, fence_variants, make_z6_3_test)
 
+# -------------------------------------------------------------------------
+# MP
+# -------------------------------------------------------------------------
+
+def mp_mem_orders(scope, variant):
+  mem_orders = {
+    "t0_store": f"{scope}_rlx",
+    "t1_load": f"{scope}_rlx"
+  }
+
+  if variant == "REL_ACQ" or variant == "FENCE_1":
+    mem_orders["t0_store"] = f"{scope}_rel"
+  if variant == "REL_ACQ" or variant == "FENCE_0":
+    mem_orders["t1_load"] = f"{scope}_acq"
+
+  return mem_orders
+
+def mp_fences(f_scope, variant):
+  fences = {
+    "t0_fence": "",
+    "t1_fence": ""
+  }
+
+  if variant == "FENCE_0" or variant == "BOTH_FENCE":
+    fences["t0_fence"] = f"Fence.{f_scope}_acqrel;"
+  if variant == "FENCE_1" or variant == "BOTH_FENCE":
+    fences["t1_fence"] = f"Fence.{f_scope}_acqrel;"
+
+  return fences
+
+def make_mp_test(full_name, scope, f_scope, variant):
+  mem_orders = mp_mem_orders(scope, variant)
+  fences = mp_fences(f_scope, variant)
+  return f"deflitmus mp_TB_{full_name} := W.{scope}_rlx x=1; {fences['t0_fence']} W.{mem_orders['t0_store']} y=1 || R.{mem_orders['t1_load']} y // 1; {fences['t1_fence']} R.{scope}_rlx x // 0"
+
+def mp_tests(output):
+  tb_combos = sort_combinations(make_combinations(two_threads))
+  variants = ["REL_ACQ", "RELAXED"]
+  fence_variants = ["FENCE_0", "FENCE_1", "BOTH_FENCE"]
+  make_tests(output, tb_combos, variants, fence_variants, make_mp_test)
+
+# -------------------------------------------------------------------------
+# SB
+# -------------------------------------------------------------------------
+
+def sb_mem_orders(scope, variant):
+  mem_orders = {
+    "t0_load": f"{scope}_rlx",
+    "t1_load": f"{scope}_rlx"
+  }
+
+  if variant == "SEQ_CST" or variant == "FENCE_1":
+    mem_orders["t0_load"] = f"{scope}_sc"
+  if variant == "SEQ_CST" or variant == "FENCE_0":
+    mem_orders["t1_load"] = f"{scope}_sc"
+
+  return mem_orders
+
+def sb_fences(f_scope, variant):
+  fences = {
+    "t0_fence": "",
+    "t1_fence": ""
+  }
+
+  if variant == "FENCE_0" or variant == "BOTH_FENCE":
+    fences["t0_fence"] = f"Fence.{f_scope}_sc;"
+  if variant == "FENCE_1" or variant == "BOTH_FENCE":
+    fences["t1_fence"] = f"Fence.{f_scope}_sc;"
+
+  return fences
+
+def make_sb_test(full_name, scope, f_scope, variant):
+  mem_orders = sb_mem_orders(scope, variant)
+  fences = sb_fences(f_scope, variant)
+  return f"deflitmus sb_TB_{full_name} := W.{scope}_rlx x=1; {fences['t0_fence']} R.{mem_orders['t0_load']} y // 0 || W.{scope}_rlx y=1; {fences['t1_fence']} R.{mem_orders['t1_load']} x // 0"
+
+def sb_tests(output):
+  tb_combos = sort_combinations(make_combinations(two_threads))
+  variants = ["SEQ_CST", "RELAXED"]
+  fence_variants = ["FENCE_0", "FENCE_1", "BOTH_FENCE"]
+  make_tests(output, tb_combos, variants, fence_variants, make_sb_test)
+
+# -------------------------------------------------------------------------
+# LB
+# -------------------------------------------------------------------------
+
+def lb_mem_orders(scope, variant):
+  mem_orders = {
+    "t0_store": f"{scope}_rlx",
+    "t1_load": f"{scope}_rlx"
+  }
+
+  if variant == "REL_ACQ" or variant == "FENCE_1":
+    mem_orders["t0_store"] = f"{scope}_rel"
+  if variant == "REL_ACQ" or variant == "FENCE_0":
+    mem_orders["t1_load"] = f"{scope}_acq"
+
+  return mem_orders
+
+def lb_fences(f_scope, variant):
+  fences = {
+    "t0_fence": "",
+    "t1_fence": ""
+  }
+
+  if variant == "FENCE_0" or variant == "BOTH_FENCE":
+    fences["t0_fence"] = f"Fence.{f_scope}_acqrel;"
+  if variant == "FENCE_1" or variant == "BOTH_FENCE":
+    fences["t1_fence"] = f"Fence.{f_scope}_acqrel;"
+
+  return fences
+
+def make_lb_test(full_name, scope, f_scope, variant):
+  mem_orders = lb_mem_orders(scope, variant)
+  fences = lb_fences(f_scope, variant)
+  return f"deflitmus lb_TB_{full_name} := R.{scope}_rlx x // 1; {fences['t0_fence']} W.{mem_orders['t0_store']} y=1 || R.{mem_orders['t1_load']} y // 1; {fences['t1_fence']} W.{scope}_rlx x=1"
+
+def lb_tests(output):
+  tb_combos = sort_combinations(make_combinations(two_threads))
+  variants = ["REL_ACQ", "RELAXED"]
+  fence_variants = ["FENCE_0", "FENCE_1", "BOTH_FENCE"]
+  make_tests(output, tb_combos, variants, fence_variants, make_lb_test)
+
 
 # -------------------------------------------------------------------------
 # Write Output
@@ -634,6 +757,9 @@ namespace Litmus
   two_plus_two_write_tests(output)
   three_two_write_tests(output)
   z6_3_tests(output)
+  mp_tests(output)
+  sb_tests(output)
+  lb_tests(output)
 
   output.write("""def allTests : List Litmus.Test := litmusTests!
 

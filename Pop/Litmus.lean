@@ -335,13 +335,13 @@ def initZeroesUnpropagatedTransitions : String → List Address → List (Transi
 
 def SystemState.initZeroesUnpropagated! : SystemState → List Address → SystemState
   | state, addresses =>
-    let writeReqs := initZeroesUnpropagatedTransitions (state.threadTypes 0) addresses
+    let writeReqs := initZeroesUnpropagatedTransitions (state.threadTypes.getD 0 "default") addresses
     state.applyTrace! writeReqs
 
 def SystemState.initZeroesUnpropagated : SystemState → List Address → Except String (SystemState)
   | state, addresses =>
-  let writeReqs := initZeroesUnpropagatedTransitions (state.threadTypes 0) addresses
-state.applyTrace writeReqs
+  let writeReqs := initZeroesUnpropagatedTransitions (state.threadTypes.getD 0 "default") addresses
+  state.applyTrace writeReqs
 
 def mkPropagateTransitions : List RequestId → List ThreadId → List (Transition)
 | writeReqIds, threads =>
@@ -397,9 +397,6 @@ def createLitmus (list : List (List RequestSyntax))
   (opScopesThreadMapping : Option $ ValidScopes × (ThreadId → String))
   (metadata : LitmusMetadata) : Litmus.Test :=
   let validScopes := opScopesThreadMapping.map λ (s,_) => s
-  let threadTypes := match opScopesThreadMapping with
-    | none => λ _ => "default"
-    | some (_,f) => f
   let variablesRaw := list.map λ thread => thread.map (λ r => if r.varName.length == 0 then none else some r.varName)
   let variables := removeDuplicates $ filterNones $ List.flatten variablesRaw
   let variableNums := variables.zip (List.range variables.length)
@@ -410,14 +407,18 @@ def createLitmus (list : List (List RequestSyntax))
   let replacedVariablesNat : List (List (String × String × Nat × Option Nat)) :=  list.map λ thread => thread.map replaceVar
   let replacedVariables : List (List (String × String × Address × Value)) := replacedVariablesNat.map λ l => l.map (λ (str,rtype,addr,val) => (str,rtype,Address.ofNat addr, val))
   let fullThreads := replacedVariables.zip (List.range replacedVariables.length)
-  let mkThread := λ (reqs, thId) => List.flatten $ List.map (λ r => mkRequest r thId (threadTypes thId)) reqs
+  -- Convert the thread-type function to an Array String now that we know the thread count
+  let threadTypes : Array String := match opScopesThreadMapping with
+    | none => Array.replicate fullThreads.length "default"
+    | some (_, f) => Array.mk $ (List.range fullThreads.length).map (f ∘ ThreadId.ofNat)
+  let mkThread := λ (reqs, thId) => List.flatten $ List.map (λ r => mkRequest r thId (threadTypes.getD thId "default")) reqs
   let mkOutcomeThread := λ (reqs, thId) => filterNones $ List.map (λ r => mkReadOutcomeTriple r thId) reqs
   let reqs := fullThreads.map λ t => mkThread t |>.toArray
   let outcomes := mkOutcome $ List.flatten $ fullThreads.map λ t => mkOutcomeThread t
-  let initWrites := initZeroesUnpropagatedTransitions (threadTypes 0) (List.range variables.length)
+  let initWrites := initZeroesUnpropagatedTransitions (threadTypes.getD 0 "default") (List.range variables.length)
   let initPropagates :=  mkPropagateTransitions (List.range initWrites.length) (List.range fullThreads.length).tail! -- tail! : remove 0 because of accept
   let guideTraces : List (List Transition) := metadata.guideTraceGens.map λ tr =>
-    List.flatten $ tr.map λ (thId, genFun) => genFun (threadTypes thId)
+    List.flatten $ tr.map λ (thId, genFun) => genFun (threadTypes.getD thId.toNat "default")
   let initState := match validScopes with
     | some scopes => SystemState.init scopes threadTypes
     | none => SystemState.init (mkValidScopes fullThreads.length) threadTypes

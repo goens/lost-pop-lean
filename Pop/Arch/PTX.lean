@@ -13,7 +13,7 @@ inductive Scope
   | cta
   | gpu
   | sys
-  deriving Inhabited, BEq, Repr
+  deriving Inhabited, DecidableEq, Repr
 
 def Scope.intersection : Scope → Scope → Scope
   | .cta, _ => cta
@@ -31,12 +31,12 @@ inductive Semantics
   | rlx
   | weak
   | dep
-  deriving Inhabited, BEq, Repr
+  deriving Inhabited, DecidableEq, Repr
 
 structure Req where
   (scope : Scope)
   (sem : Semantics)
-  deriving BEq
+  deriving DecidableEq
 
 def Req.isStrong (req : Req) : Bool :=
   match req.sem with
@@ -83,7 +83,7 @@ def reqBlockingSemantics (req : Req) : BlockingSemantics :=
 
 instance : ArchReq where
   type := PTX.Req
-  instBEq := PTX.instBEqReq
+  instDecidableEq := PTX.instDecidableEqReq
   instInhabited := PTX.instInhabitedReq
   isPermanentRead := λ _ => false
   instToString := PTX.instToStringReq

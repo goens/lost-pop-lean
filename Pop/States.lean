@@ -6,17 +6,17 @@ open Util
 
 namespace Pop
 
-def RequestId := Nat deriving ToString, BEq, Inhabited, Hashable
-def Value := Option Nat deriving ToString, BEq, Inhabited
-def Address := Nat deriving ToString, BEq, Inhabited
-def ThreadId := Nat deriving Ord, LT, LE, ToString, Inhabited, Hashable, DecidableEq, BEq
+def RequestId := Nat deriving ToString, Inhabited, Hashable, DecidableEq
+def Value := Option Nat deriving ToString, Inhabited, DecidableEq
+def Address := Nat deriving ToString, Inhabited, DecidableEq
+def ThreadId := Nat deriving Ord, LT, LE, ToString, Inhabited, Hashable, DecidableEq
 inductive ConditionalValue
   | const : Nat → ConditionalValue
   | tentative : Nat → ConditionalValue
   --| transaction : Nat → ConditionalValue
   | fetchAndAdd : ConditionalValue
   | failed : ConditionalValue
-  deriving BEq, Inhabited
+  deriving Inhabited, DecidableEq
 
 def ConditionalValue.update : ConditionalValue → Value → ConditionalValue
   | c@(.const v), some v' => if v == v' then c else .failed
@@ -52,8 +52,6 @@ instance : ToString ConditionalValue where toString
   | .fetchAndAdd => s!"(n+1)"
   | .failed => "FAILED"
 
-instance : LawfulBEq ThreadId := inferInstanceAs (LawfulBEq Nat)
-instance : LawfulBEq (List ThreadId) := inferInstance
 
 def Address.prettyPrint (addr : Address) : String :=
   match (OfNat.ofNat addr) with
@@ -71,7 +69,7 @@ inductive BlockingKinds
   | Read2WriteNoPred
   | Write2Read
   | Write2Write
-  deriving BEq
+  deriving DecidableEq
 
 abbrev BlockingSemantics := List BlockingKinds
 
@@ -87,7 +85,7 @@ instance : ToString BlockingKinds where toString := BlockingKinds.toString
 
 class ArchReq where
   (type : Type 0)
-  (instBEq : BEq type)
+  (instDecidableEq : DecidableEq type)
   (instInhabited : Inhabited type)
   (instToString : ToString type)
   (prettyPrint : type → String := instToString.toString)
@@ -99,7 +97,7 @@ inductive Atomicity where
   | nonatomic : Atomicity
   | transactional : Atomicity
   | atomic : Atomicity
-  deriving BEq, Inhabited
+  deriving Inhabited, DecidableEq
 
 instance : ToString Atomicity where toString
   | .nonatomic => ""
@@ -111,15 +109,15 @@ structure ReadRequest where
  reads_from : Option RequestId
  atomicity : Atomicity
  val : Value
- deriving BEq, Inhabited
+ deriving Inhabited, DecidableEq
 
 structure WriteRequest where
  addr : Address
  val : ConditionalValue
  atomicity : Atomicity
- deriving BEq, Inhabited
+ deriving Inhabited, DecidableEq
 
-instance : BEq ArchReq.type := ArchReq.instBEq
+instance : DecidableEq ArchReq.type := ArchReq.instDecidableEq
 instance : Inhabited ArchReq.type := ArchReq.instInhabited
 instance : ToString ArchReq.type := ArchReq.instToString
 
@@ -127,7 +125,7 @@ inductive BasicRequest
  | read : ReadRequest → ArchReq.type → BasicRequest
  | write : WriteRequest → ArchReq.type → BasicRequest
  | fence : ArchReq.type → BasicRequest
- deriving BEq
+ deriving DecidableEq
 
 instance : Inhabited BasicRequest where default := BasicRequest.fence default
 
@@ -233,11 +231,11 @@ def ValidScopes.default : ValidScopes :=
 
 instance : Inhabited ValidScopes where default := ValidScopes.default
 
-def ValidScopes.toStringHet (threadType : Option (ThreadId → String)) (scopes : ValidScopes) : String :=
+def ValidScopes.toStringHet (threadType : Option (Array String)) (scopes : ValidScopes) : String :=
   let scopeFun := match threadType with
     | none => λ _ => ""
-    | some f => λ ss =>
-       let labs := removeDuplicates $ List.map f ss
+    | some arr => λ (ss : List ThreadId) =>
+       let labs := removeDuplicates $ ss.map (λ (tid : ThreadId) => arr.getD tid.toNat "")
        if labs == ["default"] || labs == [] then "" else
        if labs.length == 1 then labs.head! else
        String.intercalate "+" labs
@@ -277,7 +275,7 @@ structure Request where
   pairedRequest? : Option RequestId
   -- scope : Scope
   -- type : α
-  deriving BEq
+  deriving DecidableEq
 
 
 def Request.default : Request :=
@@ -329,7 +327,7 @@ def Request.equivalent (r₁ r₂ : Request) : Bool :=
        ((r₁.isWrite && r₂.isWrite) || (r₁.isRead && r₂.isRead))
 
 -- Read, Write
-def SatisfiedRead := RequestId × RequestId deriving ToString, BEq
+def SatisfiedRead := RequestId × RequestId deriving ToString, DecidableEq
 
 --instance [BEq α] : Membership (List α) (ListTree α) where
 --  mem lst tree := tree.elem lst = true
@@ -701,7 +699,7 @@ structure SystemState where
   removed : List (Request) -- TODO: remove, def. "active" to ignore satisfied reads
   scopes : ValidScopes
   satisfied : List SatisfiedRead
-  threadTypes : ThreadId → String
+  threadTypes : Array String
   orderConstraints : @OrderConstraints scopes
 
 def SystemState.beq (state₁ state₂ : SystemState)
@@ -759,13 +757,13 @@ def SystemState.orderPredecessors (state : SystemState) (scope : @Scope state.sc
 
 instance : ToString (SystemState) where toString := SystemState.toString
 
-def SystemState.init (S : ValidScopes) (threadTypes : ThreadId → String): SystemState :=
+def SystemState.init (S : ValidScopes) (threadTypes : Array String): SystemState :=
   { requests := RequestArray.empty, removed := [],
     scopes := S, satisfied := [], orderConstraints := OrderConstraints.empty,
     threadTypes
   }
 
-def SystemState.default := SystemState.init ValidScopes.default (λ _ => "default")
+def SystemState.default := SystemState.init ValidScopes.default #[]
 instance : Inhabited (SystemState) where default := SystemState.default
 
 def SystemState.seen : SystemState → List RequestId

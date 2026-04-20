@@ -14,7 +14,7 @@ inductive Req
   | acq
   | dmb_sy -- just sy for now
   | other
-  deriving Inhabited, BEq
+  deriving Inhabited, DecidableEq
 
 def Req.toString : Req → String
   | .rel => "rel"
@@ -31,7 +31,7 @@ def Req.isPermanentRead : Req → Bool
 
 instance : ArchReq where
   type := Req
-  instBEq := instBEqReq
+  instDecidableEq := instDecidableEqReq
   instInhabited := instInhabitedReq
   isPermanentRead := Req.isPermanentRead
   instToString := instToStringReq

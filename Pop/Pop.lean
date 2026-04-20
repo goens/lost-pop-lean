@@ -16,7 +16,7 @@ inductive Transition
   | propagateToThread : RequestId → ThreadId → Transition
   | satisfyRead : RequestId → RequestId → Transition
   | dependency : Option RequestId → Transition
- deriving BEq
+ deriving DecidableEq
 
 instance : Inhabited (Transition) where default := Transition.acceptRequest default 0
 

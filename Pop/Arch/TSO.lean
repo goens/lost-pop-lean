@@ -10,13 +10,13 @@ open Pop Util
 namespace x86
 inductive Req
   | mk : Req
-  deriving BEq, Inhabited
+  deriving Inhabited, DecidableEq
 
 instance : ToString Req where toString := λ _ => ""
 
 instance : ArchReq where
   type := x86.Req
-  instBEq := x86.instBEqReq
+  instDecidableEq := x86.instDecidableEqReq
   instInhabited := x86.instInhabitedReq
   instToString := x86.instToStringReq
 

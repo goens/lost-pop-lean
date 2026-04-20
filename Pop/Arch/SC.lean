@@ -10,13 +10,13 @@ open Pop Util
 namespace SC
 inductive Req
   | mk : Req
-  deriving BEq, Inhabited
+  deriving Inhabited, DecidableEq
 
 instance : ToString Req where toString := λ _ => ""
 
 instance : ArchReq where
   type := SC.Req
-  instBEq := SC.instBEqReq
+  instDecidableEq := SC.instDecidableEqReq
   instInhabited := SC.instInhabitedReq
   instToString := SC.instToStringReq
 

@@ -12,10 +12,6 @@ open Pop Util
 namespace Compound
 
 abbrev Req := x86.Req ⊕ PTX.Req
-instance : BEq Req where beq := λ r r' => match r, r' with
-  | .inl r, .inl r' => BEq.beq r r'
-  | .inr r, .inr r' => BEq.beq r r'
-  | _, _ => false
 
 def Req.toString : Req → String
   | .inl r => s!"{r}"
@@ -26,7 +22,7 @@ instance : Inhabited Req where default := .inl default
 
 instance : ArchReq where
   type := Req
-  instBEq := instBEqReq
+  instDecidableEq := inferInstance
   instInhabited := instInhabitedReq
   instToString := instToStringReq
   isPermanentRead := λ _ => false
@@ -177,7 +173,7 @@ def importTSOTransition : @Transition x86.instArch → @Transition Compound.inst
 def importTSOSystemInit : @SystemState x86.instArchReq → @SystemState Compound.instArchReq
   | state =>
     let scopes := @SystemState.scopes x86.instArchReq state
-    let threadTypes := λ _ => "x86"
+    let threadTypes := Array.mk (scopes.system_scope.map λ _ => "x86")
     SystemState.init scopes threadTypes
 
 def importTSOLitmus : @Litmus.Test x86.instArch → @Litmus.Test Compound.instArch
@@ -201,7 +197,7 @@ def importPTXTransition : @Transition PTX.instArch → @Transition Compound.inst
 def importPTXSystemInit : @SystemState PTX.instArchReq → @SystemState Compound.instArchReq
   | state =>
     let scopes := @SystemState.scopes PTX.instArchReq state
-    let threadTypes := λ _ => "PTX"
+    let threadTypes := Array.mk (scopes.system_scope.map λ _ => "PTX")
     SystemState.init scopes threadTypes
 
 def importPTXLitmus : @Litmus.Test PTX.instArch → @Litmus.Test Compound.instArch

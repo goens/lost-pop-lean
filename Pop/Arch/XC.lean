@@ -12,7 +12,7 @@ namespace XC
 inductive Scope
   | cta
   | sys
-  deriving Inhabited, BEq, Repr
+  deriving Inhabited, DecidableEq, Repr
 
 def Scope.intersection : Scope → Scope → Scope
   | .cta, _ => cta
@@ -26,12 +26,12 @@ inductive Semantics
   | acq
   | rlx
   | dep
-  deriving Inhabited, BEq, Repr
+  deriving Inhabited, DecidableEq, Repr
 
 structure Req where
   (scope : Scope)
   (sem : Semantics)
-  deriving BEq
+  deriving DecidableEq
 
 instance : Inhabited Req where default :=
   { scope := Scope.sys, sem := Semantics.sc}
@@ -68,7 +68,7 @@ def reqBlockingSemantics (req : Req) : BlockingSemantics :=
 
 instance : ArchReq where
   type := XC.Req
-  instBEq := XC.instBEqReq
+  instDecidableEq := XC.instDecidableEqReq
   instInhabited := XC.instInhabitedReq
   isPermanentRead := λ _ => false
   instToString := XC.instToStringReq

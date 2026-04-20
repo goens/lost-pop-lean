@@ -104,7 +104,7 @@ def SystemState.possiblePropagateTransitions (state :  SystemState) : List (Tran
   let removedIds := state.removed.map Request.id
   let requests_active := requests_not_fully_propagated.filter λ r => (state.seen.elem r.id) && (!removedIds.elem r.id)
   -- dbg_trace s!"active requests: {requests_active}"
-  List.join $ requests_active.map λ r => r.possiblePropagateTransitions state
+  List.flatten $ requests_active.map λ r => r.possiblePropagateTransitions state
 
 def Request.possibleSatisfyTransitions (read : Request) (state : SystemState) : List (Transition) :=
   if !read.isRead then [] else
@@ -119,7 +119,7 @@ def Request.possibleSatisfyTransitions (read : Request) (state : SystemState) : 
 def SystemState.possibleSatisfyTransitions (state :  SystemState) : List (Transition) :=
   let requests := filterNones state.requests.val.toList
   let unsatisfied_reads := requests.filter λ r => r.isRead && !(state.isSatisfied r.id)
-  List.join $ unsatisfied_reads.map λ r => r.possibleSatisfyTransitions state
+  List.flatten $ unsatisfied_reads.map λ r => r.possibleSatisfyTransitions state
 
 def SystemState.possibleTransitions (state : SystemState) (unaccepted : ProgramState) :=
   let allaccepts := unaccepted.map λ th => th.filter (λ tr => tr.isAccept || tr.isDependency)
@@ -143,7 +143,7 @@ def SystemState.takeNthStep (state : SystemState) (acceptRequests : ProgramState
   if transitions.isEmpty then
     throw "No more transitions possible"
   else
-    let opTrans := transitions.get? (n.mod transitions.length)
+    let opTrans := transitions[n.mod transitions.length]?
     match opTrans with
       | none => unreachable!
       | some trans => Except.map (λ st => (trans, st)) (state.applyTransition trans)
@@ -163,7 +163,7 @@ def SystemState._runWithList  : SystemState →  ProgramState → List Nat → E
         | Except.error e => Except.error e
 
 def SystemState.runWithList  : SystemState →  ProgramState → List Nat → Except String (SystemState)
-  | state, accepts, ns => if !(List.join (accepts.map Array.toList).toList |>.all Transition.isAccept)
+  | state, accepts, ns => if !(List.flatten (accepts.map Array.toList).toList |>.all Transition.isAccept)
   then throw "Running with non-accept transition inputs"
   else SystemState._runWithList state accepts ns
 
@@ -334,7 +334,7 @@ match inittuple with
                 idx := (idx + n) % unexplored.size
             if let transition::rest := guide then
               unless unexplored[0]!.fst.isEmpty do
-                let (first,last) := unexplored.split
+                let (first,last) := unexplored.partition
                   λ (pt,_,_)t => pt.getLast? == some transition
                 let firstSorted := first.qsort λ (pt,_,_)t (pt',_,_)t => Nat.ble pt'.length pt.length -- longest first!
                 unexplored := firstSorted ++ last
@@ -343,7 +343,7 @@ match inittuple with
                 idx := 0
             let some unexplored_cur := unexplored[idx]?
               | panic! "index error, this shouldn't happen" -- TODO: prove i is fine
-            unexplored := unexplored.eraseIdx idx
+            unexplored := unexplored.eraseIdx! idx
             if !options.breadthFirst then
               explored := explored.push unexplored_cur
             let task := Task.spawn λ _ => stepFun #[unexplored_cur]
@@ -444,7 +444,7 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
      let axiomatic := test.axiomaticAllowed.toString
      let ptNums := buildInteractiveNumbering test pt
      let outcomeStr := if outcome_res == "𐄂?" then outcome_res else (outcome_res ++ " ")
-     let uncolored := s!"| {test.name}" ++ (String.mk $ List.replicate (nameColWidth - test.name.length - 3) ' ') ++
+     let uncolored := s!"| {test.name}" ++ (String.ofList $ List.replicate (nameColWidth - test.name.length - 3) ' ') ++
                    s!"| {axiomatic}         | {outcomeStr}  |"
      let resStr := if axiomatic != "?" && outcome_res != "𐄂?" && axiomatic != outcome_res
        then colorString .red uncolored
@@ -459,8 +459,8 @@ def prettyPrintLitmusResult : Litmus.Test → (Except String $ (List Litmus.Outc
      let headStr := if printHead
      then
        let testTitleRaw := "| Litmus test "
-       let testTitle := testTitleRaw ++ (String.mk $ List.replicate (nameColWidth - testTitleRaw.length - 1) ' ')
-       s!"{testTitle}| Axiomatic | POP |\n" ++ (String.mk $ List.replicate (nameColWidth + 18) '-') ++ "\n"
+       let testTitle := testTitleRaw ++ (String.ofList $ List.replicate (nameColWidth - testTitleRaw.length - 1) ' ')
+       s!"{testTitle}| Axiomatic | POP |\n" ++ (String.ofList $ List.replicate (nameColWidth + 18) '-') ++ "\n"
      else ""
      headStr ++ resStr ++ witnessStr
 
@@ -468,7 +468,7 @@ def printMultipleLitmusResults : List (Litmus.Test × (Except String $ List Litm
   | results, printWitnesses => Id.run do
   let mut first := true
   let mut resStr := ""
-  let colLength := match List.maximum? $ results.map λ (t,_) => t.name.length with
+  let colLength := match List.max? $ results.map λ (t,_) => t.name.length with
     | none => 40
     | some l => l + 5
   for (test,res) in results do

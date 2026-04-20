@@ -46,7 +46,7 @@ def requestTransitionMessage : SystemState → ProgramState → (guide : optPara
 def getTransition : SystemState → ProgramState → String → Except String (Option (Transition × Nat))
   | sysState, progState, input => do
   let available := sysState.possibleTransitions progState
-  let some n := input.trim.toNat?
+  let some n := input.trimAscii.toNat?
     | Except.error $ s!"Invalid input (must be a number from 0 to {available.length})"
      ++ s!"Received:{input}"
   if n == 0 then
@@ -136,7 +136,7 @@ def interactiveExecutionSingle : Litmus.Test → List  Nat → IO.FS.Stream → 
 
 def selectLitmus :  List Litmus.Test → String → Except String Litmus.Test
 | tests, input => do
-  let some n := input.trim.toNat?
+  let some n := input.trimAscii.toNat?
     | Except.error $ s!"Invalid input (must be a number from 1 to {tests.length})"
       ++ s!"Received:{input}"
   if n == 0 then
@@ -193,7 +193,7 @@ def replayTrace : Litmus.Test → List Transition → IO.FS.Stream → IO Unit
       IO.println $ formatInteractiveState test.name programState curState
       IO.println $ s!"Executed so far: {behind}\n--------------------------------------"
       IO.println $ s!"Next: {ahead}\n--------------------------------------"
-      let input := (← stdin.getLine).trim
+      let input := (← stdin.getLine).trimAscii
       if input == "b" then
         match behind with
           | [] => continue

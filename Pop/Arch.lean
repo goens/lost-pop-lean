@@ -39,7 +39,7 @@ instance : ToString ArchType where toString := λ a => match a with
 
 def parseArchitecture :  List ArchType → String → Except String ArchType
   | archs, input => do
-  let some n := input.trim.toNat?
+  let some n := input.trimAscii.toNat?
     | Except.error $ s!"Invalid input (must be a number from 1 to {archs.length})"
       ++ s!"Received:{input}"
   if n == 0 then
@@ -67,6 +67,7 @@ def selectArchitecture : IO.FS.Stream → IO (Option ArchType)
     let res ← Util.selectLoop availableStr (parseArchitecture available) stdin
     return res
 
+@[implicit_reducible]
 def ArchType.getInstArch : ArchType → Pop.Arch
   | .PTX => PTX.instArch
   | .TSO => x86.instArch
@@ -76,6 +77,7 @@ def ArchType.getInstArch : ArchType → Pop.Arch
   | .Compound => Compound.instArch
   | .CompoundXCTSO => CompoundXCTSO.instArch
 
+@[implicit_reducible]
 def ArchType.getInstLitmusSyntax : (arch : ArchType) → @Pop.LitmusSyntax arch.getInstArch
   | .PTX => PTX.Litmus.instLitmusSyntax
   | .TSO => x86.Litmus.instLitmusSyntax

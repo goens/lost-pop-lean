@@ -26,12 +26,6 @@ def filterNonesArr {α : Type} : Array (Option α) → Array α
 def blesort : List Nat → List Nat
   | as => Array.toList $ Array.qsort as.toArray (λ x y => Nat.ble x y)
 
--- TODO: probably horribly slow!
-def alphabetic : String → String → Bool
-  | ⟨a::as⟩, ⟨b::bs⟩ => a < b || (a == b) && alphabetic ⟨as⟩ ⟨bs⟩
-  | ⟨[]⟩, _ => true
-  | ⟨_::_⟩, _ => false
-
 def lexBLt : Nat × Nat → Nat × Nat → Bool
   | (n₁,n₂), (m₁,m₂) => Nat.blt n₁ m₁ || ((n₁ == m₁) && Nat.blt n₂ m₂)
 
@@ -174,7 +168,7 @@ def ListTree.elem [BEq α] :  List α → ListTree α → Bool
 | val, parentCons child siblings => elem val child || elem val siblings
 
 instance [BEq α] : Membership (List α) (ListTree α) where
-  mem lst tree := tree.elem lst = true
+  mem tree lst := tree.elem lst = true
 
 def ListTree.leaves [BEq α] :  ListTree α → List (List α)
   | leaf val => [val]
@@ -307,10 +301,12 @@ def _root_.List.revlookup [BEq β] : β → List (α × β) → Option α
     | false => revlookup a es
 
 structure ScopedBinaryRelation (α β : Type 0) [Hashable α] [BEq α] [Hashable β] [BEq β] where
-  val : Lean.HashMap (α × β × β) Bool
+  val : Std.HashMap (α × β × β) Bool
   defaultRes : Bool
+
 variable {α β : Type} [Hashable α] [BEq α] [Hashable β] [BEq β]
-def ScopedBinaryRelation.default : ScopedBinaryRelation α β := ScopedBinaryRelation.mk (Lean.mkHashMap) false
+
+def ScopedBinaryRelation.default : ScopedBinaryRelation α β := ScopedBinaryRelation.mk ∅ false
 
 instance : Inhabited (ScopedBinaryRelation α β) where default := ScopedBinaryRelation.default
 
@@ -320,7 +316,7 @@ def ScopedBinaryRelation.update : ScopedBinaryRelation α β → α → β → �
     { rel with val := val'}
 
 def ScopedBinaryRelation.lookup : ScopedBinaryRelation α β → α → β → β → Bool
-  | rel, s, x, y => match rel.val[(s,(x,y))] with
+  | rel, s, x, y => match rel.val[(s,(x,y))]? with
     | some res => res
     | none => rel.defaultRes
 

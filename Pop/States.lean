@@ -399,24 +399,24 @@ def Request.makePredecessorAt (req : Request) (thId : ThreadId) : Request :=
  also r₁ →s' r₂. Can we use this to find a more compact representation?
 -/
 structure OrderConstraints {V : ValidScopes} where
-  val : Lean.HashMap (List ThreadId) (Lean.HashMap (RequestId × RequestId) Bool)
+  val : Std.HashMap (List ThreadId) (Std.HashMap (RequestId × RequestId) Bool)
   default : Bool
 
 def OrderConstraints.empty {V : ValidScopes} (numReqs : optParam Nat 10) : @OrderConstraints V :=
  let scopes := V.scopes.toList
  { default := false, val :=
- Lean.mkHashMap (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Lean.mkHashMap (capacity := numReqs))
+ Std.HashMap.emptyWithCapacity (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.HashMap.emptyWithCapacity (capacity := numReqs))
  }
 
 -- TODO: make scope an optional parameter and just do the intersection by default?
 -- Would need to move around things in Arch typeclass...
 def OrderConstraints.lookup {V : ValidScopes} (ordc : @OrderConstraints V)
   (S : @Scope V) (req₁ req₂ : RequestId) : Bool :=
-  let sc_ordc := ordc.val.find? S.threads
+  let sc_ordc := ordc.val.get? S.threads
   match sc_ordc with
     | none => ordc.default
     | some hashmap =>
-      hashmap.findD (req₁, req₂) ordc.default
+      hashmap.getD (req₁, req₂) ordc.default
 
 def OrderConstraints.predecessors {V : ValidScopes} (S : @Scope V) (req : RequestId)
     (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
@@ -467,15 +467,15 @@ def OrderConstraints.compare {V₁ V₂ : ValidScopes} ( oc₁ : @OrderConstrain
       let scopes₁ := V₁.scopes.toList.map V₁.validate
       let scopes₂ := V₂.scopes.toList.map V₂.validate
       let scopes := scopes₁.zip scopes₂ -- pretty hacky: should get types to match
-      let reqPairs := List.join $ requests.map λ r₁ => requests.foldl (init := []) λ reqs r₂ => (r₁,r₂)::reqs
-      let keys := List.join $ scopes.map λ s => reqPairs.foldl (init := []) λ ks (r₁,r₂) => (s,r₁,r₂)::ks
+      let reqPairs := List.flatten $ requests.map λ r₁ => requests.foldl (init := []) λ reqs r₂ => (r₁,r₂)::reqs
+      let keys := List.flatten $ scopes.map λ s => reqPairs.foldl (init := []) λ ks (r₁,r₂) => (s,r₁,r₂)::ks
       keys.all λ (s,r₁,r₂) => match s with
         | (some s₁, some s₂) => (oc₁.lookup s₁ r₁ r₂ == oc₂.lookup s₂ r₁ r₂)
         | _ => panic! s!"invalid scopes {scopes₁} or {scopes₂}"
 
 def OrderConstraints.addSingleScope {V : ValidScopes} (constraints : @OrderConstraints V)
   (scope : @Scope V) (reqs : List (RequestId × RequestId)) (val := true) : @OrderConstraints V :=
-  match constraints.val.find? scope.threads with
+  match constraints.val.get? scope.threads with
    | none => constraints
    | some sc_oc =>
        let sc_oc' := reqs.foldl (init := sc_oc) λ oc req => oc.insert req val
@@ -547,11 +547,11 @@ def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints
 
 private def opReqId? : Option (Request) → Option RequestId := Option.map λ r => r.id
 
-private def valConsistent (vals :  Array (Option (Request))) : Bool :=
+private def valConsistent (vals : Array (Option (Request))) : Bool :=
   let valOpIds := vals.map opReqId?
   let valConsistent := λ idx opVal => match opVal with
     | none => true
-    | some val => val == idx.val
+    | some val => val == idx
   let consistentVals := valOpIds.mapIdx valConsistent
   consistentVals.foldl (. && .) true
 
@@ -605,7 +605,7 @@ def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (order : @O
   for thId in (List.range numThreads) do
     if thId != 0 then
       res := res ++ "||"
-    res := res ++ s!" T{thId}" ++ (String.mk $ List.replicate (colWidth - 3) ' ')
+    res := res ++ s!" T{thId}" ++ (String.ofList $ List.replicate (colWidth - 3) ' ')
     let mut thread := []
     for req in arr.filter (λ r => !(r.isWrite && r.value? == some 0)) do
       if highlight == some (thId, req.id) then
@@ -615,7 +615,7 @@ def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (order : @O
       else if req.propagatedTo thId then
         thread := thread ++ [(Color.black, req)]
     threads := threads ++ [thread]
-  res := res ++ "|\n" ++ (String.mk $ List.replicate (colWidth * numThreads + 2 * (numThreads - 1)) '-') ++ "\n"
+  res := res ++ "|\n" ++ (String.ofList $ List.replicate (colWidth * numThreads + 2 * (numThreads - 1)) '-') ++ "\n"
   threads := threads.map
     (λ th => th.toArray.qsort
       (λ r₁ r₂ => order.lookup (V.jointScope r₁.2.thread r₂.2.thread) r₁.2.id r₂.2.id)
@@ -628,8 +628,8 @@ def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (order : @O
       else
         sep := true
       res := res ++ match thread.head? with
-        | none => (String.mk $ List.replicate colWidth ' ')
-        | some (color,r) => " " ++ (colorString color r.toShortString) ++ (String.mk $ List.replicate (colWidth - r.toShortString.length - 1) ' ')
+        | none => (String.ofList $ List.replicate colWidth ' ')
+        | some (color,r) => " " ++ (colorString color r.toShortString) ++ (String.ofList $ List.replicate (colWidth - r.toShortString.length - 1) ' ')
     res := res ++ "|\n"
     threads := threads.map List.tail
   return res
@@ -641,7 +641,7 @@ def reqIds : (RequestArray) → List RequestId
 
 def growArray {α : Type} (a : Array (Option α)) (n : Nat) : Array (Option α) :=
   --dbg_trace s!"growing array of size {a.size} by {n}"
-  a.append (Array.mkArray (a.size - n) none)
+  a.append (Array.replicate (a.size - n) none)
 
 private def RequestArray._insert : RequestArray → Request → Array (Option (Request))
   | arr, req =>
@@ -662,7 +662,7 @@ private def RequestArray._insert : RequestArray → Request → Array (Option (R
          rw [h]
          }
       let idfin := Fin.mk i.toNat hless
-      vals'.insertAt idfin (some req)
+      vals'.insertIdx idfin (some req)
     else unreachable! -- because of growArray before
 
 -- can't be proving these things right now
@@ -765,6 +765,7 @@ theorem emptyCoherent (requests : RequestArray) :
   intros id h
   contradiction
 
+omit [ArchReq] in
 theorem empty2Coherent (seen : List RequestId) :
   ∀ id₁ id₂ : RequestId, (id₁,id₂) ∈ [] → id₁ ∈ seen ∧ id₂ ∈ seen := by
   intros

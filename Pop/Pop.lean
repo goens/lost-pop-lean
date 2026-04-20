@@ -92,7 +92,7 @@ abbrev ProgramState := Array (Array (Transition))
 
 def ProgramState.allFilter (prog : ProgramState) (filterFun : Transition → Bool)
   : List Transition :=
-  List.join $ Array.toList $ prog.map
+  List.flatten $ Array.toList $ prog.map
     λ th => th.toList.filter filterFun
 
 def ProgramState.all (prog : ProgramState) : List Transition := prog.allFilter (λ _ => true)
@@ -215,7 +215,7 @@ def addNewPredecessors (state : SystemState) (write read : Request) (thId : Thre
 
 -- TODO: this is for atomics (cannot fail)
 def SystemState.rmwPairsBlocking : SystemState → List (Request × Request)
-  | state => []
+  | _ => []
   /-
     let atomics := state.requests.filter Request.isAtomic
     -- quadratic, but shouldn't often by many pairs anyway
@@ -299,7 +299,7 @@ def SystemState.freshId : SystemState → RequestId
     let removed := state.removed.map Request.id
     let active := reqIds state.requests
     let ids : List Nat := removed ++ active
-    let max := ids.maximum?
+    let max := ids.max?
     match max with
       | none => 0
       | some id => (Nat.succ id)
@@ -605,7 +605,7 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
      let removed' := read'::state.removed |>.toArray.qsort
        (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
      let result := { requests := requests', orderConstraints := state.orderConstraints,
-                     removed := removed', satisfied := satisfied',
+                     removed := removed', satisfied := satisfied', scopes := state.scopes,
                      threadTypes := state.threadTypes, removedCoherent := sorry
                      : SystemState}
      result.cleanupTransactions
@@ -649,4 +649,3 @@ def printResult : Except String (SystemState) → String
  | Except.error e => s!"Error: {e}"
 
 end Pop
-

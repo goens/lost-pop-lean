@@ -14,4 +14,3 @@ root = "Main"
 [[require]]
 name = "Cli"
 scope = "leanprover"
-version = "git#main"

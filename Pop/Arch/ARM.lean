@@ -31,10 +31,7 @@ def Req.isPermanentRead : Req → Bool
 
 instance : ArchReq where
   type := Req
-  instDecidableEq := instDecidableEqReq
-  instInhabited := instInhabitedReq
   isPermanentRead := Req.isPermanentRead
-  instToString := instToStringReq
 
 private def _root_.Pop.Request.isReadAcq : Request → Bool :=
  λ r => r.isRead && r.basic_type.type == ARM.Req.acq

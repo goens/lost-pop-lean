@@ -25,9 +25,6 @@ instance : Inhabited Req where default := .inl default
 
 instance : ArchReq where
   type := Req
-  instDecidableEq := inferInstance
-  instInhabited := instInhabitedReq
-  instToString := instToStringReq
   isPermanentRead := λ _ => false
 
 def x86ReqToCompoundXCTSO : @BasicRequest x86.instArchReq → @BasicRequest CompoundXCTSO.instArchReq

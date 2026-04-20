@@ -68,10 +68,7 @@ def reqBlockingSemantics (req : Req) : BlockingSemantics :=
 
 instance : ArchReq where
   type := XC.Req
-  instDecidableEq := XC.instDecidableEqReq
-  instInhabited := XC.instInhabitedReq
   isPermanentRead := λ _ => false
-  instToString := XC.instToStringReq
 
 def getThreadScope (valid : ValidScopes) (thread : ThreadId) (scope : Scope) :=
   let containing := valid.containThread thread

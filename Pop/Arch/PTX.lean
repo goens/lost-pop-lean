@@ -83,10 +83,7 @@ def reqBlockingSemantics (req : Req) : BlockingSemantics :=
 
 instance : ArchReq where
   type := PTX.Req
-  instDecidableEq := PTX.instDecidableEqReq
-  instInhabited := PTX.instInhabitedReq
   isPermanentRead := λ _ => false
-  instToString := PTX.instToStringReq
 
 def toAlloy : String → BasicRequest → String
     | moduleName, .read _ ty =>

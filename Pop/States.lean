@@ -85,9 +85,9 @@ instance : ToString BlockingKinds where toString := BlockingKinds.toString
 
 class ArchReq where
   (type : Type 0)
-  (instDecidableEq : DecidableEq type)
-  (instInhabited : Inhabited type)
-  (instToString : ToString type)
+  [instDecidableEq : DecidableEq type]
+  [instInhabited : Inhabited type]
+  [instToString : ToString type]
   (prettyPrint : type → String := instToString.toString)
   (isPermanentRead : type → Bool := λ _ => false)
 

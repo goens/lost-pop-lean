@@ -16,9 +16,6 @@ instance : ToString Req where toString := λ _ => ""
 
 instance : ArchReq where
   type := x86.Req
-  instDecidableEq := x86.instDecidableEqReq
-  instInhabited := x86.instInhabitedReq
-  instToString := x86.instToStringReq
 
 def blockingSemantics (req : Request) : BlockingSemantics :=
   if req.isMem then

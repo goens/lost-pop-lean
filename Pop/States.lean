@@ -703,7 +703,6 @@ structure SystemState where
   satisfied : List SatisfiedRead
   threadTypes : ThreadId → String
   orderConstraints : @OrderConstraints scopes
-  removedCoherent : ∀ id : RequestId, id ∈ (removed.map Request.id) → id ∈ reqIds requests
 
 def SystemState.beq (state₁ state₂ : SystemState)
   -- (samesystem : state₁.system = state₂.system)
@@ -760,21 +759,10 @@ def SystemState.orderPredecessors (state : SystemState) (scope : @Scope state.sc
 
 instance : ToString (SystemState) where toString := SystemState.toString
 
-theorem emptyCoherent (requests : RequestArray) :
-  ∀ id : RequestId, id ∈ [] → id ∈ reqIds requests := by
-  intros id h
-  contradiction
-
-omit [ArchReq] in
-theorem empty2Coherent (seen : List RequestId) :
-  ∀ id₁ id₂ : RequestId, (id₁,id₂) ∈ [] → id₁ ∈ seen ∧ id₂ ∈ seen := by
-  intros
-  contradiction
-
 def SystemState.init (S : ValidScopes) (threadTypes : ThreadId → String): SystemState :=
   { requests := RequestArray.empty, removed := [],
     scopes := S, satisfied := [], orderConstraints := OrderConstraints.empty,
-    removedCoherent := emptyCoherent RequestArray.empty, threadTypes
+    threadTypes
   }
 
 def SystemState.default := SystemState.init ValidScopes.default (λ _ => "default")
@@ -797,14 +785,7 @@ def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Boo
 
 def SystemState.updateRequest : SystemState → Request → SystemState
   | state, request =>
-   let requests' := state.requests.insert request
-   SystemState.mk requests' state.removed state.scopes state.satisfied
-   state.threadTypes state.orderConstraints sorry
-   --{requests := requests', seen := state.seen, removed := state.removed,
-   -- scopes := state.scopes, satisfied := state.satisfied,
-   -- orderConstraints := state.orderConstraints,
-   -- seenCoherent := state.seenCoherent, removedCoherent := state.removedCoherent,
-   -- satisfiedCoherent := state.satisfiedCoherent}
+    { state with requests := state.requests.insert request }
 def SystemState.allRequests (state : SystemState) : List Request := state.removed ++ filterNones state.requests.val.toList
 
 class Arch where

@@ -342,8 +342,7 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
    { requests := requests', scopes := state.scopes,
      threadTypes := state.threadTypes,
      orderConstraints := orderConstraints',
-     removed := state.removed, satisfied := state.satisfied,
-     removedCoherent := sorry
+     removed := state.removed, satisfied := state.satisfied
   }
   let writesOnThread := state.requests.filter λ w => w.isWrite && w.propagatedTo tId
   for write in writesOnThread do
@@ -362,10 +361,7 @@ def SystemState.canUnapplyRequest : SystemState → RequestId → Bool
 
 def SystemState.unapplyAcceptRequest : SystemState → RequestId → SystemState
 -- TODO: PR for multiple updates?
-  | state, rId => {requests := state.requests.remove rId,
-                   removed := state.removed, orderConstraints := state.orderConstraints,
-                   threadTypes := state.threadTypes, scopes := state.scopes,
-                   satisfied := state.satisfied, removedCoherent :=sorry}
+  | state, rId => { state with requests := state.requests.remove rId }
 
 -- def SystemState.canUnapplyPropagate : SystemState → RequestId → ThreadId → Bool
 --   | state, reqId, thId =>
@@ -510,7 +506,7 @@ def SystemState.cleanupTransactions : SystemState → SystemState
                let requestsRemoved := removedWrites.foldl (λ arr req => arr.remove req.id) state.requests
                -- Don't reeinsert removed rmwWrite' if failed.
                let requests' := if failed then requestsRemoved else requestsRemoved.insert rmwWrite'
-               {state with requests := requests', removed := removed', removedCoherent := sorry}
+               {state with requests := requests', removed := removed'}
 
 
 def Request.propagate : Request → ThreadId → Request
@@ -528,7 +524,7 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
     let scope := state.scopes.jointScope thId req.thread
     let orderConstraints' := state.updateOrderConstraintsPropagate scope reqId thId
     let mut res := { state with
-      requests := requests', orderConstraints := orderConstraints', removedCoherent := sorry}
+      requests := requests', orderConstraints := orderConstraints' }
     let successors := res.orderConstraints.successors (res.scopes.jointScope req.thread thId) reqId res.seen
     for reqId' in successors do
       if let some req' := res.requests.getReq? reqId' then
@@ -604,10 +600,7 @@ def SystemState.satisfy : SystemState → RequestId → RequestId → SystemStat
      let requests' := state |>.validateWrite writeId |>.remove readId
      let removed' := read'::state.removed |>.toArray.qsort
        (λ r₁ r₂ => Nat.ble r₁.id r₂.id) |>.toList
-     let result := { requests := requests', orderConstraints := state.orderConstraints,
-                     removed := removed', satisfied := satisfied', scopes := state.scopes,
-                     threadTypes := state.threadTypes, removedCoherent := sorry
-                     : SystemState}
+     let result := { state with requests := requests', removed := removed', satisfied := satisfied' }
      result.cleanupTransactions
    | _, _ => unreachable!
 

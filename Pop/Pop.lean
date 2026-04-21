@@ -33,33 +33,82 @@ def Transition.prettyPrintReq : Transition → Option String
   | dependency none => some "dep"
   | _ => none
 
-def Transition.isAccept : Transition → Bool
- | acceptRequest _ _ => true
- | _ => false
+def Transition.isAccept : Transition → Prop
+ | acceptRequest _ _ => True
+ | _ => False
 
-def Transition.isPropagate : Transition → Bool
-  | propagateToThread _ _ => true
-  | _ => false
+instance (t : Transition) : Decidable t.isAccept :=
+  match h : t with
+  | .acceptRequest _ _ => isTrue (by simp [Transition.isAccept])
+  | .propagateToThread _ _ => isFalse (by simp [Transition.isAccept])
+  | .satisfyRead _ _ => isFalse (by simp [Transition.isAccept])
+  | .dependency _ => isFalse (by simp [Transition.isAccept])
 
-def Transition.isSatisfy : Transition → Bool
-  | satisfyRead _ _ => true
-  | _ => false
+def Transition.isPropagate : Transition → Prop
+  | propagateToThread _ _ => True
+  | _ => False
 
-def Transition.isReadAccept : Transition → Bool
+instance (t : Transition) : Decidable t.isPropagate :=
+  match h : t with
+  | .acceptRequest _ _ => isFalse (by simp [Transition.isPropagate])
+  | .propagateToThread _ _ => isTrue (by simp [Transition.isPropagate])
+  | .satisfyRead _ _ => isFalse (by simp [Transition.isPropagate])
+  | .dependency _ => isFalse (by simp [Transition.isPropagate])
+
+def Transition.isSatisfy : Transition → Prop
+  | satisfyRead _ _ => True
+  | _ => False
+
+instance (t : Transition) : Decidable t.isSatisfy :=
+  match h : t with
+  | .acceptRequest _ _ => isFalse (by simp [Transition.isSatisfy])
+  | .propagateToThread _ _ => isFalse (by simp [Transition.isSatisfy])
+  | .satisfyRead _ _ => isTrue (by simp [Transition.isSatisfy])
+  | .dependency _ => isFalse (by simp [Transition.isSatisfy])
+
+def Transition.isReadAccept : Transition → Prop
   | .acceptRequest br _ => br.isRead
-  | _ => false
+  | _ => False
 
-def Transition.isWriteAccept : Transition → Bool
+instance (t : Transition) : Decidable t.isReadAccept :=
+  match h : t with
+  | .acceptRequest br _ => inferInstanceAs (Decidable br.isRead)
+  | .propagateToThread _ _ => isFalse (by simp [Transition.isReadAccept])
+  | .satisfyRead _ _ => isFalse (by simp [Transition.isReadAccept])
+  | .dependency _ => isFalse (by simp [Transition.isReadAccept])
+
+def Transition.isWriteAccept : Transition → Prop
   | .acceptRequest br _ => br.isWrite
-  | _ => false
+  | _ => False
 
-def Transition.isFenceAccept : Transition → Bool
+instance (t : Transition) : Decidable t.isWriteAccept :=
+  match h : t with
+  | .acceptRequest br _ => inferInstanceAs (Decidable br.isWrite)
+  | .propagateToThread _ _ => isFalse (by simp [Transition.isWriteAccept])
+  | .satisfyRead _ _ => isFalse (by simp [Transition.isWriteAccept])
+  | .dependency _ => isFalse (by simp [Transition.isWriteAccept])
+
+def Transition.isFenceAccept : Transition → Prop
   | .acceptRequest br _ => br.isFence
-  | _ => false
+  | _ => False
 
-def Transition.isDependency : Transition → Bool
- | dependency _ => true
- | _ => false
+instance (t : Transition) : Decidable t.isFenceAccept :=
+  match h : t with
+  | .acceptRequest br _ => inferInstanceAs (Decidable br.isFence)
+  | .propagateToThread _ _ => isFalse (by simp [Transition.isFenceAccept])
+  | .satisfyRead _ _ => isFalse (by simp [Transition.isFenceAccept])
+  | .dependency _ => isFalse (by simp [Transition.isFenceAccept])
+
+def Transition.isDependency : Transition → Prop
+ | dependency _ => True
+ | _ => False
+
+ instance (t : Transition) : Decidable t.isDependency :=
+  match h : t with
+  | .acceptRequest _ _ => isFalse (by simp [Transition.isDependency])
+  | .propagateToThread _ _ => isFalse (by simp [Transition.isDependency])
+  | .satisfyRead _ _ => isFalse (by simp [Transition.isDependency])
+  | .dependency _ => isTrue (by simp [Transition.isDependency])
 
 def Transition.getAcceptBasicRequest? : Transition → Option BasicRequest
   | .acceptRequest br _ => some br
@@ -90,12 +139,12 @@ def Transition.prettyPrint : SystemState → Transition → String
 
 abbrev ProgramState := Array (Array (Transition))
 
-def ProgramState.allFilter (prog : ProgramState) (filterFun : Transition → Bool)
+def ProgramState.allFilter (prog : ProgramState) (filterProp : Transition → Prop) [DecidablePred filterProp]
   : List Transition :=
   List.flatten $ Array.toList $ prog.map
-    λ th => th.toList.filter filterFun
+    λ th => th.toList.filter (fun t => decide (filterProp t))
 
-def ProgramState.all (prog : ProgramState) : List Transition := prog.allFilter (λ _ => true)
+def ProgramState.all (prog : ProgramState) : List Transition := prog.allFilter (λ _ => True)
 
 def ProgramState.allReads (prog : ProgramState) : List Transition :=
   prog.allFilter Transition.isReadAccept
@@ -104,40 +153,63 @@ def ProgramState.allWrites (prog : ProgramState) : List Transition :=
 def ProgramState.allFences (prog : ProgramState) : List Transition :=
   prog.allFilter Transition.isFenceAccept
 
-def Request.isFenceLike (req : Request) : Bool := !req.blockingSemantics.isEmpty
-def Request.blocksOnReads (req : Request) : Bool :=
-  req.blockingSemantics.contains BlockingKinds.Read2ReadPred ||
-  req.blockingSemantics.contains BlockingKinds.Read2ReadNoPred ||
-  req.blockingSemantics.contains BlockingKinds.Read2WritePred ||
+def Request.isFenceLike (req : Request) : Prop := ¬req.blockingSemantics.isEmpty
+
+instance (req : Request) : Decidable (req.isFenceLike) :=
+  if h : req.blockingSemantics.isEmpty then isFalse (by simp [Request.isFenceLike, h])
+  else isTrue (by simp [Request.isFenceLike, h])
+
+def Request.blocksOnReads (req : Request) : Prop :=
+  req.blockingSemantics.contains BlockingKinds.Read2ReadPred ∨
+  req.blockingSemantics.contains BlockingKinds.Read2ReadNoPred ∨
+  req.blockingSemantics.contains BlockingKinds.Read2WritePred ∨
   req.blockingSemantics.contains BlockingKinds.Read2WriteNoPred
 
-def Request.blocksOnWrites (req : Request) : Bool :=
-  req.blockingSemantics.contains BlockingKinds.Write2Read ||
+instance (req : Request) : Decidable (req.blocksOnReads) := by
+  unfold Request.blocksOnReads; infer_instance
+
+def Request.blocksOnWrites (req : Request) : Prop :=
+  req.blockingSemantics.contains BlockingKinds.Write2Read ∨
   req.blockingSemantics.contains BlockingKinds.Write2Write
 
-def Request.blocksOnPreds (req : Request) : Bool :=
-  req.blockingSemantics.contains BlockingKinds.Read2ReadPred ||
+instance (req : Request) : Decidable (req.blocksOnWrites) := by
+  unfold Request.blocksOnWrites; infer_instance
+
+def Request.blocksOnPreds (req : Request) : Prop :=
+  req.blockingSemantics.contains BlockingKinds.Read2ReadPred ∨
   req.blockingSemantics.contains BlockingKinds.Read2WritePred
+
+instance (req : Request) : Decidable (req.blocksOnPreds) := by
+  unfold Request.blocksOnPreds; infer_instance
 
 def memopsNotDone (state : SystemState) (fenceLike : Request) : List Request :=
     let preds := state.requests.filter λ r => r.isPredecessorAt fenceLike.thread && state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id
-    let memopsOnThread := state.requests.filter λ r => r.isMem &&  r.thread == fenceLike.thread && !r.isSatisfied &&
-                          state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id
+    let memopsOnThread := state.requests.filter λ r => decide (r.isMem ∧ r.thread = fenceLike.thread ∧ ¬r.isSatisfied ∧
+                          state.orderConstraints.lookup (state.scopes.reqThreadScope fenceLike) r.id fenceLike.id)
     (memopsOnThread ++ preds).filter λ r =>
         let scope := Arch.scopeIntersection state.scopes r fenceLike
-        !(state.isSatisfied r.id || r.fullyPropagated scope) && r.id != fenceLike.id
+        decide (¬state.isSatisfied r.id ∧ ¬r.fullyPropagated scope ∧ r.id ≠ fenceLike.id)
 
-def readsDone (state : SystemState) (fenceLike : Request) : Bool :=
-  let reads := memopsNotDone state fenceLike |>.filter Request.isRead
+def readsDone (state : SystemState) (fenceLike : Request) : Prop :=
+  let reads := memopsNotDone state fenceLike |>.filter fun r => decide r.isRead
   reads.isEmpty
 
-def writesDone (state : SystemState) (fenceLike : Request) : Bool :=
-  let writes := memopsNotDone state fenceLike |>.filter λ w => w.isWrite && w.thread == fenceLike.thread
+instance (state : SystemState) (fenceLike : Request) : Decidable (readsDone state fenceLike) := by
+  unfold readsDone; infer_instance
+
+def writesDone (state : SystemState) (fenceLike : Request) : Prop :=
+  let writes := memopsNotDone state fenceLike |>.filter λ w => decide (w.isWrite ∧ w.thread = fenceLike.thread)
   writes.isEmpty
 
-def predsDone (state : SystemState) (fenceLike : Request) : Bool :=
+instance (state : SystemState) (fenceLike : Request) : Decidable (writesDone state fenceLike) := by
+  unfold writesDone; infer_instance
+
+def predsDone (state : SystemState) (fenceLike : Request) : Prop :=
   let preds := memopsNotDone state fenceLike |>.filter λ p => p.isPredecessorAt fenceLike.thread
   preds.isEmpty
+
+instance (state : SystemState) (fenceLike : Request) : Decidable (predsDone state fenceLike) := by
+  unfold predsDone; infer_instance
 
 def SystemState.getPairedRequest? : SystemState → RequestId → Option Request
   | state, reqId => match state.requests.getReq? reqId with
@@ -176,35 +248,38 @@ def SystemState.rmwGetPreviousWrite? : SystemState → RequestId → Option Requ
 
 -- TODO: add also for atomics
 def SystemState.blockedOnRequests (state : SystemState) : List Request := Id.run do
-  let fences := state.requests.filter Request.isFenceLike
+  let fences := state.requests.filter (decide ·.isFenceLike)
   let mut res := []
   for fence in fences do
-    if fence.blocksOnReads && !(readsDone state fence) then
+    if fence.blocksOnReads ∧ ¬readsDone state fence then
       res := res ++ [fence]
       continue
-    if fence.blocksOnWrites && !(writesDone state fence) then
+    if fence.blocksOnWrites ∧ ¬writesDone state fence then
       res := res ++ [fence]
       continue
-    if fence.blocksOnPreds && !(predsDone state fence) then
+    if fence.blocksOnPreds ∧ ¬predsDone state fence then
       res := res ++ [fence]
       continue
   return res
 
-def propagateConstraintsAux (state : SystemState) (req : Request) (blocking : List Request) : Bool :=
-  if blocking.isEmpty then
-    true else
-  if !req.isMem then -- fences don't propagate
-    false else
+def propagateConstraintsAux (state : SystemState) (req : Request) (blocking : List Request) : Prop :=
+  blocking.isEmpty ∨
+  req.isMem ∧
   --dbg_trace (String.intercalate "\n" $ blocking.map λ fenceLike => s!"R{fenceLike.id}{fenceLike.blockingSemantics} blocking {req.id}? memops: {memopsNotDone state fenceLike}\n....reads: {readsDone state fenceLike}, writes: {writesDone state fenceLike}, preds: {predsDone state fenceLike}")
   if req.isRead then blocking.all λ fenceLike =>
-      (!fenceLike.blockingSemantics.contains .Read2ReadNoPred || readsDone state fenceLike) &&
-      (!fenceLike.blockingSemantics.contains .Read2ReadPred   || (readsDone state fenceLike && predsDone state fenceLike)) &&
-      (!fenceLike.blockingSemantics.contains .Write2Read      || writesDone state fenceLike)
+      decide ((¬fenceLike.blockingSemantics.contains .Read2ReadNoPred ∨ readsDone state fenceLike) ∧
+              (¬fenceLike.blockingSemantics.contains .Read2ReadPred   ∨ (readsDone state fenceLike ∧ predsDone state fenceLike)) ∧
+              (¬fenceLike.blockingSemantics.contains .Write2Read      ∨ writesDone state fenceLike))
  else if req.isWrite then blocking.all λ fenceLike =>
-      (!fenceLike.blockingSemantics.contains .Read2WriteNoPred || readsDone state fenceLike) &&
-      (!fenceLike.blockingSemantics.contains .Read2WritePred   || (readsDone state fenceLike && predsDone state fenceLike)) &&
-      (!fenceLike.blockingSemantics.contains .Write2Write      || writesDone state fenceLike)
- else panic! s!"unknown request type ({req})"
+      decide ((¬fenceLike.blockingSemantics.contains .Read2WriteNoPred ∨ readsDone state fenceLike) ∧
+              (¬fenceLike.blockingSemantics.contains .Read2WritePred   ∨ (readsDone state fenceLike ∧ predsDone state fenceLike)) ∧
+              (¬fenceLike.blockingSemantics.contains .Write2Write      ∨ writesDone state fenceLike))
+ else False
+
+instance (state : SystemState) (req : Request) (blocking : List Request) :
+    Decidable (propagateConstraintsAux state req blocking) := by
+  unfold propagateConstraintsAux
+  infer_instance
 
 def addNewPredecessors (state : SystemState) (write read : Request) (thId : ThreadId) : SystemState := Id.run do
   if write.isWrite && read.isRead && write.address? == read.address? && read.thread == thId  &&
@@ -229,12 +304,21 @@ def SystemState.rmwPairsBlocking : SystemState → List (Request × Request)
       λ (read, write) => !(read.propagated_to == write.propagated_to)
       -/
 
-def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Bool
+def SystemState.canAcceptRequest : SystemState → BasicRequest → ThreadId → Prop
   | state, br, thId =>
     if state.rmwPairsBlocking.isEmpty then
       Arch.acceptConstraints state br thId
     else
-      false
+      False
+
+instance (state : SystemState) (req : BasicRequest) (tId : ThreadId) :
+    Decidable (state.canAcceptRequest req tId) :=
+  match hb : state.rmwPairsBlocking.isEmpty with
+  | false => isFalse (by simp [SystemState.canAcceptRequest, hb])
+  | true =>
+    match ha : Arch.acceptConstraints state req tId with
+    | false => isFalse (by simp [SystemState.canAcceptRequest, hb, ha])
+    | true  => isTrue  (by simp [SystemState.canAcceptRequest, hb, ha])
 
 def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope state.scopes →
 RequestId → ThreadId → @OrderConstraints state.scopes
@@ -349,15 +433,25 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
     st := addNewPredecessors st write (st.requests.getReq! req.id) tId
   return (st, req.id)
 
-def SystemState.canUnapplyRequest : SystemState → RequestId → Bool
+def SystemState.canUnapplyRequest : SystemState → RequestId → Prop
   | state, rId =>
     match state.requests.getReq? rId with
-   | none => false
+   | none => False
    | some req =>
      let scope := state.scopes.jointScope req.thread req.thread
-     let succ := state.orderConstraints.successors scope rId (reqIds state.requests) == []
-     let prop := req.propagated_to == [req.thread]
-     succ && prop
+     let succ := state.orderConstraints.successors scope rId (reqIds state.requests) = []
+     let prop := req.propagated_to = [req.thread]
+     succ ∧ prop
+
+instance (state : SystemState) (rId : RequestId) : Decidable (state.canUnapplyRequest rId) :=
+  match h : state.requests.getReq? rId with
+  | none => isFalse (by simp [SystemState.canUnapplyRequest, h])
+  | some req =>
+    let scope := state.scopes.jointScope req.thread req.thread
+    let succ := state.orderConstraints.successors scope rId (reqIds state.requests) = []
+    let prop := req.propagated_to = [req.thread]
+    if hconj : succ ∧ prop then isTrue (by grind [SystemState.canUnapplyRequest])
+    else isFalse (by grind [SystemState.canUnapplyRequest])
 
 def SystemState.unapplyAcceptRequest : SystemState → RequestId → SystemState
 -- TODO: PR for multiple updates?
@@ -384,30 +478,66 @@ this invariant.
 def Request.conditionalValue? : Request → Option ConditionalValue
   | req => req.basic_type.conditionalValue?
 
-def Request.conditionalSucceeded : Request → Bool
+def Request.conditionalSucceeded : Request → Prop
   | req => match req.conditionalValue? with
-    | some (.const _) => true
-    | some _ => false
-    | none => false
+    | some (.const _) => True
+    | some _ => False
+    | none => False
 
-def Request.conditionalFailed : Request → Bool
-  | req => match req.conditionalValue? with
-    | some .failed => true
-    | some _ => false
-    | none => false
+instance (req : Request) : Decidable (req.conditionalSucceeded) :=
+  match h : req.conditionalValue? with
+  | some v => match v with
+    | .const _ => isTrue (by simp [Request.conditionalSucceeded, h])
+    | .tentative _ => isFalse (by simp [Request.conditionalSucceeded, h])
+    | .failed => isFalse (by simp [Request.conditionalSucceeded, h])
+    | .fetchAndAdd => isFalse (by simp [Request.conditionalSucceeded, h])
+  | none => isFalse (by simp [Request.conditionalSucceeded, h])
 
-def Request.conditionalUndecided : Request → Bool
+def Request.conditionalFailed : Request → Prop
   | req => match req.conditionalValue? with
-    | some .failed => false
-    | some (.const _) => false
-    | some _ => true
-    | none => false
+    | some .failed => True
+    | some _ => False
+    | none => False
 
-def Request.conditionalTentativeOrSuccessful : Request → Bool
+instance (req : Request) : Decidable (req.conditionalFailed) :=
+  match h : req.conditionalValue? with
+  | some v => match v with
+    | .failed => isTrue (by simp [Request.conditionalFailed, h])
+    | .const _ => isFalse (by simp [Request.conditionalFailed, h])
+    | .tentative _ => isFalse (by simp [Request.conditionalFailed, h])
+    | .fetchAndAdd => isFalse (by simp [Request.conditionalFailed, h])
+  | none => isFalse (by simp [Request.conditionalFailed, h])
+
+def Request.conditionalUndecided : Request → Prop
   | req => match req.conditionalValue? with
-    | some (.const _) => true
-    | some (.tentative _) => true
-    | _ => false
+    | some .failed => False
+    | some (.const _) => False
+    | some _ => True
+    | none => False
+
+instance (req : Request) : Decidable (req.conditionalUndecided) :=
+  match h : req.conditionalValue? with
+  | some v => match v with
+    | .failed => isFalse (by simp [Request.conditionalUndecided, h])
+    | .const _ => isFalse (by simp [Request.conditionalUndecided, h])
+    | .tentative _ => isTrue (by simp [Request.conditionalUndecided, h])
+    | .fetchAndAdd => isTrue (by simp [Request.conditionalUndecided, h])
+  | none => isFalse (by simp [Request.conditionalUndecided, h])
+
+def Request.conditionalTentativeOrSuccessful : Request → Prop
+  | req => match req.conditionalValue? with
+    | some (.const _) => True
+    | some (.tentative _) => True
+    | _ => False
+
+instance (req : Request) : Decidable (req.conditionalTentativeOrSuccessful) :=
+  match h : req.conditionalValue? with
+  | some v => match v with
+    | .const _ => isTrue (by simp [Request.conditionalTentativeOrSuccessful, h])
+    | .tentative _ => isTrue (by simp [Request.conditionalTentativeOrSuccessful, h])
+    | .failed => isFalse (by simp [Request.conditionalTentativeOrSuccessful, h])
+    | .fetchAndAdd => isFalse (by simp [Request.conditionalTentativeOrSuccessful, h])
+  | none => isFalse (by simp [Request.conditionalTentativeOrSuccessful, h])
 
 def SystemState.inFlightTransactions : SystemState → List (Request × Request)
   | state =>
@@ -415,59 +545,122 @@ def SystemState.inFlightTransactions : SystemState → List (Request × Request)
       match (state.requests.getReq? r_id, state.requests.getReq? w_id) with
         | (some read, some write) => some (read, write)
         | _ => none
-    satisfiedReads.filter λ (read, _) => read.isTransactional
+    satisfiedReads.filter λ (read, _) => decide read.isTransactional
 
-def Request.isPropagated : Request → ThreadId → Bool
+def Request.isPropagated : Request → ThreadId → Prop
   | req, thId => req.propagated_to.elem thId
 
-def requestBlocksPropagateRequest : SystemState → ThreadId → Request → Request → Bool
-  | state, thId, propagate, block => Id.run do
-    if block.id == propagate.id then
-      return false
-    if !block.isMem then -- fences don't propagate
-      return false
-    if propagate.thread == block.thread then
-      for scope in state.scopes.containThread propagate.thread do
-        if state.orderConstraints.lookup scope block.id propagate.id && !(block.fullyPropagated scope) then
-          return true
-      return false
+instance (req : Request) (thId : ThreadId) : Decidable (req.isPropagated thId) :=
+  if h : req.propagated_to.elem thId then isTrue (by grind [Request.isPropagated])
+  else isFalse (by grind [Request.isPropagated])
+
+def requestBlocksPropagateRequest : SystemState → ThreadId → Request → Request → Prop
+  | state, thId, propagate, block =>
+    block.id ≠ propagate.id ∧
+    ¬block.isMem ∧
+      (propagate.thread = block.thread ∧
+        ∃ scope ∈ state.scopes.containThread propagate.thread,
+          state.orderConstraints.lookup scope block.id propagate.id ∧ ¬(block.fullyPropagated scope)
+      ) ∨
+      (state.orderConstraints.lookup state.scopes.systemScope block.id propagate.id ∧ ¬(block.propagatedTo thId))
+
+instance (state : SystemState) (thId : ThreadId) (propagate block : Request) :
+    Decidable (requestBlocksPropagateRequest state thId propagate block) := by
+  unfold requestBlocksPropagateRequest
+  infer_instance
+
+def SystemState.transactionsBlocking (state : SystemState) (reqId : RequestId) (thId : ThreadId) : Prop :=
+  match state.requests.getReq? reqId with
+  | none => False
+  | some req =>
+    req.isWrite ∧
+    let inFlight := state.inFlightTransactions.map (λ (_,rd) => state.getPairedRequest? rd.id)
+      |> filterNones |>.filter (λ wr => wr.address? == req.address? && wr.thread == thId)
+    let scope := state.scopes.jointScope thId req.thread
+    -- the incoming request must already be ordered with all in-flight RMWs
+    ∃ wr ∈ inFlight,
+      ¬state.orderConstraints.lookup scope wr.id reqId ∧
+      ¬state.orderConstraints.lookup scope reqId wr.id
+
+instance (state : SystemState) (reqId : RequestId) (thId : ThreadId) :
+    Decidable (state.transactionsBlocking reqId thId) :=
+  match h : state.requests.getReq? reqId with
+  | none => isFalse (by simp [SystemState.transactionsBlocking, h])
+  | some req =>
+    if hw : req.isWrite then
+      let inFlight := state.inFlightTransactions.map (λ (_,rd) => state.getPairedRequest? rd.id)
+        |> filterNones |>.filter (λ wr => wr.address? == req.address? && wr.thread == thId)
+      let scope := state.scopes.jointScope thId req.thread
+      if hany : inFlight.any (fun wr =>
+          !state.orderConstraints.lookup scope wr.id reqId &&
+          !state.orderConstraints.lookup scope reqId wr.id) then
+        isTrue (by
+          simp only [SystemState.transactionsBlocking, h]
+          refine ⟨hw, ?_⟩
+          obtain ⟨wr, hmem, hb⟩ := List.any_eq_true.mp hany
+          exact ⟨wr, hmem,
+            fun heq => by have : state.orderConstraints.lookup scope wr.id reqId = true := heq
+                          simp [this] at hb,
+            fun heq => by have : state.orderConstraints.lookup scope reqId wr.id = true := heq
+                          simp [this] at hb⟩)
+      else
+        isFalse (by grind [SystemState.transactionsBlocking])
     else
-      return state.orderConstraints.lookup state.scopes.systemScope block.id propagate.id && !(block.propagatedTo thId)
+      isFalse (by simp only [SystemState.transactionsBlocking, h]; intro ⟨hw', _⟩; exact hw hw')
 
-def SystemState.transactionsBlocking : SystemState → RequestId → ThreadId → Bool
-  | state, reqId, thId =>
-    match state.requests.getReq? reqId with
-      | none => false
-      | some req =>
-      if !req.isWrite then false else
-        let inFlight := state.inFlightTransactions.map (λ (_,rd) => state.getPairedRequest? rd.id)
-          |> filterNones |>.filter (λ wr => wr.address? == req.address? && wr.thread == thId)
-        let scope := state.scopes.jointScope thId req.thread
-        -- the incoming request must already be ordered with all in-flight RMWs
-        inFlight.any λ wr => !state.orderConstraints.lookup scope wr.id reqId && !state.orderConstraints.lookup scope reqId wr.id
-
-def SystemState.canPropagate : SystemState → RequestId → ThreadId → Bool
+def SystemState.canPropagate : SystemState → RequestId → ThreadId → Prop
   | state, reqId, thId =>
   let arch := Arch.propagateConstraints state reqId thId
   match state.requests.getReq? reqId with
-  | none => false
+  | none => False
   | some req =>
-    if !req.isMem then -- fences don't propagate
-      false else
-    if (req.isAtomic || req.isTransactional) && req.isWrite && !req.conditionalTentativeOrSuccessful then -- can't propagate until decided
-      false else
-    if state.transactionsBlocking reqId thId then
-      false else
-    let unpropagated := !req.isPropagated thId
+    req.isMem ∧
+    ¬ ((req.isAtomic ∨ req.isTransactional) ∧ req.isWrite ∧ ¬req.conditionalTentativeOrSuccessful) -- can't propagate until decided
+    ∧ ¬state.transactionsBlocking reqId thId
+    ∧ (
+    let unpropagated := ¬req.isPropagated thId
     let blockingReqs := state.requests.filter (requestBlocksPropagateRequest state thId req)
     let blockingFenceLikes := state.blockedOnRequests.filter
-        λ r => r.thread == req.thread &&
-        (state.orderConstraints.lookup (state.scopes.reqThreadScope req) r.id req.id || r.id == req.id)
+        λ r => r.thread = req.thread ∧
+        (state.orderConstraints.lookup (state.scopes.reqThreadScope req) r.id req.id ∨ r.id = req.id)
     --dbg_trace "propagate {reqId}, \n{blockingFenceLikes} not blocked? {propagateConstraintsAux state req blockingFenceLikes}"
     let fenceLikes := propagateConstraintsAux state req blockingFenceLikes
     --dbg_trace "can {req} propagate to thread {thId}?\n blockingReqs = {blockingReqs}"
-    let rmw_pairs_done := state.rmwPairsBlocking.all λ (read, write) => write.id == reqId && read.propagatedTo thId
-    arch && unpropagated && blockingReqs.isEmpty && fenceLikes && rmw_pairs_done
+    let rmw_pairs_done := state.rmwPairsBlocking.all fun (read, write) => write.id = reqId ∧ read.propagatedTo thId
+    arch ∧ unpropagated ∧ blockingReqs.isEmpty ∧ fenceLikes ∧ rmw_pairs_done)
+
+instance (state : SystemState) (reqId : RequestId) (thId : ThreadId) :
+    Decidable (state.canPropagate reqId thId) :=
+  match h : state.requests.getReq? reqId with
+  | none => isFalse (by simp [SystemState.canPropagate, h])
+  | some req =>
+    let arch := Arch.propagateConstraints state reqId thId
+    match hreq : state.requests.getReq? reqId with
+    | none => isFalse (by simp [SystemState.canPropagate, hreq])
+    | some req =>
+      if hmem : ¬ req.isMem then
+        isFalse (by grind [SystemState.canPropagate])
+        else
+        if hcond : (req.isAtomic ∨ req.isTransactional) ∧ req.isWrite ∧ ¬req.conditionalTentativeOrSuccessful then
+          isFalse (by grind [SystemState.canPropagate])
+        else
+          let transactionsBlocking := state.transactionsBlocking reqId thId
+          if hblocking : transactionsBlocking then
+            isFalse (by grind [SystemState.canPropagate])
+          else
+            let unpropagated := ¬req.isPropagated thId
+            let blockingReqs := state.requests.filter (requestBlocksPropagateRequest state thId req)
+            let blockingFenceLikes := state.blockedOnRequests.filter
+                λ r => r.thread = req.thread ∧
+                (state.orderConstraints.lookup (state.scopes.reqThreadScope req) r.id req.id ∨ r.id = req.id)
+            let fenceLikes := propagateConstraintsAux state req blockingFenceLikes
+            let rmw_pairs_done := state.rmwPairsBlocking.all fun (read, write) => write.id = reqId ∧ read.propagatedTo thId
+            if hconj : arch ∧ unpropagated ∧ blockingReqs.isEmpty ∧ fenceLikes ∧ rmw_pairs_done then
+              isTrue (by grind [SystemState.canPropagate])
+            else
+              isFalse (by grind [SystemState.canPropagate])
+
+
 
 def SystemState.cleanupTransactions : SystemState → SystemState
    | state =>
@@ -531,37 +724,49 @@ def SystemState.propagate : SystemState → RequestId → ThreadId → SystemSta
         res := addNewPredecessors res req req' thId
     return res.cleanupTransactions
 
-def SystemState.canSatisfyRead : SystemState → RequestId → RequestId → Bool
-  | state, readId, writeId =>
-  let arch := Arch.satisfyReadConstraints state readId writeId
-  if state.isSatisfied readId then false else
+def SystemState.canSatisfyRead (state : SystemState) (readId writeId : RequestId) : Prop :=
+  ¬state.isSatisfied readId ∧
   match state.requests.val[readId.toNat]?, state.requests.val[writeId.toNat]? with
-    | some (some read), some (some write) =>
-      if !read.isRead || !write.isWrite then false
-      else if read.address? != write.address? then false
-      else if write.conditionalFailed then false
-      else if (blesort read.propagated_to) != (blesort write.propagated_to) then false
-      else
-        let scope := state.scopes.jointScope read.thread write.thread
-        --dbg_trace "can {writeId} satisfy {readId}?"
-        -- TODO: can/should we relax this?
-        let oc := state.orderConstraints.lookup scope writeId readId
-        let betweenIds := state.orderConstraints.between scope write.id read.id (reqIds state.requests)
-        --dbg_trace s!"between {writeId} and {readId}: {betweenIds}"
-        let between := state.idsToReqs betweenIds
-        let writesToAddrBetween := between.filter λ r =>
-          r.address? == write.address? && !(state.isSatisfied r.id) && !r.conditionalFailed -- TODO: sure about this?
-        let rmwPairs := state.rmwPairsBlocking
-        arch && oc && writesToAddrBetween.length == 0 && (write.conditionalTentativeOrSuccessful )&& rmwPairs.isEmpty
-    | _, _ => panic! s!"unknown request ({readId} or {writeId})"
+  | some (some read), some (some write) =>
+    read.isRead ∧ write.isWrite ∧
+    ¬write.conditionalFailed ∧
+    read.address? = write.address? ∧
+    blesort read.propagated_to = blesort write.propagated_to ∧
+    let scope := state.scopes.jointScope read.thread write.thread
+    -- TODO: can/should we relax this?
+    state.orderConstraints.lookup scope writeId readId ∧
+    (state.orderConstraints.between scope write.id read.id (reqIds state.requests)
+      |> state.idsToReqs
+      |>.filter (fun r => decide (r.address? = write.address? ∧ ¬state.isSatisfied r.id ∧ ¬r.conditionalFailed))
+    ).isEmpty ∧
+    write.conditionalTentativeOrSuccessful ∧
+    state.rmwPairsBlocking.isEmpty ∧
+    Arch.satisfyReadConstraints state readId writeId
+  | _, _ => False
 
-def SystemState.alreadyOrdered : SystemState → RequestId → RequestId → Bool
+instance (state : SystemState) (readId writeId : RequestId) :
+    Decidable (state.canSatisfyRead readId writeId) :=
+  if hs : state.isSatisfied readId then
+    isFalse (fun ⟨hns, _⟩ => hns hs)
+  else
+    match hrd? :state.requests.val[readId.toNat]? with
+    | some rd? => match hwr? : state.requests.val[writeId.toNat]? with
+      | some wr? => match hrd : rd? with
+        | some read => match hwr : wr? with
+          | some write => by simp [SystemState.canSatisfyRead, hwr?, hrd?]; infer_instance
+          | none => isFalse (by grind [SystemState.canSatisfyRead])
+        | none => isFalse (by grind [SystemState.canSatisfyRead])
+      | none => isFalse (by grind [SystemState.canSatisfyRead])
+    | none => isFalse (by grind [SystemState.canSatisfyRead])
+
+
+def SystemState.alreadyOrdered : SystemState → RequestId → RequestId → Prop
   | state, reqId, reqId' =>
     match state.requests.getReq? reqId, state.requests.getReq? reqId' with
       | some req, some req' =>
         let scope := state.scopes.jointScope req.thread req'.thread
-        state.orderConstraints.lookup scope reqId reqId' || state.orderConstraints.lookup scope reqId' reqId
-      | _, _ => false
+        state.orderConstraints.lookup scope reqId reqId' ∨ state.orderConstraints.lookup scope reqId' reqId
+      | _, _ => False
 
 def SystemState.validateWrite : SystemState → RequestId → RequestArray
   | state, writeId =>
@@ -617,12 +822,22 @@ def SystemState.applyTransition! : SystemState → Transition → SystemState
    | state, dependency _ => state
 
 open Transition in
-def SystemState.canApplyTransition : SystemState → Transition → Bool
+def SystemState.canApplyTransition : SystemState → Transition → Prop
   | state, .acceptRequest req tId => state.canAcceptRequest req tId
   | state, .propagateToThread reqId tId => state.canPropagate reqId tId
   | state, satisfyRead readId writeId => state.canSatisfyRead readId writeId
   | state, dependency (some depId) => state.isSatisfied depId
-  | _, dependency none => panic! "invalid dependency"
+  | _, dependency none => False
+
+open Transition in
+instance (state : SystemState) (t : Transition) :
+    Decidable (state.canApplyTransition t) :=
+  match t with
+  | .acceptRequest req tId      => show Decidable (state.canAcceptRequest req tId)    from inferInstance
+  | .propagateToThread reqId tId => show Decidable (state.canPropagate reqId tId)      from inferInstance
+  | .satisfyRead readId writeId  => show Decidable (state.canSatisfyRead readId writeId) from inferInstance
+  | .dependency (some depId)    => show Decidable (state.isSatisfied depId)            from inferInstance
+  | .dependency none            => isFalse id
 
 open Transition in
 def SystemState.applyTransition : SystemState → Transition → Except String (SystemState)

@@ -10,6 +10,7 @@ def RequestId := Nat deriving ToString, Inhabited, Hashable, DecidableEq
 def Value := Option Nat deriving ToString, Inhabited, DecidableEq
 def Address := Nat deriving ToString, Inhabited, DecidableEq
 def ThreadId := Nat deriving Ord, LT, LE, ToString, Inhabited, Hashable, DecidableEq
+
 inductive ConditionalValue
   | const : Nat → ConditionalValue
   | tentative : Nat → ConditionalValue
@@ -219,14 +220,6 @@ structure ValidScopes where
 
 def ValidScopes.default : ValidScopes :=
     { system_scope := [], scopes := ListTree.leaf [],
-     -- scopes_consistent :=
-     --     (by
-     --      intros s h
-     --      simp [ListTree.elem] at h
-     --      rw [h]
-     --      simp),
-     -- system_scope_is_scope :=
-     --     (by simp [ (· ∈ ·) ])
     }
 
 instance : Inhabited ValidScopes where default := ValidScopes.default
@@ -290,29 +283,111 @@ instance : ToString (Request) where toString := Request.toString
 def Request.toShortString : Request → String
   | req => s!"{req.id}[{req.basic_type.toString}]"
 
-def BasicRequest.isRead    (r : BasicRequest) : Bool := match r with | read  _ _ => true | _ => false
-def BasicRequest.isWrite   (r : BasicRequest) : Bool := match r with | write _ _ => true | _ => false
-def BasicRequest.isFence (r : BasicRequest) : Bool := match r with | fence _ => true | _ => false
+def BasicRequest.isRead    (r : BasicRequest) : Prop := match r with | read  _ _ => True | _ => False
+instance (r : BasicRequest) : Decidable r.isRead := match r with
+  | .read _ _  => isTrue  (by grind [BasicRequest.isRead])
+  | .write _ _ => isFalse (by grind [BasicRequest.isRead])
+  | .fence _   => isFalse (by grind [BasicRequest.isRead])
 
-def BasicRequest.isAtomic (r : BasicRequest) : Bool := match r with | .read rr _ => rr.atomicity == .atomic | .write wr _ => wr.atomicity == .atomic | .fence _ => false
-def BasicRequest.isTransactional (r : BasicRequest) : Bool := match r with | .read rr _ => rr.atomicity == .transactional | .write wr _ => wr.atomicity == .transactional | .fence _ => false
-def Request.isRead    (r : Request) : Bool := r.basic_type.isRead
-def Request.isWrite   (r : Request) : Bool := r.basic_type.isWrite
-def Request.isFence (r : Request) : Bool := r.basic_type.isFence
-def Request.isMem     (r : Request) : Bool := !r.basic_type.isFence
-def Request.isPermanentRead (r : Request) : Bool := r.isRead && ArchReq.isPermanentRead r.basic_type.type
+def BasicRequest.isWrite   (r : BasicRequest) : Prop := match r with | write _ _ => True | _ => False
+instance (r : BasicRequest) : Decidable r.isWrite := match r with
+  | .read _ _  => isFalse (by grind [BasicRequest.isWrite])
+  | .write _ _ => isTrue  (by grind [BasicRequest.isWrite])
+  | .fence _   => isFalse (by grind [BasicRequest.isWrite])
+
+def BasicRequest.isFence (r : BasicRequest) : Prop := match r with | fence _ => True | _ => False
+instance (r : BasicRequest) : Decidable r.isFence := match r with
+  | .read _ _  => isFalse (by grind [BasicRequest.isFence])
+  | .write _ _ => isFalse (by grind [BasicRequest.isFence])
+  | .fence _   => isTrue  (by grind [BasicRequest.isFence])
+
+def BasicRequest.isAtomic (r : BasicRequest) : Prop :=
+  match r with | .read rr _ => rr.atomicity = .atomic | .write wr _ => wr.atomicity = .atomic | .fence _ => False
+instance (r : BasicRequest) : Decidable r.isAtomic := match r with
+  | .read rr _ =>
+    if h : rr.atomicity = .atomic then isTrue  (by grind [BasicRequest.isAtomic])
+    else                               isFalse (by grind [BasicRequest.isAtomic])
+  | .write wr _ =>
+    if h : wr.atomicity = .atomic then isTrue  (by grind [BasicRequest.isAtomic])
+    else                               isFalse (by grind [BasicRequest.isAtomic])
+  | .fence _ => isFalse (by grind [BasicRequest.isAtomic])
+
+def BasicRequest.isTransactional (r : BasicRequest) : Prop :=
+  match r with | .read rr _ => rr.atomicity = .transactional | .write wr _ => wr.atomicity = .transactional | .fence _ => False
+instance (r : BasicRequest) : Decidable r.isTransactional := match r with
+  | .read rr _ =>
+    if h : rr.atomicity = .transactional then isTrue  (by grind [BasicRequest.isTransactional])
+    else                                      isFalse (by grind [BasicRequest.isTransactional])
+  | .write wr _ =>
+    if h : wr.atomicity = .transactional then isTrue  (by grind [BasicRequest.isTransactional])
+    else                                      isFalse (by grind [BasicRequest.isTransactional])
+  | .fence _ => isFalse (by grind [BasicRequest.isTransactional])
+
+def Request.isRead    (r : Request) : Prop := r.basic_type.isRead
+instance (r : Request) : Decidable r.isRead := match h : r.basic_type with
+  | .read _ _  => isTrue  (by grind [Request.isRead, BasicRequest.isRead])
+  | .write _ _ => isFalse (by grind [Request.isRead, BasicRequest.isRead])
+  | .fence _   => isFalse (by grind [Request.isRead, BasicRequest.isRead])
+
+def Request.isWrite   (r : Request) : Prop := r.basic_type.isWrite
+instance (r : Request) : Decidable r.isWrite := match h : r.basic_type with
+  | .read _ _  => isFalse (by grind [Request.isWrite, BasicRequest.isWrite])
+  | .write _ _ => isTrue  (by grind [Request.isWrite, BasicRequest.isWrite])
+  | .fence _   => isFalse (by grind [Request.isWrite, BasicRequest.isWrite])
+
+def Request.isFence (r : Request) : Prop := r.basic_type.isFence
+instance (r : Request) : Decidable r.isFence := match h : r.basic_type with
+  | .read _ _  => isFalse (by grind [Request.isFence, BasicRequest.isFence])
+  | .write _ _ => isFalse (by grind [Request.isFence, BasicRequest.isFence])
+  | .fence _   => isTrue  (by grind [Request.isFence, BasicRequest.isFence])
+
+def Request.isMem     (r : Request) : Prop := ¬r.basic_type.isFence
+instance (r : Request) : Decidable r.isMem := match h : r.basic_type with
+  | .read _ _  => isTrue  (by grind [Request.isMem, BasicRequest.isFence])
+  | .write _ _ => isTrue  (by grind [Request.isMem, BasicRequest.isFence])
+  | .fence _   => isFalse (by grind [Request.isMem, BasicRequest.isFence])
+
+def Request.isPermanentRead (r : Request) : Prop := r.isRead ∧ ArchReq.isPermanentRead r.basic_type.type
+instance (r : Request) : Decidable r.isPermanentRead := match h : r.basic_type with
+  | .read _ ty =>
+    if hp : ArchReq.isPermanentRead ty then isTrue  (by grind [Request.isPermanentRead, Request.isRead, BasicRequest.isRead, BasicRequest.type])
+    else                                    isFalse (by grind [Request.isPermanentRead, Request.isRead, BasicRequest.isRead, BasicRequest.type])
+  | .write _ _ => isFalse (by grind [Request.isPermanentRead, Request.isRead, BasicRequest.isRead, BasicRequest.type])
+  | .fence _   => isFalse (by grind [Request.isPermanentRead, Request.isRead, BasicRequest.isRead, BasicRequest.type])
 
 def Request.value? (r : Request) : Value := r.basic_type.value?
 def Request.setValue (r : Request) (v : Value) : Request := { r with basic_type := r.basic_type.setValue v}
 def Request.updateValue (r : Request) (v : Value) : Request :=
   { r with basic_type := r.basic_type.updateValue v}
 def Request.validateWrite (r : Request) : Request := { r with basic_type := r.basic_type.validateWrite}
-def Request.isSatisfied (r : Request) : Bool := match r.basic_type with
+def Request.isSatisfied (r : Request) : Prop := match r.basic_type with
   | .read rr _ => rr.val.isSome
-  | _ => false
+  | _ => False
+instance (r : Request) : Decidable r.isSatisfied :=
+  match h : r.basic_type with
+  | .read rr _ => by simp [Request.isSatisfied, h]; exact inferInstance
+  | .write _ _ => isFalse (by grind [Request.isSatisfied])
+  | .fence _   => isFalse (by grind [Request.isSatisfied])
 
-def Request.isAtomic (r : Request) : Bool := r.basic_type.isAtomic
-def Request.isTransactional (r : Request) : Bool := r.basic_type.isTransactional
+def Request.isAtomic (r : Request) : Prop := r.basic_type.isAtomic
+instance (r : Request) : Decidable r.isAtomic := match h : r.basic_type with
+  | .read rr _  =>
+    if hp : rr.atomicity = .atomic then isTrue  (by grind [Request.isAtomic, BasicRequest.isAtomic])
+    else                                isFalse (by grind [Request.isAtomic, BasicRequest.isAtomic])
+  | .write wr _ =>
+    if hp : wr.atomicity = .atomic then isTrue  (by grind [Request.isAtomic, BasicRequest.isAtomic])
+    else                                isFalse (by grind [Request.isAtomic, BasicRequest.isAtomic])
+  | .fence _    => isFalse (by grind [Request.isAtomic, BasicRequest.isAtomic])
+
+def Request.isTransactional (r : Request) : Prop := r.basic_type.isTransactional
+instance (r : Request) : Decidable r.isTransactional := match h : r.basic_type with
+  | .read rr _  =>
+    if hp : rr.atomicity = .transactional then isTrue  (by grind [Request.isTransactional, BasicRequest.isTransactional])
+    else                                       isFalse (by grind [Request.isTransactional, BasicRequest.isTransactional])
+  | .write wr _ =>
+    if hp : wr.atomicity = .transactional then isTrue  (by grind [Request.isTransactional, BasicRequest.isTransactional])
+    else                                       isFalse (by grind [Request.isTransactional, BasicRequest.isTransactional])
+  | .fence _    => isFalse (by grind [Request.isTransactional, BasicRequest.isTransactional])
 
 def BasicRequest.address? (r : BasicRequest) : Option Address := match r with
   | read  req _ => some req.addr
@@ -321,10 +396,14 @@ def BasicRequest.address? (r : BasicRequest) : Option Address := match r with
 
 def Request.address? (r : Request) : Option Address := r.basic_type.address?
 
-def Request.equivalent (r₁ r₂ : Request) : Bool :=
-  if r₁.isFence then r₁.basic_type == r₂.basic_type
-  else r₁.address? == r₂.address? && r₁.value? == r₂.value? && r₁.thread == r₂.thread &&
-       ((r₁.isWrite && r₂.isWrite) || (r₁.isRead && r₂.isRead))
+def Request.equivalent (r₁ r₂ : Request) : Prop :=
+  if r₁.isFence then r₁.basic_type = r₂.basic_type
+  else r₁.address? = r₂.address? ∧ r₁.value? = r₂.value? ∨ r₁.thread = r₂.thread ∧
+       ((r₁.isWrite ∧ r₂.isWrite) ∨ (r₁.isRead ∧ r₂.isRead))
+
+instance (r₁ r₂ : Request) : Decidable (r₁.equivalent r₂) := by
+  unfold Request.equivalent
+  split <;> infer_instance
 
 -- Read, Write
 def SatisfiedRead := RequestId × RequestId deriving ToString, DecidableEq
@@ -772,9 +851,11 @@ def SystemState.seen : SystemState → List RequestId
 def SystemState.idsToReqs : SystemState → List RequestId → List (Request)
   | state, ids => filterNones $ ids.map (λ id => state.requests.getReq? id)
 
-def SystemState.isSatisfied : SystemState → RequestId → Bool
-  | state, rid =>
-  !(state.satisfied.filter λ (srd,_) => srd == rid).isEmpty
+def SystemState.isSatisfied (state : SystemState) (rid : RequestId) : Prop :=
+  ∃ p ∈ state.satisfied, p.1 = rid
+
+instance (state : SystemState) (rid : RequestId) : Decidable (state.isSatisfied rid) := by
+  unfold SystemState.isSatisfied; infer_instance
 
 def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Bool
   | state, rid, tid => match state.requests.getReq? rid with

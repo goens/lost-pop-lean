@@ -118,7 +118,7 @@ def Request.possibleSatisfyTransitions (read : Request) (state : SystemState) : 
 
 def SystemState.possibleSatisfyTransitions (state :  SystemState) : List (Transition) :=
   let requests := filterNones state.requests.val.toList
-  let unsatisfied_reads := requests.filter λ r => r.isRead && !(state.isSatisfied r.id)
+  let unsatisfied_reads := requests.filter λ r => decide (r.isRead ∧ ¬state.isSatisfied r.id)
   List.flatten $ unsatisfied_reads.map λ r => r.possibleSatisfyTransitions state
 
 def SystemState.possibleTransitions (state : SystemState) (unaccepted : ProgramState) :=
@@ -127,8 +127,8 @@ def SystemState.possibleTransitions (state : SystemState) (unaccepted : ProgramS
   accepts ++ state.possibleSatisfyTransitions ++ state.possiblePropagateTransitions
 
 def SystemState.hasUnsatisfiedReads (state : SystemState) :=
-  let reads := state.requests.filter Request.isRead |>.map Request.id
-  let unsatisfied := reads.filter λ r => !(state.isSatisfied r)
+  let reads := state.requests.filter (decide ∘ Request.isRead) |>.map Request.id
+  let unsatisfied := reads.filter λ r => decide (¬state.isSatisfied r)
   unsatisfied != []
 
 def SystemState.isDeadlocked (state : SystemState) (unaccepted : ProgramState) :=

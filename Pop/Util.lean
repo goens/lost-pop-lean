@@ -147,7 +147,7 @@ inductive ListTree (α : Type) [BEq α] : Type
   | leaf : List α → ListTree α
   | parentNil : List α → ListTree α
   | parentCons : ListTree α → ListTree α → ListTree α
-  deriving Repr, DecidableEq
+  deriving Repr, DecidableEq, Hashable, Inhabited
   -- This DecidableEq instance seems fishy, not sure if it will compile to some actual code
 
 open Lean in
@@ -365,5 +365,10 @@ def ltest3 := ListTree.parentCons (ListTree.leaf [1,4]) ltest2
 -- #eval ltest3.meet 1 4
 -- #eval ltest3.meet 1 3
 -- #eval ltest3.meet 1 5
+
+instance [Hashable α] [Hashable β] : Hashable (α ⊕ β) where
+  hash s := match s with
+    | .inl a => hash a
+    | .inr b => hash b
 
 end Util

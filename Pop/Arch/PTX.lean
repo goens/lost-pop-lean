@@ -13,7 +13,7 @@ inductive Scope
   | cta
   | gpu
   | sys
-  deriving Inhabited, DecidableEq, Repr
+  deriving Inhabited, DecidableEq, Repr, Hashable
 
 def Scope.intersection : Scope → Scope → Scope
   | .cta, _ => cta
@@ -31,12 +31,12 @@ inductive Semantics
   | rlx
   | weak
   | dep
-  deriving Inhabited, DecidableEq, Repr
+  deriving Inhabited, DecidableEq, Repr, Hashable
 
 structure Req where
   (scope : Scope)
   (sem : Semantics)
-  deriving DecidableEq
+  deriving DecidableEq, Hashable
 
 def Req.isStrong (req : Req) : Bool :=
   match req.sem with

@@ -14,7 +14,7 @@ inductive Req
   | acq
   | dmb_sy -- just sy for now
   | other
-  deriving Inhabited, DecidableEq
+  deriving Inhabited, DecidableEq, Hashable
 
 def Req.toString : Req → String
   | .rel => "rel"

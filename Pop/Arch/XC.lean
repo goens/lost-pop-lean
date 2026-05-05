@@ -12,7 +12,7 @@ namespace XC
 inductive Scope
   | cta
   | sys
-  deriving Inhabited, DecidableEq, Repr
+  deriving Inhabited, DecidableEq, Repr, Hashable
 
 def Scope.intersection : Scope → Scope → Scope
   | .cta, _ => cta
@@ -26,12 +26,12 @@ inductive Semantics
   | acq
   | rlx
   | dep
-  deriving Inhabited, DecidableEq, Repr
+  deriving Inhabited, DecidableEq, Repr, Hashable
 
 structure Req where
   (scope : Scope)
   (sem : Semantics)
-  deriving DecidableEq
+  deriving DecidableEq, Hashable
 
 instance : Inhabited Req where default :=
   { scope := Scope.sys, sem := Semantics.sc}

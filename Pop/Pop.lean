@@ -16,7 +16,7 @@ inductive Transition
   | propagateToThread : RequestId → ThreadId → Transition
   | satisfyRead : RequestId → RequestId → Transition
   | dependency : Option RequestId → Transition
- deriving DecidableEq
+ deriving DecidableEq, Hashable
 
 instance : Inhabited (Transition) where default := Transition.acceptRequest default 0
 
@@ -138,6 +138,8 @@ def Transition.prettyPrint : SystemState → Transition → String
 
 
 abbrev ProgramState := Array (Array (Transition))
+
+instance : Hashable ProgramState := inferInstance
 
 def ProgramState.allFilter (prog : ProgramState) (filterProp : Transition → Prop) [DecidablePred filterProp]
   : List Transition :=
@@ -321,7 +323,7 @@ instance (state : SystemState) (req : BasicRequest) (tId : ThreadId) :
     | true  => isTrue  (by simp [SystemState.canAcceptRequest, hb, ha])
 
 def SystemState.updateOrderConstraintsPropagate (state : SystemState) : @Scope state.scopes →
-RequestId → ThreadId → @OrderConstraints state.scopes
+RequestId → ThreadId → OrderConstraints
   | scope, reqId, thId =>
   match state.requests.getReq? reqId with
     | none => state.orderConstraints
@@ -341,24 +343,23 @@ RequestId → ThreadId → @OrderConstraints state.scopes
 
 -- TODO: refactor this all into one update, including the predecessors
 -- for predecessors
-def SystemState.updateOrderConstraintsAfterPropagate (state : SystemState) : ThreadId → @OrderConstraints state.scopes
+def SystemState.updateOrderConstraintsAfterPropagate (state : SystemState) : ThreadId → OrderConstraints
   | thId => Id.run do
     let predreqs := state.requests.filter λ r => r.isPredecessorAt thId
     let threadreqs := state.requests.filter λ r => r.thread == thId
     let mut oc := state.orderConstraints
     for req in predreqs do
       for req' in threadreqs do
-        let sc := Arch.scopeIntersection state.scopes req req'
         if req.id == req'.id then continue
-        if oc.lookup sc req.id req'.id then continue
-        if oc.lookup sc req'.id req.id then continue
+        if oc.lookup (Arch.scopeIntersection oc.valid req req') req.id req'.id then continue
+        if oc.lookup (Arch.scopeIntersection oc.valid req req') req'.id req.id then continue
         if Arch.orderCondition state.scopes req req' then
         --dbg_trace "adding {(req.id, req'.id)} after propagate"
-          oc := oc.addSubscopes sc [(req.id, req'.id)]
+          oc := oc.addSubscopes (Arch.scopeIntersection oc.valid req req') [(req.id, req'.id)]
     oc
 
 def SystemState.updateOrderConstraintsAccept (state : SystemState) (req : Request)
-: @OrderConstraints state.scopes :=
+: OrderConstraints :=
   let threadreqs := state.idsToReqs state.seen |>.filter
     λ r => r.thread == req.thread || r.isPredecessorAt req.thread
   let newOc := Id.run do
@@ -423,7 +424,7 @@ def SystemState.applyAcceptRequest : SystemState → BasicRequest → ThreadId �
         state.requests.insert req' |>.insert paired'
   let orderConstraints' := state.updateOrderConstraintsAccept req
   let mut st :=
-   { requests := requests', scopes := state.scopes,
+   { requests := requests'
      threadTypes := state.threadTypes,
      orderConstraints := orderConstraints',
      removed := state.removed, satisfied := state.satisfied

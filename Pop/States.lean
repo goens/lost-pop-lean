@@ -7,8 +7,8 @@ open Util
 namespace Pop
 
 def RequestId := Nat deriving ToString, Inhabited, Hashable, DecidableEq
-def Value := Option Nat deriving ToString, Inhabited, DecidableEq
-def Address := Nat deriving ToString, Inhabited, DecidableEq
+def Value := Option Nat deriving ToString, Inhabited, DecidableEq, Hashable
+def Address := Nat deriving ToString, Inhabited, DecidableEq, Hashable
 def ThreadId := Nat deriving Ord, LT, LE, ToString, Inhabited, Hashable, DecidableEq
 
 inductive ConditionalValue
@@ -17,7 +17,7 @@ inductive ConditionalValue
   --| transaction : Nat → ConditionalValue
   | fetchAndAdd : ConditionalValue
   | failed : ConditionalValue
-  deriving Inhabited, DecidableEq
+  deriving Inhabited, DecidableEq, Hashable
 
 def ConditionalValue.update : ConditionalValue → Value → ConditionalValue
   | c@(.const v), some v' => if v == v' then c else .failed
@@ -89,16 +89,19 @@ class ArchReq where
   [instDecidableEq : DecidableEq type]
   [instInhabited : Inhabited type]
   [instToString : ToString type]
+  [instHashable : Hashable type]
   (prettyPrint : type → String := instToString.toString)
   (isPermanentRead : type → Bool := λ _ => false)
 
 variable [ArchReq]
 
+instance : Hashable ArchReq.type := ArchReq.instHashable
+
 inductive Atomicity where
   | nonatomic : Atomicity
   | transactional : Atomicity
   | atomic : Atomicity
-  deriving Inhabited, DecidableEq
+  deriving Inhabited, DecidableEq, Hashable
 
 instance : ToString Atomicity where toString
   | .nonatomic => ""
@@ -110,13 +113,13 @@ structure ReadRequest where
  reads_from : Option RequestId
  atomicity : Atomicity
  val : Value
- deriving Inhabited, DecidableEq
+ deriving Inhabited, DecidableEq, Hashable
 
 structure WriteRequest where
  addr : Address
  val : ConditionalValue
  atomicity : Atomicity
- deriving Inhabited, DecidableEq
+ deriving Inhabited, DecidableEq, Hashable
 
 instance : DecidableEq ArchReq.type := ArchReq.instDecidableEq
 instance : Inhabited ArchReq.type := ArchReq.instInhabited
@@ -126,7 +129,7 @@ inductive BasicRequest
  | read : ReadRequest → ArchReq.type → BasicRequest
  | write : WriteRequest → ArchReq.type → BasicRequest
  | fence : ArchReq.type → BasicRequest
- deriving DecidableEq
+ deriving DecidableEq, Hashable
 
 instance : Inhabited BasicRequest where default := BasicRequest.fence default
 
@@ -215,14 +218,9 @@ def BasicRequest.conditionalValue? : BasicRequest → Option ConditionalValue
 structure ValidScopes where
   system_scope : List ThreadId
   scopes : ListTree ThreadId
+  deriving Hashable, Inhabited
   --scopes_consistent : ∀ s, scopes.elem s → s.sublist system_scope
   --system_scope_is_scope : system_scope ∈ scopes
-
-def ValidScopes.default : ValidScopes :=
-    { system_scope := [], scopes := ListTree.leaf [],
-    }
-
-instance : Inhabited ValidScopes where default := ValidScopes.default
 
 def ValidScopes.toStringHet (threadType : Option (Array String)) (scopes : ValidScopes) : String :=
   let scopeFun := match threadType with
@@ -268,7 +266,7 @@ structure Request where
   pairedRequest? : Option RequestId
   -- scope : Scope
   -- type : α
-  deriving DecidableEq
+  deriving DecidableEq, Hashable
 
 
 def Request.default : Request :=
@@ -406,7 +404,7 @@ instance (r₁ r₂ : Request) : Decidable (r₁.equivalent r₂) := by
   split <;> infer_instance
 
 -- Read, Write
-def SatisfiedRead := RequestId × RequestId deriving ToString, DecidableEq
+def SatisfiedRead := RequestId × RequestId deriving ToString, DecidableEq, Hashable
 
 --instance [BEq α] : Membership (List α) (ListTree α) where
 --  mem lst tree := tree.elem lst = true
@@ -493,43 +491,54 @@ def Request.makePredecessorAt (req : Request) (thId : ThreadId) : Request :=
  However, we have a property (by construction) that if s' ≤ s and r₁ →s r₂, then
  also r₁ →s' r₂. Can we use this to find a more compact representation?
 -/
-structure OrderConstraints {V : ValidScopes} where
+structure OrderConstraints where
   val : Std.HashMap (List ThreadId) (Std.HashMap (RequestId × RequestId) Bool)
   default : Bool
+  valid : ValidScopes
 
-def OrderConstraints.empty {V : ValidScopes} (numReqs : optParam Nat 10) : @OrderConstraints V :=
+instance : Hashable OrderConstraints where
+  hash oc := mixHash (Hashable.hash oc.valid) <| mixHash oc.val.size.toUInt64 oc.default.toUInt64
+
+def OrderConstraints.empty (numReqs : optParam Nat 10) : OrderConstraints :=
+ let V : ValidScopes := Inhabited.default
  let scopes := V.scopes.toList
- { default := false, val :=
+ { default := false, valid := V, val :=
+ Std.HashMap.emptyWithCapacity (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.HashMap.emptyWithCapacity (capacity := numReqs))
+ }
+
+def OrderConstraints.emptyWithScopes (V : ValidScopes) (numReqs : Nat := 10) : OrderConstraints :=
+ let scopes := V.scopes.toList
+ { default := false, valid := V, val :=
  Std.HashMap.emptyWithCapacity (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.HashMap.emptyWithCapacity (capacity := numReqs))
  }
 
 -- TODO: make scope an optional parameter and just do the intersection by default?
 -- Would need to move around things in Arch typeclass...
-def OrderConstraints.lookup {V : ValidScopes} (ordc : @OrderConstraints V)
-  (S : @Scope V) (req₁ req₂ : RequestId) : Prop :=
+def OrderConstraints.lookup (ordc : OrderConstraints)
+  (S : @Scope ordc.valid) (req₁ req₂ : RequestId) : Prop :=
   let sc_ordc := ordc.val.get? S.threads
   match sc_ordc with
     | none => ordc.default
     | some hashmap =>
       hashmap.getD (req₁, req₂) ordc.default
 
-instance {V : ValidScopes} (ordc : @OrderConstraints V) (S : @Scope V) (req₁ req₂ : RequestId) :
+instance (ordc : OrderConstraints) (S : @Scope ordc.valid) (req₁ req₂ : RequestId) :
     Decidable (ordc.lookup S req₁ req₂) := by
   unfold OrderConstraints.lookup
   cases ordc.val.get? S.threads <;> exact inferInstance
 
-def OrderConstraints.predecessors {V : ValidScopes} (S : @Scope V) (req : RequestId)
-    (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
+def OrderConstraints.predecessors (constraints : OrderConstraints) (S : @Scope constraints.valid) (req : RequestId)
+    (reqs : List RequestId)   : List RequestId :=
     let sc_oc := constraints.lookup S -- hope this gets optimized accordingly...
     reqs.filter (λ x => sc_oc x req)
 
-def OrderConstraints.successors {V : ValidScopes} (S : @Scope V) (req : RequestId)
-  (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
+def OrderConstraints.successors (constraints : OrderConstraints) (S : @Scope constraints.valid) (req : RequestId)
+  (reqs : List RequestId)   : List RequestId :=
   let sc_oc := constraints.lookup S -- hope this gets optimized accordingly...
   reqs.filter (λ x => sc_oc req x)
 
- def OrderConstraints.transitiveSuccessors {V : ValidScopes} (S : @Scope V) (req : RequestId)
-   (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
+ def OrderConstraints.transitiveSuccessors (constraints : OrderConstraints) (S : @Scope constraints.valid) (req : RequestId)
+   (reqs : List RequestId)   : List RequestId :=
    let sc_oc := constraints.lookup S
    Id.run do
      let mut succ := []
@@ -541,15 +550,15 @@ def OrderConstraints.successors {V : ValidScopes} (S : @Scope V) (req : RequestI
            λ s => x == s || sc_oc s x
      return succ'
 
-def OrderConstraints.between {V : ValidScopes} (S : @Scope V) (req₁ req₂ : RequestId)
-  (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
+def OrderConstraints.between (constraints : OrderConstraints) (S : @Scope constraints.valid) (req₁ req₂ : RequestId)
+  (reqs : List RequestId)   : List RequestId :=
   let preds₁ := constraints.predecessors S req₁ reqs
   let preds₂ := constraints.predecessors S req₂ reqs
   preds₂.removeAll (req₁::preds₁)
 
 -- TODO: is this really a quasi top sort?
-def OrderConstraints.qtopSort {V : ValidScopes} (S : @Scope V)
-  (reqs : List Request) (constraints : @OrderConstraints V)  : List Request :=
+def OrderConstraints.qtopSort (constraints : OrderConstraints) (S : @Scope constraints.valid)
+  (reqs : List Request)   : List Request :=
   reqs.toArray.qsort (λ r₁ r₂ => constraints.lookup S r₁.id r₂.id) |>.toList
 
 /-
@@ -559,11 +568,10 @@ def SystemState.betweenRequests (state : SystemState) (req₁ req₂ : Request) 
   state.idsToReqs betweenIds
   -/
 
-def OrderConstraints.compare {V₁ V₂ : ValidScopes} (oc₁ : @OrderConstraints V₁) (oc₂ : @OrderConstraints V₂)
-  (requests : List RequestId) : Prop :=
-  V₁.scopes.toList = V₂.scopes.toList ∧
-    let scopes₁ := V₁.scopes.toList.map V₁.validate
-    let scopes₂ := V₂.scopes.toList.map V₂.validate
+def OrderConstraints.compare (oc₁ oc₂ : OrderConstraints) (requests : List RequestId) : Prop :=
+  oc₁.valid.scopes.toList = oc₂.valid.scopes.toList ∧
+    let scopes₁ := oc₁.valid.scopes.toList.map oc₁.valid.validate
+    let scopes₂ := oc₂.valid.scopes.toList.map oc₂.valid.validate
     let scopes := scopes₁.zip scopes₂ -- pretty hacky: should get types to match
     let reqPairs := List.flatten $ requests.map λ r₁ => requests.foldl (init := []) λ reqs r₂ => (r₁,r₂)::reqs
     let keys := List.flatten $ scopes.map λ s => reqPairs.foldl (init := []) λ ks (r₁,r₂) => (s,r₁,r₂)::ks
@@ -571,10 +579,10 @@ def OrderConstraints.compare {V₁ V₂ : ValidScopes} (oc₁ : @OrderConstraint
       | ((some s₁, some s₂), r₁, r₂) => oc₁.lookup s₁ r₁ r₂ ↔ oc₂.lookup s₂ r₁ r₂
       | _ => True
 
-instance {V₁ V₂ : ValidScopes} (oc₁ : @OrderConstraints V₁) (oc₂ : @OrderConstraints V₂) (requests : List RequestId) :
+instance (oc₁ oc₂ : OrderConstraints) (requests : List RequestId) :
     Decidable (oc₁.compare oc₂ requests) := by
   unfold OrderConstraints.compare
-  haveI : ∀ x : (Option (@Scope V₁) × Option (@Scope V₂)) × RequestId × RequestId,
+  haveI : ∀ x : (Option (@Scope oc₁.valid) × Option (@Scope oc₂.valid)) × RequestId × RequestId,
       Decidable (match x with
         | ((some s₁, some s₂), r₁, r₂) => oc₁.lookup s₁ r₁ r₂ ↔ oc₂.lookup s₂ r₁ r₂
         | _ => True) := fun ⟨⟨s₁?, s₂?⟩, _, _⟩ => by
@@ -583,8 +591,8 @@ instance {V₁ V₂ : ValidScopes} (oc₁ : @OrderConstraints V₁) (oc₂ : @Or
     | none, _ | some _, none => exact isTrue trivial
   infer_instance
 
-def OrderConstraints.addSingleScope {V : ValidScopes} (constraints : @OrderConstraints V)
-  (scope : @Scope V) (reqs : List (RequestId × RequestId)) (val := true) : @OrderConstraints V :=
+def OrderConstraints.addSingleScope (constraints : OrderConstraints)
+  (scope : @Scope V) (reqs : List (RequestId × RequestId)) (val := true) : OrderConstraints :=
   match constraints.val.get? scope.threads with
    | none => constraints
    | some sc_oc =>
@@ -595,14 +603,14 @@ def OrderConstraints.addSingleScope {V : ValidScopes} (constraints : @OrderConst
 -- Updates `constraints` to add all pairs in `reqs` to the scope `scope` and each
 -- of its suscopes. The optional value `val` is what the constraint is updated to,
 -- and defaults to `true`.
-def OrderConstraints.addSubscopes {V : ValidScopes} (constraints : @OrderConstraints V)
-(scope : @Scope V) (reqs : List (RequestId × RequestId)) (val := true) : @OrderConstraints V :=
+def OrderConstraints.addSubscopes {V : ValidScopes} (constraints : OrderConstraints)
+(scope : @Scope V) (reqs : List (RequestId × RequestId)) (val := true) : OrderConstraints :=
   let subscopes := V.subscopes scope
   --dbg_trace s!"{scope.threads}.subscopes: {subscopes.map λ s => s.threads}"
   subscopes.foldl (init := constraints) λ oc sc => oc.addSingleScope sc reqs (val := val)
 
-def OrderConstraints.swap {V : ValidScopes} (oc : @OrderConstraints V)
-  (scope : @Scope V) (req₁ req₂ : RequestId) : @OrderConstraints V :=
+def OrderConstraints.swap (oc : OrderConstraints) (scope : @Scope oc.valid)
+ (req₁ req₂ : RequestId) : OrderConstraints :=
   let c₁₂ := oc.lookup scope req₁ req₂
   let c₂₁ := oc.lookup scope req₂ req₁
   Id.run do
@@ -634,7 +642,7 @@ def OrderConstraints.groupsToString : List Request → List Request → String
     "{" ++ (String.intercalate ", " $ r₁strings) ++
                     "} → {" ++ (String.intercalate ", " $ r₂strings) ++ "}"
 
-def OrderConstraints.toString {V : ValidScopes} (constraints : @OrderConstraints V) (scope : @Scope V) (reqs : List Request) : String := Id.run do
+def OrderConstraints.toString (constraints : OrderConstraints) (scope : @Scope constraints.valid) (reqs : List Request) : String := Id.run do
    let reqsSorted := constraints.qtopSort scope reqs
    let mut pairs := []
    for req in reqsSorted do
@@ -668,6 +676,7 @@ private def valConsistent (vals : Array (Option (Request))) : Bool :=
 structure RequestArray where
   val : Array (Option (Request))
   coherent : valConsistent val = true
+  deriving Hashable, DecidableEq
 
 instance : BEq (RequestArray) where beq := λ arr₁ arr₂ => arr₁.val == arr₂.val
 
@@ -709,7 +718,7 @@ def RequestArray.filter : RequestArray → (Request → Bool) → List Request
     | none => false
   filterNones $ Array.toList $ ra.val.filter fOp
 
-def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (order : @OrderConstraints V) (colWidth := 25) (highlight : optParam (Option $ ThreadId × RequestId) none) : String := Id.run do
+def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (order : OrderConstraints) (colWidth := 25) (highlight : optParam (Option $ ThreadId × RequestId) none) : String := Id.run do
   let mut threads := []
   let mut res := ""
   for thId in (List.range numThreads) do
@@ -728,7 +737,7 @@ def RequestArray.prettyPrint (arr : RequestArray) (numThreads : Nat) (order : @O
   res := res ++ "|\n" ++ (String.ofList $ List.replicate (colWidth * numThreads + 2 * (numThreads - 1)) '-') ++ "\n"
   threads := threads.map
     (λ th => th.toArray.qsort
-      (λ r₁ r₂ => order.lookup (V.jointScope r₁.2.thread r₂.2.thread) r₁.2.id r₂.2.id)
+      (λ r₁ r₂ => order.lookup (order.valid.jointScope r₁.2.thread r₂.2.thread) r₁.2.id r₂.2.id)
         |>.toList)
   while threads.any (!·.isEmpty) do
     let mut sep := false
@@ -809,10 +818,13 @@ def RequestArray.remove : RequestArray → RequestId → RequestArray
 structure SystemState where
   requests : RequestArray
   removed : List (Request) -- TODO: remove, def. "active" to ignore satisfied reads
-  scopes : ValidScopes
   satisfied : List SatisfiedRead
   threadTypes : Array String
-  orderConstraints : @OrderConstraints scopes
+  orderConstraints : OrderConstraints
+  deriving Hashable
+
+abbrev SystemState.scopes : SystemState → ValidScopes :=
+  fun s => s.orderConstraints.valid
 
 def SystemState.beq (state₁ state₂ : SystemState)
   -- (samesystem : state₁.system = state₂.system)
@@ -871,11 +883,11 @@ instance : ToString (SystemState) where toString := SystemState.toString
 
 def SystemState.init (S : ValidScopes) (threadTypes : Array String): SystemState :=
   { requests := RequestArray.empty, removed := [],
-    scopes := S, satisfied := [], orderConstraints := OrderConstraints.empty,
+    satisfied := [], orderConstraints := OrderConstraints.emptyWithScopes S,
     threadTypes
   }
 
-def SystemState.default := SystemState.init ValidScopes.default #[]
+def SystemState.default := SystemState.init Inhabited.default #[]
 instance : Inhabited (SystemState) where default := SystemState.default
 
 def SystemState.seen : SystemState → List RequestId

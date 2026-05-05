@@ -10,7 +10,7 @@ open Pop Util
 namespace x86
 inductive Req
   | mk : Req
-  deriving Inhabited, DecidableEq
+  deriving Inhabited, DecidableEq, Hashable
 
 instance : ToString Req where toString := λ _ => ""
 

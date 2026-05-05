@@ -13,49 +13,15 @@ namespace Pop
 
 variable [Arch]
 
-/-
-  Hashing utilities for model-checking deduplication.
-  SystemState has no Hashable instance because OrderConstraints wraps Std.HashMap.
-  We build a fast fingerprint from the Nat-based fields; collisions fall back to BEq.
--/
-private def Request.quickHash (r : Request) : UInt64 :=
-  mixHash (hash r.id) $ mixHash (hash r.propagated_to) $
-  mixHash (hash r.predecessor_at) $ mixHash (hash r.thread) $
-  mixHash (hash r.occurrence) (hash r.pairedRequest?)
-
-private def RequestArray.quickHash (arr : RequestArray) : UInt64 :=
-  arr.val.foldl (fun acc opt =>
-    mixHash acc (opt.elim 0 Request.quickHash)) 1
-
-private def SystemState.quickHash (state : SystemState) : UInt64 :=
-  mixHash state.requests.quickHash $
-  mixHash (state.removed.foldl (fun h r => mixHash h (mixHash (hash r.id) (hash r.propagated_to))) 0) $
-  state.satisfied.foldl (fun h (r1, r2) => mixHash h (mixHash (hash r1) (hash r2))) 0
-
--- ProgramState = Array (Array Transition); hash what we can without ArchReq.type
-private def ProgramState.quickHash (prog : ProgramState) : UInt64 :=
-  prog.foldl (fun acc th =>
-    mixHash acc $ th.foldl (fun h tr => mixHash h (match tr with
-      | .dependency oid              => hash oid
-      | .propagateToThread rid tid   => mixHash (hash rid) (hash tid)
-      | .satisfyRead r1 r2           => mixHash (hash r1) (hash r2)
-      | .acceptRequest _ tid         => hash tid)) 0) 0
-
-/-- Visited set: HashMap from a cheap hash to a collision-resolution bucket.
-    Membership is O(1) amortized vs the previous O(|explored|) linear scan. -/
-private abbrev VisitedSet := Std.HashMap UInt64 (Array (ProgramState × SystemState))
+/-- Visited set for model-checking deduplication.
+    Now backed by a proper HashSet using the derived Hashable instances. -/
+private abbrev VisitedSet := Std.HashSet (ProgramState × SystemState)
 
 private def VisitedSet.contains (visited : VisitedSet) (ps : ProgramState) (ss : SystemState) : Bool :=
-  let key := mixHash ps.quickHash ss.quickHash
-  match visited.get? key with
-  | none        => false
-  | some bucket => bucket.any fun (ps', ss') => ps' == ps && ss' == ss
+  Std.HashSet.contains visited (ps, ss)
 
 private def VisitedSet.add (visited : VisitedSet) (ps : ProgramState) (ss : SystemState) : VisitedSet :=
-  let key := mixHash ps.quickHash ss.quickHash
-  match visited.get? key with
-  | none        => visited.insert key #[(ps, ss)]
-  | some bucket => visited.insert key (bucket.push (ps, ss))
+  Std.HashSet.insert visited (ps, ss)
 
 def ProgramState.prettyPrint (accepts : ProgramState) : String :=
   let threadStrings := accepts.map λ th => filterNones $

@@ -13,6 +13,50 @@ namespace Pop
 
 variable [Arch]
 
+/-
+  Hashing utilities for model-checking deduplication.
+  SystemState has no Hashable instance because OrderConstraints wraps Std.HashMap.
+  We build a fast fingerprint from the Nat-based fields; collisions fall back to BEq.
+-/
+private def Request.quickHash (r : Request) : UInt64 :=
+  mixHash (hash r.id) $ mixHash (hash r.propagated_to) $
+  mixHash (hash r.predecessor_at) $ mixHash (hash r.thread) $
+  mixHash (hash r.occurrence) (hash r.pairedRequest?)
+
+private def RequestArray.quickHash (arr : RequestArray) : UInt64 :=
+  arr.val.foldl (fun acc opt =>
+    mixHash acc (opt.elim 0 Request.quickHash)) 1
+
+private def SystemState.quickHash (state : SystemState) : UInt64 :=
+  mixHash state.requests.quickHash $
+  mixHash (state.removed.foldl (fun h r => mixHash h (mixHash (hash r.id) (hash r.propagated_to))) 0) $
+  state.satisfied.foldl (fun h (r1, r2) => mixHash h (mixHash (hash r1) (hash r2))) 0
+
+-- ProgramState = Array (Array Transition); hash what we can without ArchReq.type
+private def ProgramState.quickHash (prog : ProgramState) : UInt64 :=
+  prog.foldl (fun acc th =>
+    mixHash acc $ th.foldl (fun h tr => mixHash h (match tr with
+      | .dependency oid              => hash oid
+      | .propagateToThread rid tid   => mixHash (hash rid) (hash tid)
+      | .satisfyRead r1 r2           => mixHash (hash r1) (hash r2)
+      | .acceptRequest _ tid         => hash tid)) 0) 0
+
+/-- Visited set: HashMap from a cheap hash to a collision-resolution bucket.
+    Membership is O(1) amortized vs the previous O(|explored|) linear scan. -/
+private abbrev VisitedSet := Std.HashMap UInt64 (Array (ProgramState × SystemState))
+
+private def VisitedSet.contains (visited : VisitedSet) (ps : ProgramState) (ss : SystemState) : Bool :=
+  let key := mixHash ps.quickHash ss.quickHash
+  match visited.get? key with
+  | none        => false
+  | some bucket => bucket.any fun (ps', ss') => ps' == ps && ss' == ss
+
+private def VisitedSet.add (visited : VisitedSet) (ps : ProgramState) (ss : SystemState) : VisitedSet :=
+  let key := mixHash ps.quickHash ss.quickHash
+  match visited.get? key with
+  | none        => visited.insert key #[(ps, ss)]
+  | some bucket => visited.insert key (bucket.push (ps, ss))
+
 def ProgramState.prettyPrint (accepts : ProgramState) : String :=
   let threadStrings := accepts.map λ th => filterNones $
     th.toList.map Transition.prettyPrintReq
@@ -269,6 +313,16 @@ private def searchAuxUpdateUnexplored (explored unexplored newtriples : Array Se
     (unexplored.all checkFun && explored.all checkFun)
   Array.append (newtriples.filter filterFun) unexplored
 
+/-- Filter newtriples to those not already in the visited set (covers both explored
+    and in-queue states). O(|newtriples|) amortized instead of
+    O(|newtriples| × (|explored| + |unexplored|)). -/
+private def searchAuxUpdateUnexploredVisited
+    (visited : VisitedSet) (unexplored newtriples : Array SearchState) : Array SearchState × VisitedSet :=
+  let filtered := newtriples.filter λ (_,ps,ss)t =>
+    !visited.contains ps ss
+  let vis' := filtered.foldl (fun v (_,ps,ss)t => v.add ps ss) visited
+  (Array.append filtered unexplored, vis')
+
 
 private def searchAuxNSteps (options : SearchOptions) (inputStates : Array SearchState)
  : (List ((List Transition) × SystemState)) × Array SearchState := Id.run do
@@ -310,8 +364,11 @@ match inittuple with
       -- either save the state (memory cost) or recompute it (computational cost)
       -- we choose the former so that we can also filter out states that we've seen before
       let mut unexplored := #[([],accepts,startState)t]
-      let mut explored := #[]
-      let mut found := []
+      -- visited covers both explored and in-queue states: O(1) amortized deduplication
+      -- vs the previous O(|unexplored|) linear scan on every new triple
+      let mut visited : VisitedSet := (({} : VisitedSet).add accepts startState)
+      let mut visited_size : Nat := 0
+      let mut found : Array ((List Transition) × SystemState) := #[]
       let mut cur_size := 0
       let mut randGen := options.randomGen
       let mut guide := options.guidingTrace
@@ -323,9 +380,6 @@ match inittuple with
           --dbg_trace s!"{unexplored.size} unexplored"
           let n := min unexplored.size (max options.numWorkers 1) -- at least 1
           for i in [0:n] do
-            -- FIXME: Change cur! (??)
-            -- BFS : first
-            --let some unexplored_cur := unexplored[i]?
             let mut idx := if options.breadthFirst then unexplored.size - 1 else i
             if let some g := randGen then
               let (n,g') := RandomGen.next g
@@ -343,35 +397,38 @@ match inittuple with
                 idx := 0
             let some unexplored_cur := unexplored[idx]?
               | panic! "index error, this shouldn't happen" -- TODO: prove i is fine
-            unexplored := unexplored.eraseIdx! idx
-            if !options.breadthFirst then
-              explored := explored.push unexplored_cur
+            -- Swap-erase: O(1) instead of O(n) eraseIdx for DFS (idx near front)
+            if idx < unexplored.size - 1 then
+              unexplored := unexplored.set! idx unexplored.back!
+            unexplored := unexplored.pop
+            visited_size := visited_size + 1
             let task := Task.spawn λ _ => stepFun #[unexplored_cur]
             workers := workers.push task
           for worker in workers do
             let (newFound,newTriples) := worker.get
-            found := newFound ++ found
-            if options.stopAfterFirst && found.length > 0 then
+            found := found.append newFound.toArray
+            if options.stopAfterFirst && found.size > 0 then
               unexplored := #[]
               break
-            --if let some n := maxIterations  && n < explored.size then
             if let some n := options.maxIterations then
-              if explored.size > n then
+              if visited_size > n then
                 return Except.error s!"Exceeded max. number of iterations({n})"
             if options.logProgress then
               if newTriples.any λ (pt,_,_)t => pt.length > cur_size then
                 cur_size := cur_size + 1
                 dbg_trace "progress: partial traces of size {cur_size}"
-              if explored.size.toUInt32 > thousands_explored  * 1000 then
+              if visited_size.toUInt32 > thousands_explored  * 1000 then
                 dbg_trace "progress: explored ≥{thousands_explored}k"
                 thousands_explored := thousands_explored + 1
 
-            unexplored := searchAuxUpdateUnexplored explored unexplored newTriples
-            if options.stopAfterFirst && found.length > 0 then
+            let (newUnexplored, newVisited) := searchAuxUpdateUnexploredVisited visited unexplored newTriples
+            unexplored := newUnexplored
+            visited := newVisited
+            if options.stopAfterFirst && found.size > 0 then
               break
             --dbg_trace "total unexplored: {unexplored.size}"
           workers := #[]
-      return Except.ok found
+      return Except.ok found.toList
     | .error e => .error e
 
 def SystemState.exhaustiveSearchLitmus

@@ -440,8 +440,11 @@ def ValidScopes.systemScope {V : ValidScopes } : @Scope V :=
 instance {V : ValidScopes} : Inhabited (@Scope V) where
  default := V.systemScope
 
-def ValidScopes.isUnscoped (V : ValidScopes) : Bool :=
-  V.scopes == (ListTree.leaf V.system_scope)
+def ValidScopes.isUnscoped (V : ValidScopes) : Prop :=
+  V.scopes = (ListTree.leaf V.system_scope)
+
+instance {V : ValidScopes} : Decidable (V.isUnscoped) := by
+  unfold ValidScopes.isUnscoped; infer_instance
 
 def ValidScopes.jointScope : (V : ValidScopes) → ThreadId → ThreadId → (@Scope V)
  | valid, t₁, t₂ => match valid.scopes.meet t₁ t₂ with
@@ -454,14 +457,29 @@ def ValidScopes.reqThreadScope (V : ValidScopes ) (req : Request) : (@Scope V) :
 def ValidScopes.intersection : (V : ValidScopes) → @Scope V → @Scope V → Option (@Scope V)
   | V, s1, s2 => V.validate $ s1.threads.intersection s2.threads
 
-def Request.propagatedTo (r : Request) (t : ThreadId) : Bool := r.propagated_to.elem t
+def Request.propagatedTo (r : Request) (t : ThreadId) : Prop := r.propagated_to.elem t
 
-def Request.fullyPropagated {V : ValidScopes}  (r : Request) (s : optParam (@Scope V) V.systemScope) : Bool :=
-  let propToList := s.threads.map (λ t => Request.propagatedTo r t)
-  propToList.foldl (init:= true) (. && .)
+instance (r : Request) (t : ThreadId) : Decidable (r.propagatedTo t) := by
+  unfold Request.propagatedTo; infer_instance
 
-def Request.isPredecessorAt (req : Request) (thId : ThreadId) : Bool :=
-  req.predecessor_at.contains thId
+def Request.fullyPropagated {V : ValidScopes}  (r : Request) (s : optParam (@Scope V) V.systemScope) : Prop :=
+  ∀ t ∈ s.threads, Request.propagatedTo r t
+
+def Request.fullyPropagatedDecide {V : ValidScopes}  (r : Request) (s : optParam (@Scope V) V.systemScope) : Bool :=
+  s.threads.all (fun t => decide (Request.propagatedTo r t))
+
+theorem Request.fullyPropagatedDecide_correct {V : ValidScopes} (r : Request) (s : optParam (@Scope V) V.systemScope) :
+  Request.fullyPropagatedDecide r s = true ↔ Request.fullyPropagated r s := by
+  simp [Request.fullyPropagatedDecide, Request.fullyPropagated, List.all_eq_true]
+
+instance {V : ValidScopes} (r : Request) (s : @Scope V) : Decidable (r.fullyPropagated s) :=
+  decidable_of_iff (r.fullyPropagatedDecide s = true) (Request.fullyPropagatedDecide_correct r s)
+
+def Request.isPredecessorAt (req : Request) (thId : ThreadId) : Prop :=
+  thId ∈ req.predecessor_at
+
+instance (req : Request) (thId : ThreadId) : Decidable (req.isPredecessorAt thId) := by
+  unfold Request.isPredecessorAt; infer_instance
 
 def Request.makePredecessorAt (req : Request) (thId : ThreadId) : Request :=
   if req.isPredecessorAt thId then req else { req with predecessor_at := thId :: req.predecessor_at}
@@ -488,12 +506,17 @@ def OrderConstraints.empty {V : ValidScopes} (numReqs : optParam Nat 10) : @Orde
 -- TODO: make scope an optional parameter and just do the intersection by default?
 -- Would need to move around things in Arch typeclass...
 def OrderConstraints.lookup {V : ValidScopes} (ordc : @OrderConstraints V)
-  (S : @Scope V) (req₁ req₂ : RequestId) : Bool :=
+  (S : @Scope V) (req₁ req₂ : RequestId) : Prop :=
   let sc_ordc := ordc.val.get? S.threads
   match sc_ordc with
     | none => ordc.default
     | some hashmap =>
       hashmap.getD (req₁, req₂) ordc.default
+
+instance {V : ValidScopes} (ordc : @OrderConstraints V) (S : @Scope V) (req₁ req₂ : RequestId) :
+    Decidable (ordc.lookup S req₁ req₂) := by
+  unfold OrderConstraints.lookup
+  cases ordc.val.get? S.threads <;> exact inferInstance
 
 def OrderConstraints.predecessors {V : ValidScopes} (S : @Scope V) (req : RequestId)
     (reqs : List RequestId) (constraints : @OrderConstraints V)  : List RequestId :=
@@ -536,19 +559,29 @@ def SystemState.betweenRequests (state : SystemState) (req₁ req₂ : Request) 
   state.idsToReqs betweenIds
   -/
 
-def OrderConstraints.compare {V₁ V₂ : ValidScopes} ( oc₁ : @OrderConstraints V₁) (oc₂ : @OrderConstraints V₂)
-  (requests : List RequestId) : Bool :=
-  if V₁.scopes.toList != V₂.scopes.toList
-    then false
-    else
-      let scopes₁ := V₁.scopes.toList.map V₁.validate
-      let scopes₂ := V₂.scopes.toList.map V₂.validate
-      let scopes := scopes₁.zip scopes₂ -- pretty hacky: should get types to match
-      let reqPairs := List.flatten $ requests.map λ r₁ => requests.foldl (init := []) λ reqs r₂ => (r₁,r₂)::reqs
-      let keys := List.flatten $ scopes.map λ s => reqPairs.foldl (init := []) λ ks (r₁,r₂) => (s,r₁,r₂)::ks
-      keys.all λ (s,r₁,r₂) => match s with
-        | (some s₁, some s₂) => (oc₁.lookup s₁ r₁ r₂ == oc₂.lookup s₂ r₁ r₂)
-        | _ => panic! s!"invalid scopes {scopes₁} or {scopes₂}"
+def OrderConstraints.compare {V₁ V₂ : ValidScopes} (oc₁ : @OrderConstraints V₁) (oc₂ : @OrderConstraints V₂)
+  (requests : List RequestId) : Prop :=
+  V₁.scopes.toList = V₂.scopes.toList ∧
+    let scopes₁ := V₁.scopes.toList.map V₁.validate
+    let scopes₂ := V₂.scopes.toList.map V₂.validate
+    let scopes := scopes₁.zip scopes₂ -- pretty hacky: should get types to match
+    let reqPairs := List.flatten $ requests.map λ r₁ => requests.foldl (init := []) λ reqs r₂ => (r₁,r₂)::reqs
+    let keys := List.flatten $ scopes.map λ s => reqPairs.foldl (init := []) λ ks (r₁,r₂) => (s,r₁,r₂)::ks
+    ∀ x ∈ keys, match x with
+      | ((some s₁, some s₂), r₁, r₂) => oc₁.lookup s₁ r₁ r₂ ↔ oc₂.lookup s₂ r₁ r₂
+      | _ => True
+
+instance {V₁ V₂ : ValidScopes} (oc₁ : @OrderConstraints V₁) (oc₂ : @OrderConstraints V₂) (requests : List RequestId) :
+    Decidable (oc₁.compare oc₂ requests) := by
+  unfold OrderConstraints.compare
+  haveI : ∀ x : (Option (@Scope V₁) × Option (@Scope V₂)) × RequestId × RequestId,
+      Decidable (match x with
+        | ((some s₁, some s₂), r₁, r₂) => oc₁.lookup s₁ r₁ r₂ ↔ oc₂.lookup s₂ r₁ r₂
+        | _ => True) := fun ⟨⟨s₁?, s₂?⟩, _, _⟩ => by
+    match s₁?, s₂? with
+    | some s₁, some s₂ => exact inferInstance
+    | none, _ | some _, none => exact isTrue trivial
+  infer_instance
 
 def OrderConstraints.addSingleScope {V : ValidScopes} (constraints : @OrderConstraints V)
   (scope : @Scope V) (reqs : List (RequestId × RequestId)) (val := true) : @OrderConstraints V :=
@@ -573,7 +606,7 @@ def OrderConstraints.swap {V : ValidScopes} (oc : @OrderConstraints V)
   let c₁₂ := oc.lookup scope req₁ req₂
   let c₂₁ := oc.lookup scope req₂ req₁
   Id.run do
-    if c₁₂ == c₂₁ then
+    if c₁₂ ↔ c₂₁ then
       panic! "cycle {req₁.id} ↔ {req₂.id} detected in order constraints."
     let mut add := []
     let mut remove := []
@@ -857,10 +890,14 @@ def SystemState.isSatisfied (state : SystemState) (rid : RequestId) : Prop :=
 instance (state : SystemState) (rid : RequestId) : Decidable (state.isSatisfied rid) := by
   unfold SystemState.isSatisfied; infer_instance
 
-def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Bool
+def SystemState.reqPropagatedTo : SystemState → RequestId → ThreadId → Prop
   | state, rid, tid => match state.requests.getReq? rid with
-    | none => false
+    | none => False
     | some req => req.propagatedTo tid
+
+instance (state : SystemState) (rid : RequestId) (tid : ThreadId) : Decidable (state.reqPropagatedTo rid tid) := by
+  simp only [SystemState.reqPropagatedTo]
+  split <;> exact inferInstance
 
 def SystemState.updateRequest : SystemState → Request → SystemState
   | state, request =>

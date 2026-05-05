@@ -127,7 +127,7 @@ def SystemState.possibleTransitions (state : SystemState) (unaccepted : ProgramS
   accepts ++ state.possibleSatisfyTransitions ++ state.possiblePropagateTransitions
 
 def SystemState.hasUnsatisfiedReads (state : SystemState) :=
-  let reads := state.requests.filter (decide ∘ Request.isRead) |>.map Request.id
+  let reads := state.requests.filter (fun r => decide r.isRead) |>.map Request.id
   let unsatisfied := reads.filter λ r => decide (¬state.isSatisfied r)
   unsatisfied != []
 

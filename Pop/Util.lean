@@ -17,6 +17,32 @@ def filterNones {α : Type} : List (Option α) → List α
   | (some val):: rest => val::(filterNones rest)
   | [] => []
 
+theorem List.foldl_and_false_false {α : Type} (p : α → Bool) (l : List α) :
+  (l.foldl (init := false) (λ acc x => acc && p x)) = false := by
+  induction l with
+  | nil => simp
+  | cons head tail ih =>
+    simp [List.foldl, ih]
+
+theorem List.foldl_and_iff_all {α : Type} (p : α → Bool) (l : List α) :
+  (l.foldl (init := true) (λ acc x => acc && p x)) = true ↔ ∀ x ∈ l, p x := by
+  induction l with
+  | nil => simp
+  | cons head tail ih =>
+    simp [List.foldl]
+    constructor
+    · intro htail
+      by_cases hphead : p head = true
+      · case pos =>
+          simp [hphead] at htail
+          exact ⟨hphead, ih.mp htail⟩
+      · case neg =>
+          simp [hphead] at htail
+          have hfalse := List.foldl_and_false_false p tail
+          rw [hfalse] at htail
+          contradiction
+    · case mpr => grind
+
 def Array.sum : Array Nat → Nat
   | arr => arr.foldl (init := 0) (· + ·)
 
@@ -121,7 +147,8 @@ inductive ListTree (α : Type) [BEq α] : Type
   | leaf : List α → ListTree α
   | parentNil : List α → ListTree α
   | parentCons : ListTree α → ListTree α → ListTree α
-  deriving Repr
+  deriving Repr, DecidableEq
+  -- This DecidableEq instance seems fishy, not sure if it will compile to some actual code
 
 open Lean in
 private def quoteListTree [Quote α] [BEq α] : ListTree α → Term
@@ -326,17 +353,17 @@ def ltest := ListTree.leaf [1,2,4]
 def ltest2 := ListTree.parentCons ltest (ListTree.parentNil [1,2,3,4])
 def ltest3 := ListTree.parentCons (ListTree.leaf [1,4]) ltest2
 
-#eval ListTree.elem [1,2,4] ltest
-#eval ListTree.elem [1,2,4] ltest2
-#eval ListTree.elem [1,2,3,4] ltest2
-#eval ListTree.elem [1,3,4] ltest2
-#eval ListTree.elem [1,3,4] ltest3
-#eval ListTree.elem [1,2,4] ltest2
-#eval ltest2.leaves
-#eval ltest3.leaves
-#eval ltest3.meet 1 2
-#eval ltest3.meet 1 4
-#eval ltest3.meet 1 3
-#eval ltest3.meet 1 5
+-- #eval ListTree.elem [1,2,4] ltest
+-- #eval ListTree.elem [1,2,4] ltest2
+-- #eval ListTree.elem [1,2,3,4] ltest2
+-- #eval ListTree.elem [1,3,4] ltest2
+-- #eval ListTree.elem [1,3,4] ltest3
+-- #eval ListTree.elem [1,2,4] ltest2
+-- #eval ltest2.leaves
+-- #eval ltest3.leaves
+-- #eval ltest3.meet 1 2
+-- #eval ltest3.meet 1 4
+-- #eval ltest3.meet 1 3
+-- #eval ltest3.meet 1 5
 
 end Util

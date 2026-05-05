@@ -599,10 +599,8 @@ instance (state : SystemState) (reqId : RequestId) (thId : ThreadId) :
           refine ⟨hw, ?_⟩
           obtain ⟨wr, hmem, hb⟩ := List.any_eq_true.mp hany
           exact ⟨wr, hmem,
-            fun heq => by have : state.orderConstraints.lookup scope wr.id reqId = true := heq
-                          simp [this] at hb,
-            fun heq => by have : state.orderConstraints.lookup scope reqId wr.id = true := heq
-                          simp [this] at hb⟩)
+            fun heq => by simp at hb; exact hb.1 heq,
+            fun heq => by simp at hb; exact hb.2 heq⟩)
       else
         isFalse (by grind [SystemState.transactionsBlocking])
     else

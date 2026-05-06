@@ -396,7 +396,7 @@ def Request.address? (r : Request) : Option Address := r.basic_type.address?
 
 def Request.equivalent (r₁ r₂ : Request) : Prop :=
   if r₁.isFence then r₁.basic_type = r₂.basic_type
-  else r₁.address? = r₂.address? ∧ r₁.value? = r₂.value? ∨ r₁.thread = r₂.thread ∧
+  else r₁.address? = r₂.address? ∧ r₁.value? = r₂.value? ∧ r₁.thread = r₂.thread ∧
        ((r₁.isWrite ∧ r₂.isWrite) ∨ (r₁.isRead ∧ r₂.isRead))
 
 instance (r₁ r₂ : Request) : Decidable (r₁.equivalent r₂) := by

@@ -558,12 +558,11 @@ instance (req : Request) (thId : ThreadId) : Decidable (req.isPropagated thId) :
 def requestBlocksPropagateRequest : SystemState → ThreadId → Request → Request → Prop
   | state, thId, propagate, block =>
     block.id ≠ propagate.id ∧
-    ¬block.isMem ∧
-      (propagate.thread = block.thread ∧
+    block.isMem ∧
+    ( (propagate.thread = block.thread ∧
         ∃ scope ∈ state.scopes.containThread propagate.thread,
-          state.orderConstraints.lookup scope block.id propagate.id ∧ ¬(block.fullyPropagated scope)
-      ) ∨
-      (state.orderConstraints.lookup state.scopes.systemScope block.id propagate.id ∧ ¬(block.propagatedTo thId))
+          state.orderConstraints.lookup scope block.id propagate.id ∧ ¬(block.fullyPropagated scope))
+    ∨ (state.orderConstraints.lookup state.scopes.systemScope block.id propagate.id ∧ ¬(block.propagatedTo thId)))
 
 instance (state : SystemState) (thId : ThreadId) (propagate block : Request) :
     Decidable (requestBlocksPropagateRequest state thId propagate block) := by

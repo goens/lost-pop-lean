@@ -218,7 +218,7 @@ def BasicRequest.conditionalValue? : BasicRequest → Option ConditionalValue
 structure ValidScopes where
   system_scope : List ThreadId
   scopes : ListTree ThreadId
-  deriving Hashable, Inhabited
+  deriving Hashable, Inhabited, DecidableEq
   --scopes_consistent : ∀ s, scopes.elem s → s.sublist system_scope
   --system_scope_is_scope : system_scope ∈ scopes
 
@@ -492,9 +492,10 @@ def Request.makePredecessorAt (req : Request) (thId : ThreadId) : Request :=
  also r₁ →s' r₂. Can we use this to find a more compact representation?
 -/
 structure OrderConstraints where
-  val : Std.HashMap (List ThreadId) (Std.HashMap (RequestId × RequestId) Bool)
+  val : Std.ExtHashMap (List ThreadId) (Std.ExtHashMap (RequestId × RequestId) Bool)
   default : Bool
   valid : ValidScopes
+  deriving DecidableEq
 
 instance : Hashable OrderConstraints where
   hash oc := mixHash (Hashable.hash oc.valid) <| mixHash oc.val.size.toUInt64 oc.default.toUInt64
@@ -503,13 +504,13 @@ def OrderConstraints.empty (numReqs : optParam Nat 10) : OrderConstraints :=
  let V : ValidScopes := Inhabited.default
  let scopes := V.scopes.toList
  { default := false, valid := V, val :=
- Std.HashMap.emptyWithCapacity (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.HashMap.emptyWithCapacity (capacity := numReqs))
+ Std.ExtHashMap.emptyWithCapacity (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.ExtHashMap.emptyWithCapacity (capacity := numReqs))
  }
 
 def OrderConstraints.emptyWithScopes (V : ValidScopes) (numReqs : Nat := 10) : OrderConstraints :=
  let scopes := V.scopes.toList
  { default := false, valid := V, val :=
- Std.HashMap.emptyWithCapacity (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.HashMap.emptyWithCapacity (capacity := numReqs))
+ Std.ExtHashMap.emptyWithCapacity (capacity := scopes.length) |> scopes.foldl λ acc s => acc.insert s (Std.ExtHashMap.emptyWithCapacity (capacity := numReqs))
  }
 
 -- TODO: make scope an optional parameter and just do the intersection by default?
@@ -821,7 +822,7 @@ structure SystemState where
   satisfied : List SatisfiedRead
   threadTypes : Array String
   orderConstraints : OrderConstraints
-  deriving Hashable
+  deriving Hashable, DecidableEq
 
 abbrev SystemState.scopes : SystemState → ValidScopes :=
   fun s => s.orderConstraints.valid
